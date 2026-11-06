@@ -8,7 +8,10 @@ import { adminUserRoutes } from "./routes/admin-users.js";
 import { datasourceRoutes } from "./routes/datasources.js";
 import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
 import { modelsRoutes } from "./routes/models.js";
+import { conversationRoutes } from "./routes/conversations.js";
+import { runRoutes } from "./routes/runs.js";
 import { PoolRegistry } from "./agent/datasource/pool.js";
+import { RuntimeManager } from "./agent/runtime.js";
 import { ArtifactStore } from "./services/artifacts.js";
 import type { AppConfig } from "./config.js";
 import type { Db } from "./db/client.js";
@@ -18,6 +21,11 @@ export interface BuildAppOptions {
   db: Db;
   /** Only skips registering the plugin for isolated unit tests; there is no global limit. */
   enableRateLimit?: boolean;
+  /** Test seam; production passes the manager created in index.ts. */
+  agentRuntime?: RuntimeManager;
+  /** Reuse stores created by the production entrypoint. */
+  artifacts?: ArtifactStore;
+  pools?: PoolRegistry;
 }
 
 export function normalizeOrigin(value: string): string | null {
@@ -50,6 +58,9 @@ export async function buildApp({
   config,
   db,
   enableRateLimit = true,
+  agentRuntime: injectedAgentRuntime,
+  artifacts: injectedArtifacts,
+  pools: injectedPools,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: config.logLevel } });
   const signer = createSessionSigner(config.appSecret);
@@ -87,13 +98,26 @@ export async function buildApp({
   await app.register(healthRoutes, { db });
   await app.register(authRoutes, { config, db, signer });
   await app.register(adminUserRoutes, { db });
-  const artifacts = new ArtifactStore(db, path.join(config.dataDir, "artifacts"));
+  const artifacts =
+    injectedArtifacts ??
+    new ArtifactStore(db, path.join(config.dataDir, "artifacts"));
   await artifacts.init();
-  const pools = new PoolRegistry();
+  const pools = injectedPools ?? new PoolRegistry();
+  const agentRuntime =
+    injectedAgentRuntime ??
+    new RuntimeManager({ config, db, pools, artifacts });
   await app.register(datasourceRoutes, { config, db, pools });
   await app.register(datasourceSchemaRoutes, { config, db, pools });
   await app.register(modelsRoutes, { config });
+  await app.register(conversationRoutes, {
+    config,
+    db,
+    artifacts,
+    runtime: agentRuntime,
+  });
+  await app.register(runRoutes, { db, runtime: agentRuntime });
   app.addHook("onClose", async () => {
+    await agentRuntime.shutdown();
     await artifacts.close();
     await pools.closeAll();
   });

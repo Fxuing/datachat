@@ -1,7 +1,11 @@
+import path from "node:path";
 import fs from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { loadConfig } from "./config.js";
 import { buildApp } from "./app.js";
+import { RuntimeManager } from "./agent/runtime.js";
+import { PoolRegistry } from "./agent/datasource/pool.js";
+import { ArtifactStore } from "./services/artifacts.js";
 import { createDb } from "./db/client.js";
 import { migrateDb } from "./db/migrate.js";
 import { bootstrapAdmin } from "./auth/bootstrap.js";
@@ -14,7 +18,25 @@ const { adminPassword: _adminPassword, ...appConfig } = config;
 
 let app: FastifyInstance;
 try {
-  app = await buildApp({ config: appConfig, db: handle.db });
+  const artifacts = new ArtifactStore(
+    handle.db,
+    path.join(appConfig.dataDir, "artifacts"),
+  );
+  await artifacts.init();
+  const pools = new PoolRegistry();
+  const agentRuntime = new RuntimeManager({
+    config: appConfig,
+    db: handle.db,
+    pools,
+    artifacts,
+  });
+  app = await buildApp({
+    config: appConfig,
+    db: handle.db,
+    artifacts,
+    pools,
+    agentRuntime,
+  });
 } catch (error) {
   handle.sqlite.close();
   throw error;

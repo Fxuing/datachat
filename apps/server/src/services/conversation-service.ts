@@ -1,0 +1,265 @@
+import { eq } from "drizzle-orm";
+import type { Column } from "@datachat/shared";
+import { runEventSchema, type RunEvent } from "@datachat/shared";
+import type { Db } from "../db/client.js";
+import { artifacts } from "../db/schema.js";
+import {
+  listConversations,
+  type ConversationRow,
+} from "../db/repositories/conversations.js";
+import { listConversationEvents } from "../db/repositories/run-events.js";
+import { findRun, type RunStatus } from "../db/repositories/runs.js";
+import type { ArtifactStore } from "./artifacts.js";
+
+export interface ConversationResponse {
+  id: string;
+  datasourceId: string;
+  title: string | null;
+  modelId: string | null;
+  thinkingLevel: string;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
+  lastMessageAt: number | null;
+}
+
+export interface ConversationListPage {
+  items: ConversationResponse[];
+  nextCursor: number | null;
+}
+
+export interface ToolMessage {
+  toolCallId: string;
+  name: string;
+  args: unknown;
+  status: "running" | "ok" | "error";
+  durationMs?: number;
+  summary?: string;
+}
+
+export interface ConversationResultMessage {
+  artifactId: string;
+  columns: Column[];
+  rows: unknown[][];
+  rowCount: number;
+  truncated: boolean;
+}
+
+export interface SqlMessage {
+  sql: string;
+  auditId: string;
+  status: "ok" | "rejected" | "error";
+}
+
+export interface ConversationMessage {
+  runId: string;
+  status: RunStatus;
+  user: { content: string };
+  assistant: { content: string } | null;
+  tools: ToolMessage[];
+  results: ConversationResultMessage[];
+  sqls: SqlMessage[];
+  createdAt: number;
+}
+
+export interface ConversationArtifact {
+  id: string;
+  runId: string | null;
+  kind: "result" | "chart";
+  columns: Column[];
+  rowCount: number;
+  truncated: boolean;
+  spec: unknown;
+  createdAt: number;
+}
+
+export interface ConversationDetail {
+  conversation: ConversationResponse;
+  messages: ConversationMessage[];
+  artifacts: ConversationArtifact[];
+}
+
+interface MessageGroup {
+  runId: string;
+  createdAt: number;
+  user: string | null;
+  assistant: string | null;
+  deltas: string[];
+  tools: ToolMessage[];
+  results: ConversationResultMessage[];
+  sqls: SqlMessage[];
+}
+
+export function toConversationResponse(row: ConversationRow): ConversationResponse {
+  return {
+    id: row.id,
+    datasourceId: row.datasourceId,
+    title: row.title,
+    modelId: row.modelId,
+    thinkingLevel: row.thinkingLevel,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    lastMessageAt: row.lastMessageAt,
+  };
+}
+
+export function listConversationPage(
+  db: Db,
+  userId: string,
+  opts: { limit?: number; before?: number } = {},
+): ConversationListPage {
+  const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
+  const rows = listConversations(db, userId, { limit, before: opts.before });
+  const items = rows.map(toConversationResponse);
+  const last = rows.at(-1);
+  const nextCursor = rows.length === limit && last?.lastMessageAt ? last.lastMessageAt : null;
+  return { items, nextCursor };
+}
+
+function toRunStatus(value: string | undefined): RunStatus {
+  if (value === "queued" || value === "running" || value === "ok" || value === "error" || value === "aborted") {
+    return value;
+  }
+  return "running";
+}
+
+function parseEvent(row: { type: string; payloadJson: string }): RunEvent | null {
+  try {
+    return runEventSchema.parse({
+      type: row.type,
+      payload: JSON.parse(row.payloadJson) as unknown,
+    });
+  } catch {
+    return null;
+  }
+}
+
+function groupFor(grouped: Map<string, MessageGroup>, runId: string, createdAt: number): MessageGroup {
+  const existing = grouped.get(runId);
+  if (existing) return existing;
+  const group: MessageGroup = {
+    runId,
+    createdAt,
+    user: null,
+    assistant: null,
+    deltas: [],
+    tools: [],
+    results: [],
+    sqls: [],
+  };
+  grouped.set(runId, group);
+  return group;
+}
+
+function applyEvent(group: MessageGroup, event: RunEvent): void {
+  switch (event.type) {
+    case "user_message":
+      group.user = event.payload.content;
+      break;
+    case "assistant_message":
+      group.assistant = event.payload.content;
+      break;
+    case "text_delta":
+      group.deltas.push(event.payload.text);
+      break;
+    case "tool_start":
+      group.tools.push({
+        toolCallId: event.payload.toolCallId,
+        name: event.payload.name,
+        args: event.payload.args,
+        status: "running",
+      });
+      break;
+    case "tool_end": {
+      const tool = group.tools.find((item) => item.toolCallId === event.payload.toolCallId);
+      if (tool) {
+        tool.status = event.payload.isError ? "error" : "ok";
+        tool.durationMs = event.payload.durationMs;
+        tool.summary = event.payload.summary;
+      }
+      break;
+    }
+    case "result":
+      group.results.push(event.payload);
+      break;
+    case "sql":
+      group.sqls.push(event.payload);
+      break;
+    default:
+      break;
+  }
+}
+
+export function getConversationDetail(
+  db: Db,
+  artifactsStore: ArtifactStore,
+  conversation: ConversationRow,
+): ConversationDetail {
+  const grouped = new Map<string, MessageGroup>();
+  for (const row of listConversationEvents(db, conversation.id, 2_000)) {
+    const event = parseEvent(row);
+    if (!event) continue;
+    applyEvent(groupFor(grouped, row.runId, row.createdAt), event);
+  }
+
+  const messages: ConversationMessage[] = [];
+  for (const group of [...grouped.values()].sort((a, b) => a.createdAt - b.createdAt)) {
+    if (group.user === null) continue;
+    const run = findRun(db, group.runId);
+    messages.push({
+      runId: group.runId,
+      status: toRunStatus(run?.status),
+      user: { content: group.user },
+      assistant: group.assistant !== null
+        ? { content: group.assistant }
+        : group.deltas.length > 0
+          ? { content: group.deltas.join("") }
+          : null,
+      tools: group.tools,
+      results: group.results,
+      sqls: group.sqls,
+      createdAt: group.createdAt,
+    });
+  }
+
+  const artifactRows = db
+    .select({
+      id: artifacts.id,
+      runId: artifacts.runId,
+      kind: artifacts.kind,
+      columnsJson: artifacts.columnsJson,
+      rowCount: artifacts.rowCount,
+      truncated: artifacts.truncated,
+      specJson: artifacts.specJson,
+      createdAt: artifacts.createdAt,
+    })
+    .from(artifacts)
+    .where(eq(artifacts.conversationId, conversation.id))
+    .orderBy(artifacts.createdAt)
+    .all();
+
+  return {
+    conversation: toConversationResponse(conversation),
+    messages,
+    artifacts: artifactRows.map((row) => ({
+      id: row.id,
+      runId: row.runId,
+      kind: row.kind,
+      columns: row.columnsJson ? (JSON.parse(row.columnsJson) as Column[]) : [],
+      rowCount: row.rowCount,
+      truncated: row.truncated === 1,
+      spec: row.specJson ? (JSON.parse(row.specJson) as unknown) : null,
+      createdAt: row.createdAt,
+    })),
+  };
+}
+
+export async function deleteConversationFiles(
+  artifactsStore: ArtifactStore,
+  conversation: ConversationRow,
+): Promise<void> {
+  for (const artifact of artifactsStore.list({ conversationId: conversation.id })) {
+    await artifactsStore.delete(artifact.id);
+  }
+}

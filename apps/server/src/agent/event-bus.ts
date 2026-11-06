@@ -33,6 +33,10 @@ export class RunEventBus {
     };
   }
 
+  listenerCount(conversationId: string): number {
+    return this.listeners.get(conversationId)?.size ?? 0;
+  }
+
   publish(event: LiveRunEvent): void {
     const set = this.listeners.get(event.conversationId);
     if (!set) return;
