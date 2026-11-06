@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
+import Fastify from "fastify";
 import { buildApp } from "../src/app.js";
+import { healthRoutes } from "../src/routes/health.js";
 import { createDb } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { testConfig } from "./helpers/config.js";
@@ -25,7 +27,22 @@ describe("health", () => {
     app = await buildApp({ config, db: handle.db, enableRateLimit: false });
     const res = await app.inject({ method: "GET", url: "/api/health" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ ok: true });
+    expect(res.json()).toMatchObject({ ok: true, db: "ok" });
+  });
+
+  it("reports a database error without failing the health endpoint", async () => {
+    const broken = Fastify();
+    await broken.register(healthRoutes, {
+      db: {
+        get: () => {
+          throw new Error("database unavailable");
+        },
+      } as never,
+    });
+    const res = await broken.inject({ method: "GET", url: "/api/health" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, db: "error" });
+    await broken.close();
   });
 
   it("registers rate limiting without throwing", async () => {

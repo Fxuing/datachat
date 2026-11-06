@@ -30,6 +30,8 @@ const envSchema = z
     ),
     SILICONFLOW_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
     SILICONFLOW_BASE_URL: z.string().url().default("https://api.siliconflow.cn/v1"),
+    /** Comma-separated browser origins explicitly trusted for CSRF checks (proxy/TLS terminations). */
+    APP_ORIGIN: z.preprocess(emptyToUndefined, z.string().optional()),
     ADMIN_USERNAME: z
       .string()
       .trim()
@@ -78,6 +80,8 @@ export interface AppConfig {
   logLevel: string;
   siliconflowApiKey?: string;
   siliconflowBaseUrl: string;
+  /** Normalized trusted origins from `APP_ORIGIN`, e.g. https://chat.example.com. */
+  appOrigins: string[];
   adminUsername: string;
   adminPassword?: string;
   isProduction: boolean;
@@ -114,6 +118,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     logLevel: parsed.LOG_LEVEL,
     siliconflowApiKey: parsed.SILICONFLOW_API_KEY,
     siliconflowBaseUrl: parsed.SILICONFLOW_BASE_URL,
+    appOrigins: (parsed.APP_ORIGIN ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
     adminUsername: parsed.ADMIN_USERNAME,
     adminPassword: parsed.ADMIN_PASSWORD,
     isProduction: parsed.NODE_ENV === "production",

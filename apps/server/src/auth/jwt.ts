@@ -20,7 +20,7 @@ export function createSessionSigner(secret: string) {
         .sign(key);
     },
     async verify(token: string): Promise<SessionPayload> {
-      const { payload } = await jwtVerify(token, key);
+      const { payload } = await jwtVerify(token, key, { algorithms: ["HS256"] });
       if (typeof payload.sub !== "string") throw new Error("missing sub");
       if (payload.role !== "admin" && payload.role !== "user") throw new Error("bad role");
       return {

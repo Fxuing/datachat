@@ -19,6 +19,32 @@ export interface BuildAppOptions {
   enableRateLimit?: boolean;
 }
 
+export function normalizeOrigin(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function hostWithScheme(host: string, scheme: string): string {
+  const normalized = host.trim().toLowerCase();
+  const defaultPort = scheme === "https" ? ":443" : ":80";
+  return normalized.endsWith(defaultPort)
+    ? normalized.slice(0, -defaultPort.length)
+    : normalized;
+}
+
+/** Compare scheme + host + port, treating :80/:443 as the scheme default. */
+export function isSameOrigin(origin: string, protocol: string, host: string): boolean {
+  const url = new URL(origin);
+  const scheme = protocol.replace(/:$/, "");
+  if (url.protocol !== `${scheme}:`) return false;
+  return hostWithScheme(url.host, scheme) === hostWithScheme(host, scheme);
+}
+
 export async function buildApp({
   config,
   db,
@@ -35,28 +61,35 @@ export async function buildApp({
   }
 
   // CSRF: SameSite=Lax plus a same-origin check for state-changing requests.
+  // Browsers send Origin (or Referer on older clients); compare the full origin,
+  // not just Host, so http://host cannot post to https://host and default ports
+  // normalize correctly. APP_ORIGIN is the escape hatch for reverse proxies.
+  const trustedOrigins = new Set(
+    config.appOrigins.map((value) => normalizeOrigin(value)).filter((value): value is string => Boolean(value)),
+  );
   app.addHook("preHandler", async (request, reply) => {
     if (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") return;
-    const origin = request.headers.origin;
-    if (!origin) return;
-    const host = request.headers.host;
-    try {
-      if (new URL(origin).host !== host) {
-        return reply.code(403).send({ error: { code: "CSRF", message: "跨站请求被拒绝" } });
-      }
-    } catch {
+    const candidate = request.headers.origin ?? request.headers.referer;
+    if (!candidate) return;
+    const origin = normalizeOrigin(candidate);
+    if (!origin) {
       return reply.code(403).send({ error: { code: "CSRF", message: "非法 Origin" } });
+    }
+    if (trustedOrigins.has(origin)) return;
+    const host = request.headers.host;
+    if (!host || !isSameOrigin(origin, request.protocol, host)) {
+      return reply.code(403).send({ error: { code: "CSRF", message: "跨站请求被拒绝" } });
     }
   });
 
-  registerAuthGuards(app, signer);
-  await app.register(healthRoutes);
+  registerAuthGuards(app, { signer, db });
+  await app.register(healthRoutes, { db });
   await app.register(authRoutes, { config, db, signer });
   await app.register(adminUserRoutes, { db });
-  await app.register(datasourceRoutes, { config, db });
   const artifacts = new ArtifactStore(db, path.join(config.dataDir, "artifacts"));
   await artifacts.init();
   const pools = new PoolRegistry();
+  await app.register(datasourceRoutes, { config, db, pools });
   await app.register(datasourceSchemaRoutes, { config, db, pools });
   app.addHook("onClose", async () => {
     await artifacts.close();

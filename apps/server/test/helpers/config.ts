@@ -8,6 +8,7 @@ export const testConfig: AppConfig = {
   dbPath: ":memory:",
   logLevel: "silent",
   siliconflowBaseUrl: "https://api.siliconflow.cn/v1",
+  appOrigins: [],
   adminUsername: "admin",
   isProduction: false,
   queryMaxRows: 1000,

@@ -4,6 +4,7 @@ import { buildApp } from "../src/app.js";
 import { createDb, type Db } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { insertUser } from "../src/db/repositories/users.js";
+import { queryAudit } from "../src/db/schema.js";
 import { hashPassword } from "../src/auth/password.js";
 import { createSessionSigner } from "../src/auth/jwt.js";
 import { testConfig } from "./helpers/config.js";
@@ -101,6 +102,8 @@ describe("admin users", () => {
       cookies: { dc_session: adminCookie },
     });
     expect(list.json().userIds).toEqual([id]);
+    const actions = db.select().from(queryAudit).all().map((row) => row.action);
+    expect(actions).toEqual(expect.arrayContaining(["user_create", "grant_update"]));
     await a.close();
   });
 
@@ -166,14 +169,16 @@ describe("admin users", () => {
     });
     expect(demoteDave.statusCode).toBe(200);
 
-    // Dave's old token still claims admin; the last-admin guard must reject the patch.
+    // Dave's token still claims admin, but the guard reloads the DB role and
+    // rejects the demoted session before the route runs.
     const demoteRoot = await a.inject({
       method: "PATCH",
       url: `/api/admin/users/${adminId}`,
       cookies: { dc_session: daveCookie },
       payload: { role: "user" },
     });
-    expect(demoteRoot.statusCode).toBe(409);
+    expect(demoteRoot.statusCode).toBe(403);
+    expect(demoteRoot.json().error.code).toBe("FORBIDDEN");
     await a.close();
   });
 });

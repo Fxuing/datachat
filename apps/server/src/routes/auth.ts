@@ -8,12 +8,20 @@ import { findUserByUsername, toPublicUser } from "../db/repositories/users.js";
 import { verifyPassword } from "../auth/password.js";
 import { SESSION_COOKIE } from "../auth/guard.js";
 import type { SessionSigner } from "../auth/jwt.js";
+import { safeRecordAuditEvent } from "../services/audit.js";
 
 export interface AuthRouteOptions {
   config: AppConfig;
   db: Db;
   signer: SessionSigner;
 }
+
+/**
+ * Valid Argon2id hash used when the username does not exist. Verifying against
+ * it keeps the unknown-user path roughly as expensive as a real password check.
+ */
+const DUMMY_PASSWORD_HASH =
+  "$argon2id$v=19$m=19456,t=2,p=1$NysYmsmDtseTJhNPHSzxyg$2dP3ZASJhU4UT7T2Qf3Hc4OxO+3iD9MbbBwMVco2e3k";
 
 export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions): Promise<void> {
   const { config, db, signer } = opts;
@@ -31,15 +39,30 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions): 
           .send({ error: { code: "VALIDATION", message: "用户名或密码格式不正确" } });
       }
       const user = findUserByUsername(db, parsed.data.username);
-      if (!user || user.status !== "active") {
-        return reply.code(401).send({ error: { code: "AUTH_FAILED", message: "用户名或密码错误" } });
-      }
-      const ok = await verifyPassword(user.passwordHash, parsed.data.password);
-      if (!ok) {
+      const ok = await verifyPassword(
+        user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+        parsed.data.password,
+      );
+      if (!user || user.status !== "active" || !ok) {
+        safeRecordAuditEvent(db, {
+          actorUserId: user?.id ?? null,
+          action: "login_failed",
+          status: "rejected",
+          targetUserId: user?.id ?? null,
+          ip: request.ip,
+          detail: { username: parsed.data.username },
+        });
         return reply.code(401).send({ error: { code: "AUTH_FAILED", message: "用户名或密码错误" } });
       }
       const token = await signer.sign({ sub: user.id, username: user.username, role: user.role });
       db.update(users).set({ lastLoginAt: Date.now() }).where(eq(users.id, user.id)).run();
+      safeRecordAuditEvent(db, {
+        actorUserId: user.id,
+        action: "login",
+        status: "ok",
+        targetUserId: user.id,
+        ip: request.ip,
+      });
       reply.setCookie(SESSION_COOKIE, token, {
         httpOnly: true,
         sameSite: "lax",
@@ -57,10 +80,6 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions): 
   });
 
   app.get("/api/auth/me", { preHandler: app.authenticate }, async (request) => {
-    const user = findUserByUsername(db, request.user!.username);
-    if (!user) {
-      return { user: null };
-    }
-    return { user: toPublicUser(user) };
+    return { user: toPublicUser(request.authUser!) };
   });
 }

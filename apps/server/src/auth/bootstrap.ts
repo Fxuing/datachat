@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { normalizeUsername } from "@datachat/shared";
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
-import { countAdmins } from "../db/repositories/users.js";
+import { countActiveAdmins } from "../db/repositories/users.js";
 import { users } from "../db/schema.js";
 import { hashPassword } from "./password.js";
 
@@ -19,7 +19,7 @@ export async function bootstrapAdmin(
   config: AppConfig,
   logger?: BootstrapLogger,
 ): Promise<void> {
-  if (countAdmins(db) > 0) {
+  if (countActiveAdmins(db) > 0) {
     logger?.info(
       { username: normalizeUsername(config.adminUsername) },
       "bootstrap admin already exists; skipped",
@@ -34,7 +34,7 @@ export async function bootstrapAdmin(
   const passwordHash = await hashPassword(config.adminPassword);
 
   const inserted = db.transaction((tx) => {
-    if (countAdmins(tx) > 0) return false;
+    if (countActiveAdmins(tx) > 0) return false;
     const rows = tx
       .insert(users)
       .values({
