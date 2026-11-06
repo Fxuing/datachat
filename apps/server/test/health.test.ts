@@ -21,4 +21,12 @@ describe("health", () => {
     expect(res.json()).toMatchObject({ ok: true });
     await app.close();
   });
+
+  it("returns ok with rate limiting enabled by default", async () => {
+    const app = await buildApp({ config });
+    const res = await app.inject({ method: "GET", url: "/api/health" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true });
+    await app.close();
+  });
 });
