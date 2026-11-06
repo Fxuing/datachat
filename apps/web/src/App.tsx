@@ -15,6 +15,7 @@ import { PageSpinner } from "./components/ui/spinner";
 
 const ChatPage = lazy(() => import("./pages/ChatPage"));
 const ReportPage = lazy(() => import("./pages/ReportPage"));
+const PublicSharePage = lazy(() => import("./pages/PublicSharePage"));
 const SkillsPage = lazy(() => import("./pages/admin/SkillsPage"));
 const McpPage = lazy(() => import("./pages/admin/McpPage"));
 const DatasourcesPage = lazy(() => import("./pages/admin/DatasourcesPage"));
@@ -69,6 +70,7 @@ function AppRoutes() {
     <Suspense fallback={<PageSpinner />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/s/:token" element={<PublicSharePage />} />
         <Route
           path="/chat"
           element={

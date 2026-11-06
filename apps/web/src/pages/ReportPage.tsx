@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, FileWarning, Printer, Share2, Trash2 } from "lucide-react";
@@ -8,6 +8,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { AppShell } from "../components/AppShell";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
+import { ShareDialog } from "../components/ShareDialog";
 import { PageSpinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
 import {
@@ -213,6 +214,7 @@ export default function ReportPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [shareOpen, setShareOpen] = useState(false);
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const reportQuery = useQuery({
@@ -268,7 +270,12 @@ export default function ReportPage() {
           <Printer className="h-3.5 w-3.5" />
           打印
         </Button>
-        <Button variant="outline" size="sm" disabled title="即将支持">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShareOpen(true)}
+          disabled={!report}
+        >
           <Share2 className="h-3.5 w-3.5" />
           分享
         </Button>
@@ -352,6 +359,12 @@ export default function ReportPage() {
         </div>
       ) : null}
       {content}
+      {shareOpen && report ? (
+        <ShareDialog
+          target={{ reportId: report.id, label: report.title }}
+          onClose={() => setShareOpen(false)}
+        />
+      ) : null}
     </AppShell>
   );
 }

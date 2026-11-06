@@ -124,3 +124,32 @@ describe("app routes", () => {
     );
   }, 15_000);
 });
+
+describe("public share route", () => {
+  it("renders /s/:token without loading the session", async () => {
+    window.history.pushState({}, "", "/s/pub-token");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/public/shares/pub-token") {
+        return jsonResponse({
+          type: "conversation",
+          title: "公开会话",
+          messages: [{ role: "user", text: "你好" }],
+          createdAt: 1,
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "公开会话" }, { timeout: 5_000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("你好")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toContain(
+      "/api/auth/me",
+    );
+  });
+});

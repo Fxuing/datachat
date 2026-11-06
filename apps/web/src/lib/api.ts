@@ -553,3 +553,76 @@ export function deleteMcpServer(id: string): Promise<{ ok: boolean }> {
 export function testMcpServer(id: string): Promise<McpTestResult> {
   return apiRequest(`/api/admin/mcp-servers/${id}/test`, { method: "POST" });
 }
+
+export interface PublicShareMessage {
+  role: "user" | "assistant";
+  text: string;
+  sql?: string;
+  columns?: Column[];
+  rows?: unknown[][];
+  chart?: unknown;
+}
+
+export interface PublicConversationShare {
+  type: "conversation";
+  title: string;
+  messages: PublicShareMessage[];
+  createdAt: number;
+}
+
+export interface PublicReportArtifact {
+  id: string;
+  kind: "result" | "chart";
+  columns?: Column[];
+  rows?: unknown[][];
+  spec?: unknown;
+}
+
+export interface PublicReportShare {
+  type: "report";
+  title: string;
+  markdown: string;
+  artifacts: PublicReportArtifact[];
+  createdAt: number;
+}
+
+export type PublicShare = PublicConversationShare | PublicReportShare;
+
+export interface CreateShareInput {
+  conversationId?: string;
+  reportId?: string;
+  expiresInDays?: number;
+}
+
+export interface CreatedShare {
+  id: string;
+  token: string;
+  url: string;
+  expiresAt: number;
+}
+
+export function createShare(input: CreateShareInput): Promise<{ share: CreatedShare }> {
+  return apiRequest("/api/shares", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function revokeShare(id: string): Promise<void> {
+  return apiRequest(`/api/shares/${id}`, { method: "DELETE" });
+}
+
+/**
+ * Public share lookup. Uses a bare fetch on purpose: this endpoint is not part of
+ * the authenticated app, so a 401 must never clear the cache or redirect to /login.
+ */
+export async function getPublicShare(token: string): Promise<PublicShare> {
+  const response = await fetch(`/api/public/shares/${encodeURIComponent(token)}`, {
+    credentials: "omit",
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+  return (await response.json()) as PublicShare;
+}

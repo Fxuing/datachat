@@ -6,6 +6,7 @@ import { AppShell } from "../components/AppShell";
 import { Composer } from "../components/chat/Composer";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { MessageList } from "../components/chat/MessageList";
+import { ShareDialog } from "../components/ShareDialog";
 import { PageSpinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
 import { useRunStream } from "../hooks/useRunStream";
@@ -69,6 +70,7 @@ export default function ChatPage() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [optimisticText, setOptimisticText] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const datasourcesQuery = useQuery({
@@ -215,7 +217,13 @@ export default function ChatPage() {
             onChange={(modelId) => modelMutation.mutate(modelId)}
           />
         )}
-        <Button variant="outline" size="sm" className="gap-1.5" disabled title="分享功能即将上线">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={!conversationId || !conversation}
+          onClick={() => setShareOpen(true)}
+        >
           <Share2 className="h-3.5 w-3.5" />
           分享
         </Button>
@@ -287,6 +295,15 @@ export default function ChatPage() {
           onStop={stream.stop}
         />
       </div>
+      {shareOpen && conversationId ? (
+        <ShareDialog
+          target={{
+            conversationId,
+            ...(conversation?.title ? { label: conversation.title } : {}),
+          }}
+          onClose={() => setShareOpen(false)}
+        />
+      ) : null}
     </AppShell>
   );
 }
