@@ -24,8 +24,11 @@ export interface ArtifactRecord extends ArtifactMeta {
   conversationId: string | null;
   userId: string | null;
   runId: string | null;
+  kind: "result" | "chart";
   columns: ColumnInfo[];
+  /** Relative path; empty for chart artifacts, which store a spec instead of rows. */
   storagePath: string;
+  specJson: string | null;
   createdAt: number;
 }
 
@@ -335,6 +338,50 @@ export class ArtifactStore {
     return row ? toRecord(row) : null;
   }
 
+  /** Metadata only; never opens the artifact file. */
+  findMeta(id: string): ArtifactRecord | null {
+    return this.get(id);
+  }
+
+  /**
+   * Stream decoded rows from the gzipped JSONL file. The file is opened lazily on
+   * the first `next()`, so a missing artifact surfaces as `ENOENT` before any
+   * response bytes are written.
+   */
+  async *openRows(id: string): AsyncGenerator<unknown[], void, void> {
+    const meta = this.get(id);
+    if (!meta || !meta.storagePath) {
+      const missing: NodeJS.ErrnoException = new Error(`artifact ${id} has no stored rows`);
+      missing.code = "ENOENT";
+      throw missing;
+    }
+
+    const file = createReadStream(this.resolvePath(meta.storagePath));
+    const gunzip = createGunzip();
+    const lines = createInterface({ input: file.pipe(gunzip), crlfDelay: Infinity });
+    let failure: Error | null = null;
+    // `pipe` does not forward source errors. Destroying the destination with the
+    // same error makes readline's async iterator reject instead of hanging.
+    const onError = (error: Error) => {
+      failure ??= error;
+      gunzip.destroy(error);
+    };
+    file.on("error", onError);
+    gunzip.on("error", onError);
+
+    try {
+      for await (const line of lines) {
+        if (failure) throw failure;
+        if (line) yield decodeRow(JSON.parse(line) as unknown[]);
+      }
+      if (failure) throw failure;
+    } finally {
+      lines.close();
+      file.destroy();
+      gunzip.destroy();
+    }
+  }
+
   list(input: ArtifactListInput = {}): ArtifactRecord[] {
     const rows = this.db
       .select()
@@ -414,10 +461,12 @@ function toRecord(row: typeof artifacts.$inferSelect): ArtifactRecord {
     conversationId: row.conversationId,
     userId: row.userId,
     runId: row.runId,
+    kind: row.kind,
     rowCount: row.rowCount,
     truncated: row.truncated === 1,
     columns: row.columnsJson ? (JSON.parse(row.columnsJson) as ColumnInfo[]) : [],
     storagePath: row.storagePath ?? "",
+    specJson: row.specJson,
     createdAt: row.createdAt,
   };
 }

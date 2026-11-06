@@ -9,6 +9,7 @@ import { datasourceRoutes } from "./routes/datasources.js";
 import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
 import { modelsRoutes } from "./routes/models.js";
 import { conversationRoutes } from "./routes/conversations.js";
+import { artifactRoutes } from "./routes/artifacts.js";
 import { runRoutes } from "./routes/runs.js";
 import { PoolRegistry } from "./agent/datasource/pool.js";
 import { RuntimeManager } from "./agent/runtime.js";
@@ -115,6 +116,7 @@ export async function buildApp({
     artifacts,
     runtime: agentRuntime,
   });
+  await app.register(artifactRoutes, { db, artifacts });
   await app.register(runRoutes, { db, runtime: agentRuntime });
   app.addHook("onClose", async () => {
     await agentRuntime.shutdown();
