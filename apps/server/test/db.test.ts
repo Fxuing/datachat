@@ -206,6 +206,7 @@ describe("database lifecycle", () => {
     );
     insertAudit.run("audit-1", "login_failed");
     insertAudit.run("audit-2", "skill_change");
+    insertAudit.run("audit-4", "mcp_change");
     expect(() => insertAudit.run("audit-3", "not-an-action")).toThrow(/CHECK constraint failed/);
   });
 
@@ -234,8 +235,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(4);
-    expect(migrateDb(handle.db)).toBe(4);
+    expect(migrateDb(handle.db)).toBe(5);
+    expect(migrateDb(handle.db)).toBe(5);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

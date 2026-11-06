@@ -6,6 +6,7 @@ import { registerAuthGuards } from "./auth/guard.js";
 import { createSessionSigner } from "./auth/jwt.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
 import { adminSkillRoutes } from "./routes/admin-skills.js";
+import { adminMcpRoutes } from "./routes/admin-mcp.js";
 import { datasourceRoutes } from "./routes/datasources.js";
 import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
 import { modelsRoutes } from "./routes/models.js";
@@ -28,6 +29,8 @@ export interface BuildAppOptions {
   /** Reuse stores created by the production entrypoint. */
   artifacts?: ArtifactStore;
   pools?: PoolRegistry;
+  /** Test seam; shortens the MCP connection test timeout. */
+  mcpTestTimeoutMs?: number;
 }
 
 export function normalizeOrigin(value: string): string | null {
@@ -63,6 +66,7 @@ export async function buildApp({
   agentRuntime: injectedAgentRuntime,
   artifacts: injectedArtifacts,
   pools: injectedPools,
+  mcpTestTimeoutMs,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: config.logLevel } });
   const signer = createSessionSigner(config.appSecret);
@@ -101,6 +105,7 @@ export async function buildApp({
   await app.register(authRoutes, { config, db, signer });
   await app.register(adminUserRoutes, { db });
   await app.register(adminSkillRoutes, { db, agentDir: config.agentDir });
+  await app.register(adminMcpRoutes, { db, config, mcpTestTimeoutMs });
   const artifacts =
     injectedArtifacts ??
     new ArtifactStore(db, path.join(config.dataDir, "artifacts"));
