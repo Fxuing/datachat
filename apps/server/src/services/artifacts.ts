@@ -47,6 +47,9 @@ export interface ArtifactStoreOptions {
 const DEFAULT_FINALIZE_TIMEOUT_MS = 30_000;
 const DEFAULT_ABORT_TIMEOUT_MS = 5_000;
 
+/** Hard memory bound when charting an artifact: never load more than this many rows. */
+export const MAX_CHART_INPUT_ROWS = 50_000;
+
 const DECIMAL_KEYS = new Set(["$type", "value"]);
 
 /**
@@ -434,12 +437,53 @@ export class ArtifactStore {
     if (meta.kind === "chart") return { meta, rows: [] };
     if (!meta.storagePath) return null;
     const rows: unknown[][] = [];
-    const stream = createReadStream(this.resolvePath(meta.storagePath)).pipe(createGunzip());
-    const lines = createInterface({ input: stream, crlfDelay: Infinity });
-    for await (const line of lines) {
-      if (line) rows.push(decodeRow(JSON.parse(line) as unknown[]));
+    const file = createReadStream(this.resolvePath(meta.storagePath));
+    const gunzip = createGunzip();
+    const lines = createInterface({ input: file.pipe(gunzip), crlfDelay: Infinity });
+    try {
+      for await (const line of lines) {
+        if (line) rows.push(decodeRow(JSON.parse(line) as unknown[]));
+      }
+    } finally {
+      lines.close();
+      file.destroy();
+      gunzip.destroy();
     }
     return { meta, rows };
+  }
+
+  /**
+   * Read a bounded prefix of an artifact's rows. Reading stops as soon as `limit`
+   * rows are buffered (hard-capped by MAX_CHART_INPUT_ROWS) so a huge result never
+   * has to fit in memory; `truncatedInput` reports whether more rows remained.
+   */
+  async readRowsStream(
+    id: string,
+    limit: number = MAX_CHART_INPUT_ROWS,
+  ): Promise<{ meta: ArtifactRecord; rows: unknown[][]; truncatedInput: boolean } | null> {
+    const meta = this.get(id);
+    if (!meta) return null;
+    if (meta.kind === "chart") return { meta, rows: [], truncatedInput: false };
+    if (!meta.storagePath) return null;
+
+    const max = Math.min(Math.max(0, Math.trunc(limit)), MAX_CHART_INPUT_ROWS);
+    const rows: unknown[][] = [];
+    let truncatedInput = false;
+    const iterator = this.openRows(id)[Symbol.asyncIterator]();
+    try {
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        if (rows.length >= max) {
+          truncatedInput = true;
+          break;
+        }
+        rows.push(next.value);
+      }
+    } finally {
+      await iterator.return?.();
+    }
+    return { meta, rows, truncatedInput };
   }
 
   async delete(id: string): Promise<boolean> {

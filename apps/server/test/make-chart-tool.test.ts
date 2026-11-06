@@ -50,7 +50,7 @@ function context(overrides: Partial<AgentToolContext> = {}): AgentToolContext {
 
 async function seedResult(
   rows: unknown[][],
-  options: { owner?: string; conversation?: string; columns?: ColumnInfo[] } = {},
+  options: { owner?: string; conversation?: string; columns?: ColumnInfo[]; truncated?: boolean } = {},
 ): Promise<string> {
   const writer = artifacts.openResult({
     userId: options.owner ?? "u1",
@@ -61,7 +61,7 @@ async function seedResult(
   const meta = await writer.finish({
     columns: options.columns ?? columns,
     rowCount: rows.length,
-    truncated: false,
+    truncated: options.truncated ?? false,
   });
   return meta.id;
 }
@@ -168,6 +168,43 @@ describe("make_chart", () => {
     expect(result.isError).toBe(true);
     expect(detailsOf(result).code).toBe("Y_NOT_NUMERIC");
     expect(artifacts.list({ userId: "u1", conversationId: "c1" })).toHaveLength(1);
+  });
+
+  it("reports rows the chart could not plot", async () => {
+    const artifactId = await seedResult([
+      ["2024-01", 10],
+      ["2024-02", null],
+    ]);
+    const result = await run(artifactId, { aggregate: "avg" });
+
+    expect(result.isError).toBeFalsy();
+    expect(detailsOf(result).skipped).toBe(1);
+    expect(textOf(result)).toContain("1 行因无法解析/非数值已跳过");
+    const compact = JSON.parse(textOf(result)) as Record<string, unknown>;
+    expect(compact.skipped).toBe(1);
+  });
+
+  it("warns when the source result was truncated", async () => {
+    const artifactId = await seedResult([["2024-01", 10]], { truncated: true });
+    const result = await run(artifactId, {});
+
+    expect(result.isError).toBeFalsy();
+    expect(detailsOf(result).truncatedInput).toBe(false);
+    expect(textOf(result)).toContain("结果已截断，图表可能不完整");
+  });
+
+  it("stops reading at the row cap and flags truncated input", async () => {
+    const rows = Array.from({ length: 150 }, (_, i) => [`m${i}`, i]);
+    const artifactId = await seedResult(rows);
+
+    const capped = await artifacts.readRowsStream(artifactId, 100);
+    expect(capped?.rows).toHaveLength(100);
+    expect(capped?.truncatedInput).toBe(true);
+    expect(capped?.meta.id).toBe(artifactId);
+
+    const complete = await artifacts.readRowsStream(artifactId, 150);
+    expect(complete?.rows).toHaveLength(150);
+    expect(complete?.truncatedInput).toBe(false);
   });
 
   it("is registered in buildAgentTools", () => {

@@ -1,6 +1,7 @@
 import { Type, type Static } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { ChartError, buildChartOption, type ChartInput } from "../../services/charts.js";
+import { MAX_CHART_INPUT_ROWS } from "../../services/artifacts.js";
 import {
   errorMessage,
   errorResult,
@@ -40,6 +41,10 @@ export interface MakeChartDetails {
   sourceArtifactId: string;
   type: ChartInput["type"];
   points: number;
+  /** Rows the chart could not plot (unparsable/non-numeric x or y). */
+  skipped: number;
+  /** True when the source result had more rows than the chart input cap. */
+  truncatedInput: boolean;
   title: string;
   /** ECharts spec persisted in `spec_json` and forwarded by the chart event. */
   spec: Record<string, unknown>;
@@ -58,6 +63,8 @@ function failureDetails(
     sourceArtifactId,
     type,
     points: 0,
+    skipped: 0,
+    truncatedInput: false,
     title: "",
     spec: {},
     code,
@@ -98,9 +105,9 @@ export function createMakeChartTool(
         return fail("NOT_A_RESULT", "图表只能基于查询结果生成");
       }
 
-      let data: Awaited<ReturnType<AgentToolContext["artifacts"]["read"]>>;
+      let data: Awaited<ReturnType<AgentToolContext["artifacts"]["readRowsStream"]>>;
       try {
-        data = await ctx.artifacts.read(params.artifactId);
+        data = await ctx.artifacts.readRowsStream(params.artifactId, MAX_CHART_INPUT_ROWS);
       } catch (error) {
         return fail("ARTIFACT_READ_FAILED", `读取结果失败：${errorMessage(error)}`);
       }
@@ -108,8 +115,9 @@ export function createMakeChartTool(
 
       let option: Record<string, unknown>;
       let points: number;
+      let skipped: number;
       try {
-        ({ option, points } = buildChartOption({
+        ({ option, points, skipped } = buildChartOption({
           rows: data.rows,
           columns: data.meta.columns,
           chart,
@@ -135,15 +143,27 @@ export function createMakeChartTool(
         sourceArtifactId: params.artifactId,
         type: chart.type,
         points,
+        skipped,
+        truncatedInput: data.truncatedInput,
         title,
         spec,
       };
+      const notices: string[] = [];
+      if (skipped > 0) notices.push(`${skipped} 行因无法解析/非数值已跳过`);
+      if (data.meta.truncated) notices.push("结果已截断，图表可能不完整");
+      if (data.truncatedInput) {
+        notices.push(
+          `输入超过 ${MAX_CHART_INPUT_ROWS} 行已截断，建议先用 SQL 聚合后再生成图表`,
+        );
+      }
       return textResult(
         safeJsonStringify({
           chartArtifactId: meta.id,
           type: chart.type,
           points,
           title,
+          ...(skipped > 0 ? { skipped } : {}),
+          ...(notices.length > 0 ? { notice: notices.join("；") } : {}),
         }),
         details,
       );
