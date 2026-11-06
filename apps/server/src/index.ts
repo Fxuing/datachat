@@ -14,7 +14,7 @@ const { adminPassword: _adminPassword, ...appConfig } = config;
 
 let app: FastifyInstance;
 try {
-  app = await buildApp({ config: appConfig });
+  app = await buildApp({ config: appConfig, db: handle.db });
 } catch (error) {
   handle.sqlite.close();
   throw error;
