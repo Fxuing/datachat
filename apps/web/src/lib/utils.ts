@@ -22,6 +22,14 @@ export function formatClock(timestamp: number | null | undefined): string {
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/** Locale-independent full timestamp: `YYYY-MM-DD HH:mm:ss`. */
+export function formatDateTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return `${day} ${time}`;
+}
+
 export function formatDuration(ms: number): string {
   if (ms < 1_000) return `${Math.round(ms)}ms`;
   return `${(ms / 1_000).toFixed(1)}s`;

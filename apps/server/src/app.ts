@@ -7,6 +7,7 @@ import { createSessionSigner } from "./auth/jwt.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
 import { adminSkillRoutes } from "./routes/admin-skills.js";
 import { adminMcpRoutes } from "./routes/admin-mcp.js";
+import { adminAuditRoutes } from "./routes/admin-audit.js";
 import { datasourceRoutes } from "./routes/datasources.js";
 import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
 import { modelsRoutes } from "./routes/models.js";
@@ -108,6 +109,7 @@ export async function buildApp({
   await app.register(adminUserRoutes, { db });
   await app.register(adminSkillRoutes, { db, agentDir: config.agentDir });
   await app.register(adminMcpRoutes, { db, config, mcpTestTimeoutMs });
+  await app.register(adminAuditRoutes, { db });
   const artifacts =
     injectedArtifacts ??
     new ArtifactStore(db, path.join(config.dataDir, "artifacts"));

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { BookOpen, Database, LogOut, Plug } from "lucide-react";
+import { BookOpen, Database, LogOut, Plug, ScrollText } from "lucide-react";
 import { logout, type SessionUser } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
@@ -85,6 +85,19 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
             >
               <Plug className="h-4 w-4" />
               MCP 服务器
+            </Link>
+            <Link
+              to="/admin/audit"
+              aria-current={location.pathname.startsWith("/admin/audit") ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+                location.pathname.startsWith("/admin/audit")
+                  ? "bg-neutral-100 font-medium text-neutral-900"
+                  : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900",
+              )}
+            >
+              <ScrollText className="h-4 w-4" />
+              审计日志
             </Link>
           </div>
         ) : null}

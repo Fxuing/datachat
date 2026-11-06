@@ -419,6 +419,71 @@ export function listAdminUsers(): Promise<{ users: SessionUser[] }> {
   return apiRequest("/api/admin/users");
 }
 
+export type AuditActionValue =
+  | "query"
+  | "explain"
+  | "export"
+  | "login"
+  | "login_failed"
+  | "user_create"
+  | "user_update"
+  | "datasource_create"
+  | "datasource_update"
+  | "datasource_delete"
+  | "grant_update"
+  | "skill_change"
+  | "mcp_change";
+
+export type AuditStatusValue = "ok" | "rejected" | "error" | "timeout";
+
+export interface AuditEntry {
+  id: string;
+  runId: string | null;
+  conversationId: string | null;
+  userId: string | null;
+  datasourceId: string | null;
+  action: AuditActionValue;
+  sqlText: string;
+  status: AuditStatusValue;
+  rowCount: number | null;
+  durationMs: number | null;
+  errorMessage: string | null;
+  detailJson: Record<string, unknown> | null;
+  createdAt: number;
+}
+
+export interface AuditListFilters {
+  userId?: string;
+  datasourceId?: string;
+  action?: AuditActionValue;
+  status?: AuditStatusValue;
+  /** Epoch ms (or ISO string) lower bound on `created_at`. */
+  from?: number | string;
+  /** Epoch ms (or ISO string) upper bound on `created_at`. */
+  to?: number | string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface AuditListResponse {
+  items: AuditEntry[];
+  total: number;
+}
+
+export function listAudit(filters: AuditListFilters = {}): Promise<AuditListResponse> {
+  const params = new URLSearchParams();
+  for (const key of ["userId", "datasourceId", "action", "status"] as const) {
+    const value = filters[key];
+    if (value !== undefined) params.set(key, value);
+  }
+  if (filters.from !== undefined) params.set("from", String(filters.from));
+  if (filters.to !== undefined) params.set("to", String(filters.to));
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.offset !== undefined) params.set("offset", String(filters.offset));
+  const query = params.toString();
+  return apiRequest(`/api/admin/audit${query ? `?${query}` : ""}`);
+}
+
 export function listModels(): Promise<ModelsResponse> {
   return apiRequest("/api/models");
 }

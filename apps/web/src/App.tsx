@@ -19,6 +19,7 @@ const PublicSharePage = lazy(() => import("./pages/PublicSharePage"));
 const SkillsPage = lazy(() => import("./pages/admin/SkillsPage"));
 const McpPage = lazy(() => import("./pages/admin/McpPage"));
 const DatasourcesPage = lazy(() => import("./pages/admin/DatasourcesPage"));
+const AuditPage = lazy(() => import("./pages/admin/AuditPage"));
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const meQuery = useQuery({
@@ -116,6 +117,14 @@ function AppRoutes() {
           element={
             <RequireAdmin>
               <DatasourcesPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/audit"
+          element={
+            <RequireAdmin>
+              <AuditPage />
             </RequireAdmin>
           }
         />
