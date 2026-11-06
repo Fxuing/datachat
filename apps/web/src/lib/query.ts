@@ -22,6 +22,8 @@ export const queryKeys = {
   models: ["models"] as const,
   skills: ["skills"] as const,
   skill: (id: string) => ["skill", id] as const,
+  mcpServers: ["mcpServers"] as const,
+  mcpServer: (id: string) => ["mcpServer", id] as const,
 };
 
 /**

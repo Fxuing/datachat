@@ -330,3 +330,86 @@ export function deleteSkill(id: string): Promise<{ ok: boolean }> {
 export function seedSkills(): Promise<{ imported: number; skipped: number }> {
   return apiRequest("/api/admin/skills/seed", { method: "POST" });
 }
+
+export type McpTransport = "stdio" | "http";
+export type McpScope = "global" | "datasource";
+
+/** Env/header key with its value withheld; only the presence is exposed. */
+export interface MaskedSecretEntry {
+  key: string;
+  hasValue: boolean;
+}
+
+/** Admin view of one stored MCP server. Values are never sent to the browser. */
+export interface AdminMcpServer {
+  id: string;
+  name: string;
+  transport: McpTransport;
+  scope: McpScope;
+  datasourceId: string | null;
+  command: string | null;
+  args: string[];
+  url: string | null;
+  env: MaskedSecretEntry[];
+  headers: MaskedSecretEntry[];
+  enabled: boolean;
+  createdAt: string;
+}
+
+/** Payload for create/update. `null` env/header values keep the stored value. */
+export interface McpServerInput {
+  name: string;
+  transport: McpTransport;
+  command?: string | null;
+  args?: string[];
+  url?: string | null;
+  env?: Record<string, string | null> | null;
+  headers?: Record<string, string | null> | null;
+  datasourceId?: string | null;
+  enabled?: boolean;
+}
+
+export interface McpTestTool {
+  name: string;
+  description: string;
+}
+
+export interface McpTestResult {
+  ok: boolean;
+  tools: McpTestTool[];
+  serverInfo?: { name: string; version: string };
+  error?: string;
+}
+
+export function listMcpServers(): Promise<{ servers: AdminMcpServer[] }> {
+  return apiRequest("/api/admin/mcp-servers");
+}
+
+export function getMcpServer(id: string): Promise<{ server: AdminMcpServer }> {
+  return apiRequest(`/api/admin/mcp-servers/${id}`);
+}
+
+export function createMcpServer(input: McpServerInput): Promise<{ server: AdminMcpServer }> {
+  return apiRequest("/api/admin/mcp-servers", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateMcpServer(
+  id: string,
+  input: Partial<McpServerInput>,
+): Promise<{ server: AdminMcpServer }> {
+  return apiRequest(`/api/admin/mcp-servers/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteMcpServer(id: string): Promise<{ ok: boolean }> {
+  return apiRequest(`/api/admin/mcp-servers/${id}`, { method: "DELETE" });
+}
+
+export function testMcpServer(id: string): Promise<McpTestResult> {
+  return apiRequest(`/api/admin/mcp-servers/${id}/test`, { method: "POST" });
+}
