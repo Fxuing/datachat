@@ -105,6 +105,40 @@ describe("admin skills", () => {
     await a.close();
   });
 
+  it("returns stored raw content when a skill row cannot be parsed", async () => {
+    const a = await app();
+    const id = randomUUID();
+    const content = "---\nname: broken\nbody without terminator";
+    db.insert(skills)
+      .values({
+        id,
+        scope: "global",
+        datasourceId: null,
+        name: "broken",
+        description: "损坏的技能",
+        content,
+        enabled: 1,
+        updatedBy: adminId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .run();
+
+    const response = await a.inject({
+      method: "GET",
+      url: `/api/admin/skills/${id}`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().skill).toMatchObject({
+      id,
+      name: "broken",
+      content,
+      contentInvalid: true,
+    });
+    await a.close();
+  });
+
   it("validates the input matrix", async () => {
     const a = await app();
     const cases: Array<{ name: string; payload: Record<string, unknown> }> = [

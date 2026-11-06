@@ -1,6 +1,12 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../client.js";
-import { datasourceGrants, datasourceSchemaCache, datasources } from "../schema.js";
+import {
+  datasourceGrants,
+  datasourceSchemaCache,
+  datasources,
+  mcpServers,
+  skills,
+} from "../schema.js";
 import { isUniqueViolation } from "./users.js";
 import type { DatasourceType } from "@datachat/shared";
 
@@ -44,10 +50,17 @@ export function updateDatasource(
 }
 
 export function deleteDatasource(db: Db, id: string): void {
-  // No foreign keys on these tables, so clear dependent rows explicitly.
-  db.delete(datasourceGrants).where(eq(datasourceGrants.datasourceId, id)).run();
-  db.delete(datasourceSchemaCache).where(eq(datasourceSchemaCache.datasourceId, id)).run();
-  db.delete(datasources).where(eq(datasources.id, id)).run();
+  // No foreign keys on these tables, so clear dependent rows explicitly. Datasource
+  // scoped MCP servers and skills would otherwise become orphaned rows.
+  db.transaction((tx) => {
+    tx.delete(datasourceGrants).where(eq(datasourceGrants.datasourceId, id)).run();
+    tx.delete(datasourceSchemaCache).where(eq(datasourceSchemaCache.datasourceId, id)).run();
+    tx.delete(mcpServers).where(eq(mcpServers.datasourceId, id)).run();
+    tx.delete(skills)
+      .where(and(eq(skills.scope, "datasource"), eq(skills.datasourceId, id)))
+      .run();
+    tx.delete(datasources).where(eq(datasources.id, id)).run();
+  });
 }
 
 export function findDatasource(db: Db, id: string): DatasourceRow | undefined {

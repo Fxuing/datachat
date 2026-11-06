@@ -169,6 +169,16 @@ function get(url: string, withCookie = cookie) {
   return app.inject({ method: "GET", url, cookies: { dc_session: withCookie } });
 }
 
+/** The audit row is written after the response stream settles, just after inject resolves. */
+async function exportAudits(expected = 1) {
+  const deadline = Date.now() + 2_000;
+  for (;;) {
+    const rows = db.select().from(queryAudit).where(eq(queryAudit.action, "export")).all();
+    if (rows.length >= expected || Date.now() >= deadline) return rows;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 describe("artifact metadata and rows", () => {
   it("returns metadata to the owner and admins, hides it from others", async () => {
     const id = await seedResult([[1, "alice"]]);
@@ -347,11 +357,7 @@ describe("artifact download", () => {
     const response = await get(`/api/artifacts/${id}/download?format=csv`);
     expect(response.statusCode).toBe(200);
 
-    const audits = db
-      .select()
-      .from(queryAudit)
-      .where(eq(queryAudit.action, "export"))
-      .all();
+    const audits = await exportAudits();
     expect(audits).toHaveLength(1);
     expect(audits[0]).toMatchObject({
       runId: run.id,
@@ -365,11 +371,81 @@ describe("artifact download", () => {
     });
   });
 
+  it("writes the ok export audit only after the stream finishes", async () => {
+    const id = await seedResult([[1, "a"]]);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = store.openRows.bind(store);
+    const spy = vi.spyOn(store, "openRows").mockImplementation((artifactId) =>
+      (async function* () {
+        const inner = original(artifactId);
+        const first = await inner.next();
+        try {
+          if (!first.done) yield first.value;
+          await gate;
+          for (;;) {
+            const next = await inner.next();
+            if (next.done) return;
+            yield next.value;
+          }
+        } finally {
+          await inner.return(undefined);
+        }
+      })(),
+    );
+
+    try {
+      const pending = get(`/api/artifacts/${id}/download?format=csv`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(
+        db.select().from(queryAudit).where(eq(queryAudit.action, "export")).all(),
+      ).toHaveLength(0);
+      release();
+      const response = await pending;
+      expect(response.statusCode).toBe(200);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const audits = await exportAudits();
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({ status: "ok", rowCount: 1 });
+  });
+
+  it("records exactly one error audit when the export stream breaks", async () => {
+    const id = await seedResult([
+      [1, "a"],
+      [2, "b"],
+    ]);
+    const spy = vi.spyOn(store, "openRows").mockImplementation(() =>
+      (async function* () {
+        yield [1, "a"];
+        throw new Error("synthetic stream failure");
+      })(),
+    );
+
+    try {
+      const response = await get(`/api/artifacts/${id}/download?format=csv`);
+      expect(response.statusCode).toBe(200);
+    } catch {
+      // Fastify inject surfaces the mid-stream socket error as a rejected request.
+    } finally {
+      spy.mockRestore();
+    }
+
+    const audits = await exportAudits();
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({ status: "error" });
+    expect(audits[0]?.errorMessage ?? "").toContain("synthetic stream failure");
+  });
+
   it("lets admins download another user's artifact", async () => {
     const id = await seedResult([[1, "a"]]);
     const response = await get(`/api/artifacts/${id}/download?format=csv`, adminCookie);
     expect(response.statusCode).toBe(200);
-    const audit = db.select().from(queryAudit).where(eq(queryAudit.action, "export")).get();
+    const audit = (await exportAudits())[0];
     expect(audit?.userId).toBe(adminId);
   });
 });

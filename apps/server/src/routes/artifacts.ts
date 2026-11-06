@@ -228,13 +228,6 @@ export async function artifactRoutes(
 
       const format = query.data.format;
       const audit = exportAuditContext(opts.db, artifact, request.user!.sub);
-      safeRecordExport(opts.db, {
-        ...audit,
-        action: "export",
-        status: "ok",
-        rowCount: artifact.rowCount,
-        detail: { artifactId: artifact.id, format },
-      });
 
       reply.hijack();
       reply.raw.writeHead(200, {
@@ -259,22 +252,33 @@ export async function artifactRoutes(
         void source.return(undefined);
       };
       reply.raw.once("close", closeSource);
+      let streamError: unknown = null;
       try {
+        // pipeline() resolves once the response emits finish/close without error and
+        // rejects when the client disconnects or the source stream fails.
         await pipeline(stream, reply.raw);
-      } catch (streamError) {
-        safeRecordExport(opts.db, {
-          ...audit,
-          action: "export",
-          status: "error",
-          errorMessage:
-            streamError instanceof Error ? streamError.message : String(streamError),
-          detail: { artifactId: artifact.id, format },
-        });
+      } catch (error) {
+        streamError = error;
         if (!reply.raw.writableEnded) reply.raw.destroy();
       } finally {
         reply.raw.off("close", closeSource);
         void source.return(undefined);
       }
+      // Exactly one audit row per download, written only after the response stream
+      // finished (ok) or broke mid-stream (error).
+      safeRecordExport(opts.db, {
+        ...audit,
+        action: "export",
+        status: streamError ? "error" : "ok",
+        ...(streamError
+          ? {
+              errorMessage:
+                streamError instanceof Error ? streamError.message : String(streamError),
+            }
+          : {}),
+        rowCount: artifact.rowCount,
+        detail: { artifactId: artifact.id, format },
+      });
       return reply;
     },
   );

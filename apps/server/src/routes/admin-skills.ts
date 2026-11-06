@@ -95,12 +95,26 @@ function toSkillView(row: SkillRow): SkillView {
   };
 }
 
-function toDetailView(row: SkillRow): SkillView & { content: string; createdAt: number } {
-  return {
-    ...toSkillView(row),
-    content: normalizeSkillContent(row.content, row.name, row.description),
-    createdAt: row.createdAt,
-  };
+function toDetailView(
+  row: SkillRow,
+): SkillView & { content: string; createdAt: number; contentInvalid?: boolean } {
+  try {
+    return {
+      ...toSkillView(row),
+      content: normalizeSkillContent(row.content, row.name, row.description),
+      createdAt: row.createdAt,
+    };
+  } catch (error) {
+    if (!(error instanceof SkillContentError)) throw error;
+    // Stored rows can predate validation (or be edited directly); keep the editor
+    // usable by returning the raw document instead of failing the whole request.
+    return {
+      ...toSkillView(row),
+      content: row.content,
+      createdAt: row.createdAt,
+      contentInvalid: true,
+    };
+  }
 }
 
 function findSkill(db: Db, id: string): SkillRow | undefined {

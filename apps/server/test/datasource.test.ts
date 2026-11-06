@@ -20,7 +20,7 @@ import {
   insertDatasource,
 } from "../src/db/repositories/datasources.js";
 import { listGrantedUserIds, replaceGrants } from "../src/db/repositories/grants.js";
-import { conversations, queryAudit } from "../src/db/schema.js";
+import { conversations, mcpServers, queryAudit, skills } from "../src/db/schema.js";
 import { PoolRegistry } from "../src/agent/datasource/pool.js";
 import { hashPassword } from "../src/auth/password.js";
 import { createSessionSigner } from "../src/auth/jwt.js";
@@ -204,6 +204,90 @@ describe("datasource routes", () => {
     expect(findDatasource(db, id)).toBeUndefined();
     expect(listGrantedUserIds(db, id)).toEqual([]);
 
+    await a.close();
+  });
+
+  it("deletes datasource-scoped MCP servers and skills with the datasource", async () => {
+    const a = await app();
+    const created = await a.inject({
+      method: "POST",
+      url: "/api/datasources",
+      cookies: { dc_session: adminCookie },
+      payload: connectionPayload,
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+
+    const otherId = randomUUID();
+    insertDatasource(db, {
+      id: otherId,
+      name: "other-db",
+      type: "mysql",
+      host: "127.0.0.2",
+      port: 3306,
+      database: "other",
+      username: "reader",
+      passwordCipher: "cipher",
+      createdBy: adminId,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const now = Date.now();
+    const mcpRows = [
+      { id: randomUUID(), name: "target-mcp", datasourceId: id },
+      { id: randomUUID(), name: "other-mcp", datasourceId: otherId },
+    ];
+    for (const row of mcpRows) {
+      db.insert(mcpServers)
+        .values({
+          ...row,
+          transport: "stdio",
+          command: "npx",
+          enabled: 1,
+          createdBy: adminId,
+          createdAt: now,
+        })
+        .run();
+    }
+
+    const skillContent = "---\nname: scoped\ndescription: scoped\n---\n\nbody\n";
+    const skillRows = [
+      { id: randomUUID(), scope: "datasource" as const, datasourceId: id, name: "target-skill" },
+      {
+        id: randomUUID(),
+        scope: "datasource" as const,
+        datasourceId: otherId,
+        name: "other-skill",
+      },
+      { id: randomUUID(), scope: "global" as const, datasourceId: null, name: "global-skill" },
+    ];
+    for (const row of skillRows) {
+      db.insert(skills)
+        .values({
+          ...row,
+          description: row.name,
+          content: skillContent,
+          enabled: 1,
+          updatedBy: adminId,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    }
+
+    const deleted = await a.inject({
+      method: "DELETE",
+      url: `/api/datasources/${id}`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(deleted.statusCode).toBe(200);
+
+    expect(db.select().from(mcpServers).all().map((row) => row.name)).toEqual(["other-mcp"]);
+    expect(db.select().from(skills).all().map((row) => row.name).sort()).toEqual([
+      "global-skill",
+      "other-skill",
+    ]);
     await a.close();
   });
 
