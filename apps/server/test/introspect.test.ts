@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildMysqlSnapshot,
   buildPostgresSnapshot,
+  introspectPostgres,
   type MysqlIntrospectionRows,
   type PostgresIntrospectionRows,
 } from "../src/agent/datasource/introspect.js";
@@ -240,5 +241,26 @@ describe("postgres schema mapper", () => {
       1,
     );
     expect(withOrphans.tables).toHaveLength(2);
+  });
+
+  it("introspects composite PG foreign keys by key position, not constraint name alone", async () => {
+    const calls: string[] = [];
+    const pool = {
+      query: async (text: string) => {
+        calls.push(text);
+        return { rows: [] };
+      },
+    };
+
+    await introspectPostgres(pool as never);
+
+    const fkSql = calls.find((sql) => sql.includes("FROM pg_constraint c") && sql.includes("contype = 'f'"))!;
+    expect(fkSql).toContain("unnest(c.confkey) WITH ORDINALITY");
+    expect(fkSql).toContain("fk.ord = k.ord");
+    expect(fkSql).not.toContain("constraint_column_usage");
+    expect(calls.find((sql) => sql.includes("contype = 'p'"))).toContain(
+      "unnest(c.conkey) WITH ORDINALITY",
+    );
+    expect(calls.find((sql) => sql.includes("FROM pg_index"))).toContain("pg_get_indexdef");
   });
 });

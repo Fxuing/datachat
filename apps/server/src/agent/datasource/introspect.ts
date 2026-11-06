@@ -306,33 +306,41 @@ export async function introspectPostgres(pool: PgPool): Promise<SchemaSnapshot> 
     ORDER BY table_schema, table_name, ordinal_position
   `);
   const pkResult = await pool.query(`
-    SELECT tc.table_schema AS schema, tc.table_name AS name, kcu.column_name AS column_name
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-      ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-    WHERE tc.constraint_type = 'PRIMARY KEY'
-    ORDER BY tc.table_schema, tc.table_name, kcu.ordinal_position
+    SELECT n.nspname AS schema, t.relname AS name, a.attname AS column_name
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord) ON true
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+    WHERE c.contype = 'p'
+      AND n.nspname NOT IN ('pg_catalog','information_schema')
+    ORDER BY n.nspname, t.relname, k.ord
   `);
   const fkResult = await pool.query(`
-    SELECT tc.table_schema AS schema, tc.table_name AS name, tc.constraint_name AS constraint_name,
-           kcu.column_name AS column_name, ccu.table_name AS referenced_table, ccu.column_name AS referenced_column
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-      ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-    JOIN information_schema.constraint_column_usage ccu
-      ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
-    WHERE tc.constraint_type = 'FOREIGN KEY'
-    ORDER BY tc.table_schema, tc.table_name, tc.constraint_name, kcu.ordinal_position
+    SELECT n.nspname AS schema, t.relname AS name, c.conname AS constraint_name,
+           a.attname AS column_name, ft.relname AS referenced_table,
+           fa.attname AS referenced_column
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord) ON true
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+    JOIN pg_class ft ON ft.oid = c.confrelid
+    JOIN LATERAL unnest(c.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = k.ord
+    JOIN pg_attribute fa ON fa.attrelid = ft.oid AND fa.attnum = fk.attnum
+    WHERE c.contype = 'f'
+      AND n.nspname NOT IN ('pg_catalog','information_schema')
+    ORDER BY n.nspname, t.relname, c.conname, k.ord
   `);
   const indexResult = await pool.query(`
     SELECT n.nspname AS schema, t.relname AS name, i.relname AS index_name, ix.indisunique AS is_unique,
-           a.attname AS column_name
+           COALESCE(a.attname, pg_get_indexdef(ix.indexrelid, k.ord::int, true)) AS column_name
     FROM pg_index ix
     JOIN pg_class t ON t.oid = ix.indrelid
     JOIN pg_class i ON i.oid = ix.indexrelid
     JOIN pg_namespace n ON n.oid = t.relnamespace
     JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) ON true
-    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+    LEFT JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum AND k.attnum > 0
     WHERE n.nspname NOT IN ('pg_catalog','information_schema')
     ORDER BY n.nspname, t.relname, i.relname, k.ord
   `);

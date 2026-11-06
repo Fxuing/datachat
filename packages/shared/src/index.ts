@@ -34,7 +34,7 @@ export const datasourceInputSchema = z.object({
   database: z.string().trim().min(1).max(128),
   username: z.string().trim().min(1).max(128),
   password: z.string().min(1).max(500).optional(),
-  sslMode: z.enum(["disable", "require"]).default("disable"),
+  sslMode: z.enum(["disable", "require", "no-verify"]).default("disable"),
 });
 export type DatasourceInput = z.infer<typeof datasourceInputSchema>;
 

@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import { isIPv4 } from "node:net";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { datasourceInputSchema } from "@datachat/shared";
+import { eq } from "drizzle-orm";
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
+import { conversations } from "../db/schema.js";
 import {
   deleteDatasource,
   DuplicateDatasourceNameError,
@@ -17,10 +20,13 @@ import {
 } from "../db/repositories/datasources.js";
 import { decryptSecret, deriveSecretKey, encryptSecret } from "../agent/datasource/crypto.js";
 import { probeDatasource, safeErrorMessage } from "../agent/datasource/probe.js";
+import type { PoolRegistry } from "../agent/datasource/pool.js";
+import { recordAuditEvent } from "../services/audit.js";
 
 export interface DatasourceRouteOptions {
   config: AppConfig;
   db: Db;
+  pools: PoolRegistry;
 }
 
 const updateSchema = datasourceInputSchema.partial().extend({
@@ -29,12 +35,44 @@ const updateSchema = datasourceInputSchema.partial().extend({
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
 
+/** Metadata/link-local endpoints must never receive datasource credentials. */
+export function isBlockedDatasourceHost(rawHost: string): boolean {
+  let host = rawHost.trim().toLowerCase();
+  if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1);
+  if (host.endsWith(".")) host = host.slice(0, -1);
+  if (host === "metadata.google.internal" || host === "fd00:ec2::254") return true;
+  if (host.startsWith("fe80:") || host.startsWith("fd00:ec2:")) return true;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(host);
+  const ipv4 = mapped?.[1] ?? host;
+  if (!isIPv4(ipv4)) return false;
+  const [first, second] = ipv4.split(".").map(Number);
+  return first === 169 && second === 254;
+}
+
+function blockedHostMessage(): { error: { code: string; message: string } } {
+  return { error: { code: "HOST_NOT_ALLOWED", message: "不允许连接链路本地或元数据地址" } };
+}
+
 export async function datasourceRoutes(
   app: FastifyInstance,
   opts: DatasourceRouteOptions,
 ): Promise<void> {
-  const { config, db } = opts;
+  const { config, db, pools } = opts;
   const key = deriveSecretKey(config.appSecret);
+
+  const audit = (
+    request: FastifyRequest,
+    action: "datasource_create" | "datasource_update" | "datasource_delete",
+    detail: Record<string, unknown>,
+  ) => {
+    recordAuditEvent(db, {
+      actorUserId: request.user!.sub,
+      datasourceId: typeof detail.id === "string" ? detail.id : undefined,
+      action,
+      ip: request.ip,
+      detail,
+    });
+  };
 
   app.get("/api/datasources", { preHandler: app.authenticate }, async (request) => {
     const rows = listDatasourcesForUser(db, request.user!.sub, request.user!.role === "admin");
@@ -45,6 +83,9 @@ export async function datasourceRoutes(
     const parsed = datasourceInputSchema.safeParse(request.body);
     if (!parsed.success || !parsed.data.password) {
       return reply.code(400).send({ error: { code: "VALIDATION", message: "缺少必要参数" } });
+    }
+    if (isBlockedDatasourceHost(parsed.data.host)) {
+      return reply.code(400).send(blockedHostMessage());
     }
     if (findDatasourceByName(db, parsed.data.name)) {
       return reply.code(409).send({ error: { code: "CONFLICT", message: "数据源名称已存在" } });
@@ -92,6 +133,7 @@ export async function datasourceRoutes(
       }
       throw error;
     }
+    audit(request, "datasource_create", { id, name: parsed.data.name, type: parsed.data.type });
     return reply.code(201).send({ id, warnings: probe.warnings, readOnly: probe.readOnly });
   });
 
@@ -105,6 +147,16 @@ export async function datasourceRoutes(
     if (!existing) {
       return reply.code(404).send({ error: { code: "NOT_FOUND", message: "数据源不存在" } });
     }
+    if (body.data.host !== undefined && isBlockedDatasourceHost(body.data.host)) {
+      return reply.code(400).send(blockedHostMessage());
+    }
+    const hostChanged = body.data.host !== undefined && body.data.host !== existing.host;
+    const portChanged = body.data.port !== undefined && body.data.port !== existing.port;
+    if ((hostChanged || portChanged) && !body.data.password) {
+      return reply.code(400).send({
+        error: { code: "PASSWORD_REQUIRED", message: "修改主机或端口时必须重新输入密码" },
+      });
+    }
     if (body.data.name !== undefined) {
       const duplicate = findDatasourceByName(db, body.data.name);
       if (duplicate && duplicate.id !== existing.id) {
@@ -113,6 +165,13 @@ export async function datasourceRoutes(
     }
 
     const patch: Partial<Omit<DatasourceRow, "id" | "createdAt" | "createdBy">> = {};
+    const connectionChanged =
+      body.data.host !== undefined ||
+      body.data.port !== undefined ||
+      body.data.database !== undefined ||
+      body.data.username !== undefined ||
+      body.data.sslMode !== undefined ||
+      Boolean(body.data.password);
     if (body.data.name !== undefined) patch.name = body.data.name;
     if (body.data.host !== undefined) patch.host = body.data.host;
     if (body.data.port !== undefined) patch.port = body.data.port;
@@ -120,6 +179,11 @@ export async function datasourceRoutes(
     if (body.data.username !== undefined) patch.username = body.data.username;
     if (body.data.sslMode !== undefined) patch.sslMode = body.data.sslMode;
     if (body.data.password) patch.passwordCipher = encryptSecret(body.data.password, key);
+    if (connectionChanged) {
+      patch.status = "unknown";
+      patch.readOnlyVerified = 0;
+      patch.lastCheckedAt = null;
+    }
 
     try {
       updateDatasource(db, existing.id, patch);
@@ -129,6 +193,13 @@ export async function datasourceRoutes(
       }
       throw error;
     }
+    // Any edit invalidates the cached connection, even a metadata-only one.
+    await pools.evict(existing.id);
+    audit(request, "datasource_update", {
+      id: existing.id,
+      name: patch.name ?? existing.name,
+      connectionChanged,
+    });
     return { ok: true };
   });
 
@@ -141,7 +212,19 @@ export async function datasourceRoutes(
     if (!existing) {
       return reply.code(404).send({ error: { code: "NOT_FOUND", message: "数据源不存在" } });
     }
+    const referenced = db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.datasourceId, existing.id))
+      .get();
+    if (referenced) {
+      return reply.code(409).send({
+        error: { code: "DS_IN_USE", message: "数据源已被会话引用，无法删除" },
+      });
+    }
     deleteDatasource(db, existing.id);
+    await pools.evict(existing.id);
+    audit(request, "datasource_delete", { id: existing.id, name: existing.name });
     return { ok: true };
   });
 
@@ -153,6 +236,9 @@ export async function datasourceRoutes(
     const ds = findDatasource(db, params.data.id);
     if (!ds) {
       return reply.code(404).send({ error: { code: "NOT_FOUND", message: "数据源不存在" } });
+    }
+    if (isBlockedDatasourceHost(ds.host)) {
+      return reply.code(400).send(blockedHostMessage());
     }
 
     const probe = await probeDatasource({

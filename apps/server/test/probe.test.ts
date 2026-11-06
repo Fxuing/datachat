@@ -89,6 +89,26 @@ describe("probeDatasource", () => {
     expect(result.error).toBe("Access denied for ***");
   });
 
+  it("verifies TLS certificates for require and only skips verification for no-verify", async () => {
+    driverMocks.mysqlQuery.mockResolvedValue([[], []]);
+    driverMocks.pgQuery.mockResolvedValue({ rows: [] });
+
+    await probeDatasource({ ...baseInput, sslMode: "require" });
+    expect(driverMocks.createConnection.mock.calls[0]?.[0]).toMatchObject({
+      ssl: { rejectUnauthorized: true },
+    });
+
+    await probeDatasource({ ...baseInput, sslMode: "no-verify" });
+    expect(driverMocks.createConnection.mock.calls[1]?.[0]).toMatchObject({
+      ssl: { rejectUnauthorized: false },
+    });
+
+    await probeDatasource({ ...baseInput, type: "postgres", port: 5432, sslMode: "require" });
+    expect(driverMocks.pgConfigs[0]).toMatchObject({ ssl: { rejectUnauthorized: true } });
+    await probeDatasource({ ...baseInput, type: "postgres", port: 5432, sslMode: "no-verify" });
+    expect(driverMocks.pgConfigs[1]).toMatchObject({ ssl: { rejectUnauthorized: false } });
+  });
+
   it("reports postgres session read-only state", async () => {
     driverMocks.pgQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT version()")) {

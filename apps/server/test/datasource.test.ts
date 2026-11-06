@@ -20,6 +20,8 @@ import {
   insertDatasource,
 } from "../src/db/repositories/datasources.js";
 import { listGrantedUserIds, replaceGrants } from "../src/db/repositories/grants.js";
+import { conversations, queryAudit } from "../src/db/schema.js";
+import { PoolRegistry } from "../src/agent/datasource/pool.js";
 import { hashPassword } from "../src/auth/password.js";
 import { createSessionSigner } from "../src/auth/jwt.js";
 import { testConfig } from "./helpers/config.js";
@@ -202,6 +204,110 @@ describe("datasource routes", () => {
     expect(findDatasource(db, id)).toBeUndefined();
     expect(listGrantedUserIds(db, id)).toEqual([]);
 
+    await a.close();
+  });
+
+  it("rejects duplicate datasource names regardless of case", async () => {
+    const a = await app();
+    const first = await a.inject({
+      method: "POST",
+      url: "/api/datasources",
+      cookies: { dc_session: adminCookie },
+      payload: connectionPayload,
+    });
+    expect(first.statusCode).toBe(201);
+    const duplicate = await a.inject({
+      method: "POST",
+      url: "/api/datasources",
+      cookies: { dc_session: adminCookie },
+      payload: { ...connectionPayload, name: "ANALYTICS" },
+    });
+    expect(duplicate.statusCode).toBe(409);
+    expect(probeMock.probeDatasource).toHaveBeenCalledTimes(1);
+    await a.close();
+  });
+
+  it("blocks metadata/link-local hosts and requires a password when the host changes", async () => {
+    const a = await app();
+    for (const host of ["169.254.169.254", "metadata.google.internal", "[fd00:ec2::254]"]) {
+      const blocked = await a.inject({
+        method: "POST",
+        url: "/api/datasources",
+        cookies: { dc_session: adminCookie },
+        payload: { ...connectionPayload, host },
+      });
+      expect(blocked.statusCode).toBe(400);
+      expect(blocked.json().error.code).toBe("HOST_NOT_ALLOWED");
+    }
+    expect(probeMock.probeDatasource).not.toHaveBeenCalled();
+
+    const created = await a.inject({
+      method: "POST",
+      url: "/api/datasources",
+      cookies: { dc_session: adminCookie },
+      payload: connectionPayload,
+    });
+    const id = created.json().id as string;
+    const evict = vi.spyOn(PoolRegistry.prototype, "evict");
+
+    // A new host must not inherit the stored (encrypted) password.
+    const noPassword = await a.inject({
+      method: "PATCH",
+      url: `/api/datasources/${id}`,
+      cookies: { dc_session: adminCookie },
+      payload: { host: "10.0.0.9" },
+    });
+    expect(noPassword.statusCode).toBe(400);
+    expect(noPassword.json().error.code).toBe("PASSWORD_REQUIRED");
+
+    const patched = await a.inject({
+      method: "PATCH",
+      url: `/api/datasources/${id}`,
+      cookies: { dc_session: adminCookie },
+      payload: { host: "10.0.0.9", password: "new-secret" },
+    });
+    expect(patched.statusCode).toBe(200);
+    const row = findDatasource(db, id)!;
+    expect(row.status).toBe("unknown");
+    expect(row.readOnlyVerified).toBe(0);
+    expect(row.lastCheckedAt).toBeNull();
+    expect(evict).toHaveBeenCalledWith(id);
+    const actions = db.select().from(queryAudit).all().map((row) => row.action);
+    expect(actions).toEqual(expect.arrayContaining(["datasource_create", "datasource_update"]));
+    evict.mockRestore();
+    await a.close();
+  });
+
+  it("returns 409 instead of orphaning conversations that reference the datasource", async () => {
+    const a = await app();
+    const created = await a.inject({
+      method: "POST",
+      url: "/api/datasources",
+      cookies: { dc_session: adminCookie },
+      payload: connectionPayload,
+    });
+    const id = created.json().id as string;
+    db.insert(conversations)
+      .values({
+        id: randomUUID(),
+        userId: adminId,
+        datasourceId: id,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .run();
+
+    const deleted = await a.inject({
+      method: "DELETE",
+      url: `/api/datasources/${id}`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(deleted.statusCode).toBe(409);
+    expect(deleted.json().error.code).toBe("DS_IN_USE");
+    expect(findDatasource(db, id)).toBeDefined();
+
+    const actions = db.select().from(queryAudit).all().map((row) => row.action);
+    expect(actions).toEqual(["datasource_create"]);
     await a.close();
   });
 

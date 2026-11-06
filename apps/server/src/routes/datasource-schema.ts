@@ -127,7 +127,8 @@ export async function datasourceSchemaRoutes(
         tables: matched.slice(0, schemaPageLimit),
         refreshedAt: entry.snapshot.refreshedAt,
         stale: Date.now() - entry.refreshedAt > SCHEMA_CACHE_TTL_MS,
-        error: entry.error,
+        // Raw driver text can leak hostnames/accounts; only admins see it.
+        error: user.role === "admin" ? entry.error : entry.error ? "上次刷新失败" : null,
         total: matched.length,
       };
     },

@@ -2,6 +2,8 @@ import mysql from "mysql2/promise";
 import { Client as PgClient } from "pg";
 import type { DatasourceType } from "@datachat/shared";
 
+import type { SslMode } from "./pool.js";
+
 export interface ProbeInput {
   type: DatasourceType;
   host: string;
@@ -9,7 +11,7 @@ export interface ProbeInput {
   database: string;
   username: string;
   password: string;
-  sslMode: "disable" | "require";
+  sslMode: SslMode;
 }
 
 export interface ProbeResult {
@@ -29,6 +31,8 @@ export function safeErrorMessage(error: unknown, secret?: string): string {
 }
 
 export async function probeDatasource(input: ProbeInput): Promise<ProbeResult> {
+  const ssl =
+    input.sslMode === "disable" ? undefined : { rejectUnauthorized: input.sslMode === "require" };
   if (input.type === "mysql") {
     let connection: mysql.Connection | undefined;
     try {
@@ -39,7 +43,7 @@ export async function probeDatasource(input: ProbeInput): Promise<ProbeResult> {
         user: input.username,
         password: input.password,
         connectTimeout: 10_000,
-        ssl: input.sslMode === "require" ? { rejectUnauthorized: false } : undefined,
+        ssl,
       });
       const [versionRows] = await connection.query("SELECT VERSION() AS version");
       const version = String((versionRows as Array<{ version: string }>)[0]?.version ?? "unknown");
@@ -69,7 +73,7 @@ export async function probeDatasource(input: ProbeInput): Promise<ProbeResult> {
     user: input.username,
     password: input.password,
     connectionTimeoutMillis: 10_000,
-    ssl: input.sslMode === "require" ? { rejectUnauthorized: false } : undefined,
+    ssl,
   });
   try {
     await client.connect();

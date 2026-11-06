@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../client.js";
 import { datasourceGrants, datasourceSchemaCache, datasources } from "../schema.js";
 import { isUniqueViolation } from "./users.js";
@@ -55,7 +55,11 @@ export function findDatasource(db: Db, id: string): DatasourceRow | undefined {
 }
 
 export function findDatasourceByName(db: Db, name: string): DatasourceRow | undefined {
-  return db.select().from(datasources).where(eq(datasources.name, name)).get();
+  return db
+    .select()
+    .from(datasources)
+    .where(sql`lower(${datasources.name}) = lower(${name})`)
+    .get();
 }
 
 export function listDatasourcesForUser(
@@ -87,7 +91,7 @@ export interface DatasourceSummary {
   port: number;
   database: string;
   username: string;
-  sslMode: "disable" | "require";
+  sslMode: DatasourceRow["sslMode"];
   status: string;
   readOnlyVerified: boolean;
   lastCheckedAt: number | null;

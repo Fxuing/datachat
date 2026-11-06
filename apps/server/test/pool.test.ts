@@ -44,4 +44,33 @@ describe("PoolRegistry", () => {
     expect(second).not.toBe(first);
     await registry.closeAll();
   });
+
+  it("evicts a cached pool so an edited datasource reconnects with new settings", async () => {
+    const registry = new PoolRegistry();
+    const first = registry.get(mysql);
+    await registry.evict(mysql.id);
+    const second = registry.get(mysql);
+    expect(second).not.toBe(first);
+    await registry.evict("missing");
+    await registry.closeAll();
+  });
+
+  it("verifies TLS by default and only disables it for the explicit no-verify mode", async () => {
+    const registry = new PoolRegistry();
+    const verified = registry.get(postgres);
+    const pgOptions = (verified.pg as unknown as { options: Record<string, unknown> }).options;
+    expect((pgOptions.ssl as { rejectUnauthorized: boolean }).rejectUnauthorized).toBe(true);
+    expect(pgOptions.connectionTimeoutMillis).toBe(10_000);
+    expect(pgOptions.options).toContain("default_transaction_read_only=on");
+
+    const insecure = registry.get({ ...postgres, id: "ds-pg-insecure", sslMode: "no-verify" });
+    const insecureOptions = (insecure.pg as unknown as { options: Record<string, unknown> }).options;
+    expect((insecureOptions.ssl as { rejectUnauthorized: boolean }).rejectUnauthorized).toBe(false);
+
+    const mysqlPool = registry.get(mysql).mysql as unknown as {
+      pool: { config: { connectionConfig: { ssl?: { rejectUnauthorized: boolean } } } };
+    };
+    expect(mysqlPool.pool.config.connectionConfig.ssl).toBeFalsy();
+    await registry.closeAll();
+  });
 });

@@ -2,6 +2,8 @@ import mysql, { type Pool as MysqlPool } from "mysql2/promise";
 import { Pool as PgPool } from "pg";
 import type { DatasourceType } from "@datachat/shared";
 
+export type SslMode = "disable" | "require" | "no-verify";
+
 export interface DatasourceConnection {
   id: string;
   type: DatasourceType;
@@ -10,12 +12,23 @@ export interface DatasourceConnection {
   database: string;
   username: string;
   password: string;
-  sslMode: "disable" | "require";
+  sslMode: SslMode;
 }
 
 export interface Pools {
   mysql?: MysqlPool;
   pg?: PgPool;
+}
+
+/** `require` verifies the server certificate; `no-verify` is the explicit opt-out. */
+function sslConfig(mode: SslMode): { rejectUnauthorized: boolean } | undefined {
+  if (mode === "disable") return undefined;
+  return { rejectUnauthorized: mode === "require" };
+}
+
+interface CallbackConnection {
+  query(sql: string, callback: (error: Error | null) => void): void;
+  destroy(): void;
 }
 
 export class PoolRegistry {
@@ -37,11 +50,22 @@ export class PoolRegistry {
         connectTimeout: 10_000,
         timezone: "Z",
         supportBigNumbers: true,
-        ssl: ds.sslMode === "require" ? { rejectUnauthorized: false } : undefined,
+        ssl: sslConfig(ds.sslMode),
       });
+      // mysql2 emits this before handing the connection to the caller, and commands
+      // are queued in order, so the caller's first query cannot overtake the setup.
+      // On failure the connection is destroyed, which fails that first query closed.
       pool.on("connection", (connection) => {
-        void connection.query("SET SESSION TRANSACTION READ ONLY");
-        void connection.query("SET SESSION time_zone = '+00:00'");
+        const raw = connection as unknown as CallbackConnection;
+        raw.query("SET SESSION TRANSACTION READ ONLY", (readOnlyError) => {
+          if (readOnlyError) {
+            raw.destroy();
+            return;
+          }
+          raw.query("SET SESSION time_zone = '+00:00'", (timeZoneError) => {
+            if (timeZoneError) raw.destroy();
+          });
+        });
       });
       pools.mysql = pool;
     } else {
@@ -52,12 +76,12 @@ export class PoolRegistry {
         user: ds.username,
         password: ds.password,
         max: 5,
+        connectionTimeoutMillis: 10_000,
         statement_timeout: 30_000,
-        ssl: ds.sslMode === "require" ? { rejectUnauthorized: false } : undefined,
-      });
-      pool.on("connect", (client) => {
-        void client.query("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY");
-        void client.query("SET TIME ZONE 'UTC'");
+        // Startup options are applied by the server before the connection is
+        // usable, which is stronger than a fire-and-forget SET after acquisition.
+        options: "-c default_transaction_read_only=on -c timezone=UTC",
+        ssl: sslConfig(ds.sslMode),
       });
       pools.pg = pool;
     }
@@ -65,11 +89,21 @@ export class PoolRegistry {
     return pools;
   }
 
-  async closeAll(): Promise<void> {
-    for (const pools of this.pools.values()) {
-      await pools.mysql?.end().catch(() => undefined);
-      await pools.pg?.end().catch(() => undefined);
-    }
-    this.pools.clear();
+  /** Drop cached connections so edited/deleted datasources cannot keep using them. */
+  async evict(id: string): Promise<void> {
+    const pools = this.pools.get(id);
+    if (!pools) return;
+    this.pools.delete(id);
+    await closePools(pools);
   }
+
+  async closeAll(): Promise<void> {
+    const all = [...this.pools.values()];
+    this.pools.clear();
+    await Promise.all(all.map((pools) => closePools(pools)));
+  }
+}
+
+async function closePools(pools: Pools): Promise<void> {
+  await Promise.allSettled([pools.mysql?.end(), pools.pg?.end()]);
 }
