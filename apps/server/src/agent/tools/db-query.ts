@@ -3,7 +3,6 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { findDatasource } from "../../db/repositories/datasources.js";
 import { runGuardedQuery } from "../../services/query-service.js";
 import type { ColumnInfo } from "../../services/artifacts.js";
-import { guardSql } from "../sql/guard.js";
 import {
   errorMessage,
   errorResult,
@@ -92,20 +91,15 @@ export function createDbQueryTool(
           );
         }
 
-        // The executor ran the guarded SQL; re-derive it so the SQL card shows
-        // exactly what reached the database (including the injected LIMIT).
-        const guarded = guardSql({
-          sql,
-          dialect: datasource.type,
-          maxRows: ctx.config.queryMaxRows,
-        });
+        // The result carries the exact guarded SQL that reached the database
+        // (including the LIMIT injected from the effective settings).
         const details: DbQueryDetails = {
           artifactId: result.artifactId,
           columns: result.columns,
           rowCount: result.rowCount,
           truncated: result.truncated,
           auditId: result.auditId,
-          sql: guarded.ok ? guarded.sql : sql,
+          sql: result.guardedSql,
           guard: "ok",
           durationMs: result.durationMs,
         };

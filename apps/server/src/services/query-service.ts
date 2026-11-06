@@ -8,6 +8,7 @@ import type { PoolRegistry } from "../agent/datasource/pool.js";
 import { guardSql, type GuardErrorCode } from "../agent/sql/guard.js";
 import { SqlAbortedError, SqlTimeoutError, executeReadOnly } from "../agent/sql/executor.js";
 import type { ArtifactStore, ColumnInfo } from "./artifacts.js";
+import { resolveQueryLimits } from "./app-settings.js";
 import { recordAudit } from "./audit.js";
 
 export interface RunQueryInput {
@@ -36,6 +37,8 @@ export type RunQueryResult =
       rowCount: number;
       truncated: boolean;
       durationMs: number;
+      /** SQL actually sent to the database (guard-injected LIMIT included). */
+      guardedSql: string;
       auditId: string;
     }
   | { ok: false; code: QueryFailureCode; reason: string; auditId: string };
@@ -75,6 +78,9 @@ export async function runGuardedQuery(
 ): Promise<RunQueryResult> {
   const { db, config, pools, artifacts } = deps;
   const action = input.action ?? "query";
+  // Read once so the guard, the executor and the returned SQL all agree, and
+  // admin changes take effect on the next run without a restart.
+  const limits = resolveQueryLimits(db, config);
 
   const denied = authorizeDatasourceAccess(db, input.userId, input.datasource.id);
   if (denied) {
@@ -109,7 +115,7 @@ export async function runGuardedQuery(
   const guard = guardSql({
     sql: input.sql,
     dialect: input.datasource.type,
-    maxRows: config.queryMaxRows,
+    maxRows: limits.maxRows,
   });
 
   // Rejections must never reach a datasource: no pool is created, no connection
@@ -156,9 +162,9 @@ export async function runGuardedQuery(
         dialect: input.datasource.type,
         pool: input.datasource.type === "mysql" ? handle.mysql! : handle.pg!,
         sql: guard.sql,
-        maxRows: config.queryMaxRows,
-        previewRows: config.queryPreviewRows,
-        timeoutMs: config.queryTimeoutMs,
+        maxRows: limits.maxRows,
+        previewRows: limits.previewRows,
+        timeoutMs: limits.timeoutMs,
         signal: input.signal,
       },
       (row) => writer.write(row),
@@ -195,6 +201,7 @@ export async function runGuardedQuery(
       rowCount: result.rowCount,
       truncated: result.truncated,
       durationMs: Date.now() - started,
+      guardedSql: guard.sql,
       auditId,
     };
   } catch (error) {

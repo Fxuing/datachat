@@ -28,6 +28,19 @@ export const settingValueSchemas = {
   shareMaxDays: z.number().int().min(1).max(365),
 } satisfies Record<SettingKey, z.ZodType<unknown>>;
 
+/** Hard upper bounds applied to query limits, whatever their source (env or settings). */
+export const QUERY_LIMIT_CAPS = {
+  maxRows: 100_000,
+  previewRows: 1_000,
+  timeoutMs: 300_000,
+} as const;
+
+export interface QueryLimits {
+  maxRows: number;
+  previewRows: number;
+  timeoutMs: number;
+}
+
 export interface AppSettings {
   defaultModelId: string | null;
   queryMaxRows: number;
@@ -56,6 +69,23 @@ function parseStored<T>(raw: string | undefined, schema: z.ZodType<T>): T | unde
   } catch {
     return undefined;
   }
+}
+
+function clampLimit(value: number, max: number): number {
+  return Math.min(max, Math.max(1, Math.trunc(value)));
+}
+
+/**
+ * Limits for one query run, read per run so admin changes apply without a restart.
+ * Config/env defaults are clamped as well: env input is positive but unbounded.
+ */
+export function resolveQueryLimits(db: Db, config: AppConfig): QueryLimits {
+  const stored = effectiveSettings(db, config);
+  return {
+    maxRows: clampLimit(stored.queryMaxRows, QUERY_LIMIT_CAPS.maxRows),
+    previewRows: clampLimit(stored.queryPreviewRows, QUERY_LIMIT_CAPS.previewRows),
+    timeoutMs: clampLimit(stored.queryTimeoutMs, QUERY_LIMIT_CAPS.timeoutMs),
+  };
 }
 
 /**
