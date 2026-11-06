@@ -294,6 +294,60 @@ describe("conversation routes", () => {
     }
   });
 
+  it("skips artifacts with malformed JSON columns instead of failing the detail", async () => {
+    const conversation = createConversation(db, { userId, datasourceId });
+    const now = Date.now();
+    db.insert(artifacts)
+      .values([
+        {
+          id: "artifact-bad",
+          conversationId: conversation.id,
+          userId,
+          kind: "result",
+          columnsJson: "{not-json",
+          rowCount: 1,
+          truncated: 0,
+          createdAt: now,
+        },
+        {
+          id: "artifact-good",
+          conversationId: conversation.id,
+          userId,
+          kind: "result",
+          columnsJson: JSON.stringify([{ name: "x", type: "number" }]),
+          specJson: "{broken",
+          rowCount: 2,
+          truncated: 0,
+          createdAt: now + 1,
+        },
+      ])
+      .run();
+
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversation.id}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().artifacts).toEqual([
+        {
+          id: "artifact-good",
+          runId: null,
+          kind: "result",
+          columns: [{ name: "x", type: "number" }],
+          rowCount: 2,
+          truncated: false,
+          spec: null,
+          createdAt: now + 1,
+        },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("enqueues a message, returns 202 and sets the title from the first message", async () => {
     const conversationId = await createTestConversation();
     updateConversation(db, conversationId, { title: null });
