@@ -8,12 +8,14 @@ import type { Db } from "../db/client.js";
 import {
   createConversation,
   findOwnedConversation,
+  parseConversationCursor,
   updateConversation,
   deleteConversation,
   touchConversation,
 } from "../db/repositories/conversations.js";
 import { findDatasource, userCanAccess } from "../db/repositories/datasources.js";
-import { createRun } from "../db/repositories/runs.js";
+import { appendRunEvent } from "../db/repositories/run-events.js";
+import { createRun, markRun } from "../db/repositories/runs.js";
 import { createAgentModelRuntime, listChatModels } from "../agent/model-runtime.js";
 import type { RuntimeManager } from "../agent/runtime.js";
 import type { ArtifactStore } from "../services/artifacts.js";
@@ -36,7 +38,7 @@ export interface ConversationRouteOptions {
 const idParamsSchema = z.object({ id: z.string().uuid() });
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
-  before: z.coerce.number().int().nonnegative().optional(),
+  before: z.string().trim().min(1).optional(),
 });
 const createBodySchema = z.object({
   datasourceId: z.string().uuid(),
@@ -60,7 +62,14 @@ export async function conversationRoutes(
 ): Promise<void> {
   let runtimePromise: Promise<ModelRuntime> | undefined;
   const getRuntime =
-    opts.getRuntime ?? (() => (runtimePromise ??= createAgentModelRuntime(opts.config)));
+    opts.getRuntime ??
+    (() =>
+      (runtimePromise = (runtimePromise ?? createAgentModelRuntime(opts.config)).catch(
+        (error: unknown) => {
+          runtimePromise = undefined;
+          throw error;
+        },
+      )));
 
   app.get(
     "/api/conversations",
@@ -70,7 +79,14 @@ export async function conversationRoutes(
       if (!query.success) {
         return error("VALIDATION", "参数不合法");
       }
-      return listConversationPage(opts.db, request.user!.sub, query.data);
+      const before = query.data.before ? parseConversationCursor(query.data.before) : undefined;
+      if (query.data.before && !before) {
+        return error("VALIDATION", "参数不合法");
+      }
+      return listConversationPage(opts.db, request.user!.sub, {
+        limit: query.data.limit,
+        before: before ?? undefined,
+      });
     },
   );
 
@@ -140,8 +156,11 @@ export async function conversationRoutes(
       if (body.data.modelId !== undefined) {
         const runtime = await getRuntime();
         const models = listChatModels(runtime);
+        if (models.length === 0) {
+          return reply.code(503).send(error("MODEL_RUNTIME_UNAVAILABLE", "没有可用的模型"));
+        }
         if (!models.some((model) => model.id === body.data.modelId)) {
-          return reply.code(400).send(error("INVALID_MODEL", "模型不在白名单中"));
+          return reply.code(400).send(error("VALIDATION", "模型不在白名单中"));
         }
       }
 
@@ -179,6 +198,12 @@ export async function conversationRoutes(
         return reply.code(404).send(error("NOT_FOUND", "会话不存在"));
       }
 
+      if (opts.runtime.isBusy(conversation.id)) {
+        return reply
+          .code(409)
+          .send(error("CONFLICT", "请先停止当前回答"));
+      }
+
       await opts.runtime.remove(conversation.id);
       await deleteConversationFiles(opts.artifacts, conversation);
       if (conversation.piSessionFile) {
@@ -212,6 +237,11 @@ export async function conversationRoutes(
       }
 
       const content = body.data.content;
+      const runtime = await opts.runtime.getOrCreate(conversation, user.sub);
+      if (runtime.queueLength >= 5) {
+        return reply.code(429).send(error("RATE_LIMITED", "当前会话排队消息过多，请稍后再试"));
+      }
+
       const run = createRun(opts.db, {
         conversationId: conversation.id,
         userId: user.sub,
@@ -227,11 +257,33 @@ export async function conversationRoutes(
 
       let position: number;
       try {
-        position = opts.runtime
-          .getOrCreate(conversation, user.sub)
-          .enqueue({ runId: run.id, content });
+        position = runtime.enqueue({ runId: run.id, content });
       } catch (enqueueError) {
         request.log.error({ err: enqueueError, runId: run.id }, "failed to enqueue run");
+        const message =
+          enqueueError instanceof Error ? enqueueError.message : String(enqueueError);
+        markRun(opts.db, run.id, {
+          status: "error",
+          error: message,
+          endedAt: Date.now(),
+        });
+        try {
+          const { seq, createdAt } = appendRunEvent(opts.db, {
+            runId: run.id,
+            conversationId: conversation.id,
+            type: "run_end",
+            payload: { status: "error", error: message },
+          });
+          opts.runtime.bus.publish({
+            runId: run.id,
+            conversationId: conversation.id,
+            seq,
+            createdAt,
+            event: { type: "run_end", payload: { status: "error", error: message } },
+          });
+        } catch {
+          // The run row already records the failure.
+        }
         return reply.code(500).send(error("ENQUEUE_FAILED", "无法开始运行"));
       }
 

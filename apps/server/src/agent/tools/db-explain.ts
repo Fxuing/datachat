@@ -4,6 +4,8 @@ import { decryptSecret, deriveSecretKey } from "../datasource/crypto.js";
 import { findDatasource } from "../../db/repositories/datasources.js";
 import { executeReadOnly, SqlAbortedError, SqlTimeoutError } from "../sql/executor.js";
 import { guardSql } from "../sql/guard.js";
+import { recordAudit } from "../../services/audit.js";
+import { authorizeDatasourceAccess } from "../../services/query-service.js";
 import {
   errorMessage,
   errorResult,
@@ -63,10 +65,45 @@ export function createDbExplainTool(
       const failed = (code: string, message: string) =>
         errorResult<DbExplainDetails>(code, message, { rowCount: 0, truncated: false, code, message });
 
+      const audit = (
+        status: "ok" | "error" | "timeout" | "rejected",
+        durationMs: number,
+        options: { rowCount?: number; errorMessage?: string } = {},
+      ): void => {
+        try {
+          recordAudit(ctx.db, {
+            runId: ctx.runId || null,
+            conversationId: ctx.conversationId,
+            userId: ctx.userId,
+            datasourceId: ctx.datasourceId,
+            action: "explain",
+            sqlText: sql,
+            status,
+            durationMs,
+            rowCount: options.rowCount,
+            errorMessage: options.errorMessage,
+          });
+        } catch {
+          // Losing an audit row must not fail the tool result.
+        }
+      };
+
+      const started = Date.now();
+
       try {
         const datasource = findDatasource(ctx.db, ctx.datasourceId);
         if (!datasource) return failed("DATASOURCE_NOT_FOUND", "会话绑定的数据源不存在");
+
+        const denied = authorizeDatasourceAccess(ctx.db, ctx.userId, ctx.datasourceId);
+        if (denied) {
+          audit("rejected", Date.now() - started, { errorMessage: denied });
+          return failed("DATASOURCE_FORBIDDEN", denied);
+        }
+
         if (datasource.readOnlyVerified !== 1) {
+          audit("rejected", Date.now() - started, {
+            errorMessage: "数据源尚未通过只读校验，已拒绝执行",
+          });
           return failed("FORBIDDEN", "数据源尚未通过只读校验，已拒绝执行");
         }
 
@@ -75,7 +112,10 @@ export function createDbExplainTool(
           dialect: datasource.type,
           maxRows: ctx.config.queryMaxRows,
         });
-        if (!guarded.ok) return failed(guarded.code, guarded.reason);
+        if (!guarded.ok) {
+          audit("rejected", Date.now() - started, { errorMessage: guarded.reason });
+          return failed(guarded.code, guarded.reason);
+        }
 
         const handle = ctx.pools.get({
           id: datasource.id,
@@ -104,18 +144,22 @@ export function createDbExplainTool(
           async () => undefined,
         );
 
+        const durationMs = Date.now() - started;
+        audit("ok", durationMs, { rowCount: result.rowCount });
         return textResult(renderExplain(result.columns.map((column) => column.name), result.previewRows), {
           rowCount: result.rowCount,
           truncated: result.truncated,
         });
       } catch (error) {
         const message = errorMessage(error);
-        const code =
-          error instanceof SqlTimeoutError
-            ? "SQL_TIMEOUT"
-            : error instanceof SqlAbortedError
-              ? "SQL_ABORTED"
-              : "SQL_ERROR";
+        const timedOut =
+          error instanceof SqlTimeoutError || /timeout|MAX_EXECUTION_TIME/i.test(message);
+        const code = timedOut
+          ? "SQL_TIMEOUT"
+          : error instanceof SqlAbortedError
+            ? "SQL_ABORTED"
+            : "SQL_ERROR";
+        audit(timedOut ? "timeout" : "error", Date.now() - started, { errorMessage: message });
         return failed(code, message);
       }
     },

@@ -3,7 +3,6 @@ import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AppConfig } from "../config.js";
 import {
   createAgentModelRuntime,
-  DEFAULT_MODEL_CANDIDATE,
   listChatModels,
   type ChatModelInfo,
 } from "../agent/model-runtime.js";
@@ -26,7 +25,14 @@ export async function modelsRoutes(
 ): Promise<void> {
   let runtimePromise: Promise<ModelRuntime> | undefined;
   const getRuntime =
-    opts.getRuntime ?? (() => (runtimePromise ??= createAgentModelRuntime(opts.config)));
+    opts.getRuntime ??
+    (() =>
+      (runtimePromise = (runtimePromise ?? createAgentModelRuntime(opts.config)).catch(
+        (error: unknown) => {
+          runtimePromise = undefined;
+          throw error;
+        },
+      )));
 
   app.get("/api/models", { preHandler: app.authenticate }, async (): Promise<ModelsResponse> => {
     // No key: report the missing configuration instead of failing the page with a 500.
@@ -35,8 +41,8 @@ export async function modelsRoutes(
     }
     const runtime = await getRuntime();
     const models = listChatModels(runtime);
-    const defaultId =
-      models.find((model) => model.id === DEFAULT_MODEL_CANDIDATE)?.id ?? models[0]?.id ?? null;
-    return { configured: true, models, defaultId };
+    // The default is the first whitelisted model, matching the run-time fallback in
+    // resolveConversationModel() so the selected model and the executed model agree.
+    return { configured: true, models, defaultId: models[0]?.id ?? null };
   });
 }

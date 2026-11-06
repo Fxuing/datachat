@@ -4,7 +4,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb, type DbHandle } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
+import { queryAudit } from "../src/db/schema.js";
 import { insertUser } from "../src/db/repositories/users.js";
+import { replaceGrants } from "../src/db/repositories/grants.js";
 import { insertDatasource, type DatasourceRow } from "../src/db/repositories/datasources.js";
 import { saveSchema } from "../src/db/repositories/schema-cache.js";
 import { deriveSecretKey, encryptSecret } from "../src/agent/datasource/crypto.js";
@@ -265,6 +267,74 @@ describe("db_explain", () => {
     });
     expect(result.isError).toBe(true);
     expect(calls.gets).toBe(0);
+  });
+});
+
+describe("datasource authorization", () => {
+  function insertNonAdmin() {
+    insertUser(handle.db, {
+      id: "u2",
+      username: "bob",
+      passwordHash: "not-used",
+      role: "user",
+      createdAt: Date.now(),
+    });
+  }
+
+  it("denies db_schema after the grant is revoked", async () => {
+    insertNonAdmin();
+    saveSchema(handle.db, "d1", snapshot([table("users")]));
+    replaceGrants(handle.db, "d1", ["u2"]);
+    const ctx = context({ userId: "u2" });
+    expect(textOf(await run(tool(ctx, "db_schema"), {}))).toContain("users");
+
+    replaceGrants(handle.db, "d1", []);
+    const denied = await run(tool(ctx, "db_schema"), {});
+    expect(denied.isError).toBe(true);
+    expect(JSON.parse(textOf(denied))).toMatchObject({
+      code: "DATASOURCE_FORBIDDEN",
+      message: "无权访问该数据源",
+    });
+  });
+
+  it("denies db_explain after the grant is revoked", async () => {
+    insertNonAdmin();
+    replaceGrants(handle.db, "d1", ["u2"]);
+    const ctx = context({ userId: "u2" });
+
+    replaceGrants(handle.db, "d1", []);
+    const denied = await run(tool(ctx, "db_explain"), { sql: "SELECT id FROM t" });
+    expect(denied.isError).toBe(true);
+    expect(JSON.parse(textOf(denied))).toMatchObject({
+      code: "DATASOURCE_FORBIDDEN",
+      message: "无权访问该数据源",
+    });
+
+    const audits = handle.db.select().from(queryAudit).all();
+    expect(audits.at(-1)).toMatchObject({
+      action: "explain",
+      status: "rejected",
+      userId: "u2",
+      datasourceId: "d1",
+    });
+  });
+
+  it("records a successful explain in query_audit", async () => {
+    const result = await run(tool(context(), "db_explain"), { sql: "SELECT id FROM t" });
+    expect(result.isError).toBeFalsy();
+
+    const audits = handle.db.select().from(queryAudit).all();
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      action: "explain",
+      status: "ok",
+      userId: "u1",
+      conversationId: "c1",
+      datasourceId: "d1",
+      runId: "r1",
+      sqlText: "SELECT id FROM t",
+    });
+    expect(audits[0]!.durationMs).toBeTypeOf("number");
   });
 });
 

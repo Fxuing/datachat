@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { runEventSchema } from "@datachat/shared";
 import { createDb, type Db } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
+import { runEvents } from "../src/db/schema.js";
 import { createConversation } from "../src/db/repositories/conversations.js";
 import {
   appendRunEvent,
@@ -199,6 +200,39 @@ describe("run events repository", () => {
     expect(
       runEventSchema.safeParse({ type: "assistant_message", payload: {} }).success,
     ).toBe(false);
+  });
+
+  it("orders conversation history by time, not seq across runs", () => {
+    const earlier = newRun();
+    const later = newRun();
+    db.insert(runEvents)
+      .values([
+        {
+          id: "event-earlier",
+          runId: earlier.id,
+          conversationId,
+          seq: 1,
+          type: "text_delta",
+          payloadJson: JSON.stringify({ text: "earlier" }),
+          createdAt: 1_000,
+        },
+        {
+          id: "event-later",
+          runId: later.id,
+          conversationId,
+          seq: 9,
+          type: "text_delta",
+          payloadJson: JSON.stringify({ text: "later" }),
+          createdAt: 2_000,
+        },
+      ])
+      .run();
+
+    expect(
+      listConversationEvents(db, conversationId).map(
+        (row) => (JSON.parse(row.payloadJson) as { text: string }).text,
+      ),
+    ).toEqual(["earlier", "later"]);
   });
 
   it("returns the latest conversation events oldest-first", () => {

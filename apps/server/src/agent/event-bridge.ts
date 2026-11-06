@@ -214,6 +214,10 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
         return;
       }
       case "auto_retry_start": {
+        // A retried attempt starts from scratch: the previous attempt's partial text
+        // must not leak into the final assistant message or the live stream.
+        streamedText = "";
+        completedText = "";
         persist({
           type: "retry",
           payload: {
@@ -241,7 +245,11 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
           .find((message) => message.role === "assistant");
         const fallback = lastAssistant?.role === "assistant" ? assistantText(lastAssistant) : "";
         const content = completedText || streamedText || fallback;
-        if (content) persist({ type: "assistant_message", payload: { content } });
+        // A failed attempt that will be retried is not part of the transcript: only the
+        // final attempt's assistant_message is stored.
+        if (!event.willRetry && content) {
+          persist({ type: "assistant_message", payload: { content } });
+        }
         persist({ type: "usage", payload: { ...usage } });
         if (event.willRetry) return;
 

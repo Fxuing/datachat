@@ -57,7 +57,8 @@ export function listRunEventsAfter(db: Db, runId: string, seq: number): RunEvent
 
 /**
  * Most recent `limit` events of a conversation, returned oldest-first so callers can
- * aggregate history in a single pass.
+ * aggregate history in a single pass. Ordering follows global chronology
+ * (`createdAt`), not the per-run `seq`, because two runs can interleave.
  */
 export function listConversationEvents(
   db: Db,
@@ -68,7 +69,7 @@ export function listConversationEvents(
     .select()
     .from(runEvents)
     .where(eq(runEvents.conversationId, conversationId))
-    .orderBy(desc(runEvents.seq), desc(runEvents.createdAt))
+    .orderBy(desc(runEvents.createdAt), desc(runEvents.seq))
     .limit(limit)
     .all();
   return rows.reverse();

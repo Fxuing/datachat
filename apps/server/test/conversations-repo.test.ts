@@ -14,7 +14,7 @@ import {
 } from "../src/db/repositories/conversations.js";
 import { appendRunEvent } from "../src/db/repositories/run-events.js";
 import { createRun } from "../src/db/repositories/runs.js";
-import { artifacts, runEvents, runs } from "../src/db/schema.js";
+import { artifacts, conversations, runEvents, runs } from "../src/db/schema.js";
 
 let db: Db;
 const userId = "user-1";
@@ -78,10 +78,35 @@ describe("conversations repository", () => {
     const page = listConversations(db, userId, { limit: 2 });
     expect(page.map((row) => row.title)).toEqual(["newest", "middle"]);
 
-    const next = listConversations(db, userId, { before: 2_000 });
+    const next = listConversations(db, userId, {
+      before: { sortTime: 2_000, id: middle.id },
+    });
     expect(next.map((row) => row.title)).toEqual(["older"]);
     // Other users never see the list.
     expect(listConversations(db, "someone-else")).toEqual([]);
+  });
+
+  it("paginates conversations that never received a message", () => {
+    const rows = ["one", "two", "three"].map((title, index) => {
+      const row = newConversation({ title });
+      db.update(conversations)
+        .set({ createdAt: 5_000 + index, updatedAt: 5_000 + index })
+        .where(eq(conversations.id, row.id))
+        .run();
+      return { ...row, createdAt: 5_000 + index };
+    });
+
+    const first = listConversations(db, userId, { limit: 2 });
+    expect(first.map((row) => row.title)).toEqual(["three", "two"]);
+    expect(first.every((row) => row.lastMessageAt === null)).toBe(true);
+
+    const last = first.at(-1)!;
+    const second = listConversations(db, userId, {
+      limit: 2,
+      before: { sortTime: last.lastMessageAt ?? last.createdAt, id: last.id },
+    });
+    expect(second.map((row) => row.title)).toEqual(["one"]);
+    expect(new Set([...first, ...second].map((row) => row.id)).size).toBe(rows.length);
   });
 
   it("updates only provided fields and keeps updatedAt moving", () => {

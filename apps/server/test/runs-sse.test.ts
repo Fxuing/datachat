@@ -231,9 +231,13 @@ describe("run routes", () => {
     }
   });
 
-  it("persists an aborted run_end when no runtime owns the run", async () => {
+  it("persists and publishes an aborted run_end when no runtime owns the run", async () => {
     const runId = createTestRun();
     runtime.abort.mockReturnValue(false);
+    const busEvents: Array<{ type: string; payload: unknown }> = [];
+    runtime.bus.subscribe(conversationId, (event) => {
+      if (event.runId === runId) busEvents.push(event.event);
+    });
     const app = await makeApp();
     try {
       const abort = await app.inject({
@@ -243,6 +247,38 @@ describe("run routes", () => {
       });
       expect(abort.statusCode).toBe(204);
       expect(findRun(db, runId)?.status).toBe("aborted");
+      expect(busEvents.at(-1)).toEqual({ type: "run_end", payload: { status: "aborted" } });
+
+      // A client that subscribes after the abort must still see the terminal event.
+      const stream = await app.inject({
+        method: "GET",
+        url: `/api/runs/${runId}/stream`,
+        cookies: { dc_session: cookie },
+      });
+      expect(stream.body).toContain(
+        "event: run_end\ndata: {\"status\":\"aborted\"}\n\n",
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("emits a synthetic terminal run_end when a finished run never stored one", async () => {
+    const runId = createTestRun();
+    append(runId, "run_start", { startedAt: 1 });
+    markRun(db, runId, { status: "error", error: "boom", endedAt: Date.now() });
+
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/runs/${runId}/stream`,
+        cookies: { dc_session: cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toContain(
+        "event: run_end\ndata: {\"status\":\"error\",\"error\":\"boom\"}\n\n",
+      );
     } finally {
       await app.close();
     }

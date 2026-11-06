@@ -107,13 +107,54 @@ describe("bridgeSessionEvents", () => {
     expect(session.listenerCount).toBe(1);
   });
 
-  it("does not end the run while the agent will retry", () => {
+  it("does not persist an assistant message while the agent will retry", () => {
     const { session } = setup();
     const message = assistantMessage("partial");
 
     send(session, { type: "agent_end", messages: [message], willRetry: true });
 
-    expect(stored().map((row) => row.event.type)).toEqual(["assistant_message", "usage"]);
+    expect(stored().map((row) => row.event.type)).toEqual(["usage"]);
+  });
+
+  it("keeps only the final attempt's text across a retry", () => {
+    const { session } = setup();
+
+    send(session, {
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "first attempt " },
+    });
+    const first = assistantMessage("first attempt", { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 });
+    send(session, { type: "message_end", message: first });
+    send(session, { type: "agent_end", messages: [first], willRetry: true });
+    send(session, {
+      type: "auto_retry_start",
+      attempt: 2,
+      delayMs: 100,
+      errorMessage: "overloaded",
+    });
+
+    send(session, {
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "final answer" },
+    });
+    const second = assistantMessage("final answer", { input: 20, output: 10, cacheRead: 1, cacheWrite: 1 });
+    send(session, { type: "message_end", message: second });
+    send(session, { type: "agent_end", messages: [second], willRetry: false });
+
+    const rows = stored();
+    expect(rows.map((row) => row.event.type)).toEqual([
+      "text_delta",
+      "usage",
+      "retry",
+      "text_delta",
+      "assistant_message",
+      "usage",
+      "run_end",
+    ]);
+    const assistantMessages = rows.filter((row) => row.event.type === "assistant_message");
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0]?.event.payload).toEqual({ content: "final answer" });
+    expect(rows.at(-1)?.event.payload).toEqual({ status: "ok" });
   });
 
   it("maps db_query into tool_end, result, and sql events", () => {

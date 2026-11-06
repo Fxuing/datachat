@@ -90,13 +90,22 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
       if (!aborted) {
         const current = findRun(opts.db, run.id);
         if (current && (current.status === "queued" || current.status === "running")) {
-          appendRunEvent(opts.db, {
+          const { seq, createdAt } = appendRunEvent(opts.db, {
             runId: current.id,
             conversationId: current.conversationId,
             type: "run_end",
             payload: { status: "aborted" },
           });
           markRun(opts.db, current.id, { status: "aborted", endedAt: Date.now() });
+          // No live runtime owns this run, so publish the persisted terminal event
+          // ourselves: an already-subscribed SSE client must still finish.
+          opts.runtime.bus.publish({
+            runId: current.id,
+            conversationId: current.conversationId,
+            seq,
+            createdAt,
+            event: { type: "run_end", payload: { status: "aborted" } },
+          });
         }
       }
       return reply.code(204).send();
@@ -159,7 +168,9 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
             `id: ${event.seq}\nevent: ${event.event.type}\ndata: ${JSON.stringify(event.event.payload)}\n\n`,
           );
         } catch {
-          cleanup();
+          // A dead socket needs the full teardown (listeners + heartbeat), not just
+          // the unsubscribe, otherwise the stream leaks until the sweep.
+          finish();
           return;
         }
         if (event.event.type === "run_end") finish();
@@ -179,7 +190,7 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
         try {
           reply.raw.write(": ping\n\n");
         } catch {
-          cleanup();
+          finish();
         }
       }, 15_000);
       heartbeat.unref();
@@ -202,8 +213,33 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
         if (finished) break;
       }
 
-      if (run.status === "ok" || run.status === "error" || run.status === "aborted") {
-        if (!finished) finish();
+      if (!finished) {
+        // Re-read after the replay: a run can become terminal between the first read
+        // and the replay (e.g. aborted by a process that could not publish on the
+        // bus). Emit one synthetic terminal frame instead of leaving the client
+        // waiting for a heartbeat forever.
+        const persisted = findRun(opts.db, run.id);
+        if (
+          persisted &&
+          (persisted.status === "ok" ||
+            persisted.status === "error" ||
+            persisted.status === "aborted")
+        ) {
+          const terminal: RunEvent = {
+            type: "run_end",
+            payload: persisted.error
+              ? { status: persisted.status, error: persisted.error }
+              : { status: persisted.status },
+          };
+          writeEvent({
+            runId: run.id,
+            conversationId: run.conversationId,
+            seq: maxSeq + 1,
+            createdAt: Date.now(),
+            event: terminal,
+          });
+          if (!finished) finish();
+        }
       }
       return reply;
     },

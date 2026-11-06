@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../client.js";
 import { runs } from "../schema.js";
 
@@ -72,4 +72,22 @@ export function listQueuedRuns(db: Db, conversationId: string): RunRow[] {
     .where(and(eq(runs.conversationId, conversationId), eq(runs.status, "queued")))
     .orderBy(asc(runs.createdAt))
     .all();
+}
+
+/** The queued/running run a reloaded client can reattach its SSE stream to. */
+export function findActiveRunForConversation(
+  db: Db,
+  conversationId: string,
+): RunRow | undefined {
+  return db
+    .select()
+    .from(runs)
+    .where(
+      and(
+        eq(runs.conversationId, conversationId),
+        inArray(runs.status, ["queued", "running"]),
+      ),
+    )
+    .orderBy(desc(runs.createdAt))
+    .get();
 }

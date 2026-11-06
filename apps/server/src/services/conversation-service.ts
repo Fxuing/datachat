@@ -4,11 +4,16 @@ import { runEventSchema, type RunEvent } from "@datachat/shared";
 import type { Db } from "../db/client.js";
 import { artifacts } from "../db/schema.js";
 import {
+  encodeConversationCursor,
   listConversations,
   type ConversationRow,
 } from "../db/repositories/conversations.js";
 import { listConversationEvents } from "../db/repositories/run-events.js";
-import { findRun, type RunStatus } from "../db/repositories/runs.js";
+import {
+  findActiveRunForConversation,
+  findRun,
+  type RunStatus,
+} from "../db/repositories/runs.js";
 import type { ArtifactStore } from "./artifacts.js";
 
 export interface ConversationResponse {
@@ -25,7 +30,7 @@ export interface ConversationResponse {
 
 export interface ConversationListPage {
   items: ConversationResponse[];
-  nextCursor: number | null;
+  nextCursor: string | null;
 }
 
 export interface ToolMessage {
@@ -59,6 +64,8 @@ export interface ConversationMessage {
   tools: ToolMessage[];
   results: ConversationResultMessage[];
   sqls: SqlMessage[];
+  /** Terminal run error, so a reloaded history can explain what went wrong. */
+  error: string | null;
   createdAt: number;
 }
 
@@ -77,6 +84,8 @@ export interface ConversationDetail {
   conversation: ConversationResponse;
   messages: ConversationMessage[];
   artifacts: ConversationArtifact[];
+  /** Set while a run is queued/running, so a reloaded page can resume streaming. */
+  activeRun: { id: string; status: "queued" | "running" } | null;
 }
 
 interface MessageGroup {
@@ -107,13 +116,19 @@ export function toConversationResponse(row: ConversationRow): ConversationRespon
 export function listConversationPage(
   db: Db,
   userId: string,
-  opts: { limit?: number; before?: number } = {},
+  opts: { limit?: number; before?: { sortTime: number; id: string } } = {},
 ): ConversationListPage {
   const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
   const rows = listConversations(db, userId, { limit, before: opts.before });
   const items = rows.map(toConversationResponse);
   const last = rows.at(-1);
-  const nextCursor = rows.length === limit && last?.lastMessageAt ? last.lastMessageAt : null;
+  const nextCursor =
+    rows.length === limit && last
+      ? encodeConversationCursor({
+          sortTime: last.lastMessageAt ?? last.createdAt,
+          id: last.id,
+        })
+      : null;
   return { items, nextCursor };
 }
 
@@ -219,6 +234,7 @@ export function getConversationDetail(
       tools: group.tools,
       results: group.results,
       sqls: group.sqls,
+      error: run?.error ?? null,
       createdAt: group.createdAt,
     });
   }
@@ -242,17 +258,51 @@ export function getConversationDetail(
   return {
     conversation: toConversationResponse(conversation),
     messages,
-    artifacts: artifactRows.map((row) => ({
-      id: row.id,
-      runId: row.runId,
-      kind: row.kind,
-      columns: row.columnsJson ? (JSON.parse(row.columnsJson) as Column[]) : [],
-      rowCount: row.rowCount,
-      truncated: row.truncated === 1,
-      spec: row.specJson ? (JSON.parse(row.specJson) as unknown) : null,
-      createdAt: row.createdAt,
-    })),
+    activeRun: toActiveRun(findActiveRunForConversation(db, conversation.id)),
+    artifacts: artifactRows.flatMap((row) => {
+      const parsed = parseArtifactRow(row);
+      return parsed ? [parsed] : [];
+    }),
   };
+}
+
+function parseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseArtifactRow(row: {
+  id: string;
+  runId: string | null;
+  kind: "result" | "chart";
+  columnsJson: string | null;
+  rowCount: number;
+  truncated: number;
+  specJson: string | null;
+  createdAt: number;
+}): ConversationArtifact | null {
+  const columns = row.columnsJson ? parseJson(row.columnsJson) : [];
+  if (!Array.isArray(columns)) return null;
+  const spec = row.specJson ? parseJson(row.specJson) : null;
+  return {
+    id: row.id,
+    runId: row.runId,
+    kind: row.kind,
+    columns: columns as Column[],
+    rowCount: row.rowCount,
+    truncated: row.truncated === 1,
+    spec: spec ?? null,
+    createdAt: row.createdAt,
+  };
+}
+
+function toActiveRun(run: { id: string; status: string } | undefined): ConversationDetail["activeRun"] {
+  if (!run) return null;
+  if (run.status !== "queued" && run.status !== "running") return null;
+  return { id: run.id, status: run.status };
 }
 
 export async function deleteConversationFiles(

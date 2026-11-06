@@ -1,9 +1,28 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../client.js";
 import { artifacts, conversations, runEvents, runs } from "../schema.js";
 
 export type ConversationRow = typeof conversations.$inferSelect;
+
+export interface ConversationCursor {
+  /** `coalesce(lastMessageAt, createdAt)` of the last row on the previous page. */
+  sortTime: number;
+  id: string;
+}
+
+export function encodeConversationCursor(cursor: ConversationCursor): string {
+  return `${cursor.sortTime}:${cursor.id}`;
+}
+
+export function parseConversationCursor(raw: string): ConversationCursor | null {
+  const separator = raw.lastIndexOf(":");
+  if (separator <= 0) return null;
+  const sortTime = Number(raw.slice(0, separator));
+  const id = raw.slice(separator + 1);
+  if (!Number.isSafeInteger(sortTime) || sortTime < 0 || !id) return null;
+  return { sortTime, id };
+}
 
 export interface CreateConversationInput {
   userId: string;
@@ -31,24 +50,31 @@ export function createConversation(db: Db, input: CreateConversationInput): Conv
 }
 
 /**
- * Newest activity first. `before` is the `lastMessageAt` cursor of the last row of
- * the previous page; conversations that never received a message sort last.
+ * Newest activity first. The cursor combines the activity timestamp with the id so
+ * rows sharing a millisecond (and conversations that never received a message) are
+ * all reachable exactly once.
  */
 export function listConversations(
   db: Db,
   userId: string,
-  opts: { limit?: number; before?: number } = {},
+  opts: { limit?: number; before?: ConversationCursor } = {},
 ): ConversationRow[] {
-  const where =
-    opts.before === undefined
-      ? eq(conversations.userId, userId)
-      : and(eq(conversations.userId, userId), lt(conversations.lastMessageAt, opts.before));
+  const sortTime = sql<number>`coalesce(${conversations.lastMessageAt}, ${conversations.createdAt})`;
+  const where = opts.before
+    ? and(
+        eq(conversations.userId, userId),
+        or(
+          lt(sortTime, opts.before.sortTime),
+          and(eq(sortTime, opts.before.sortTime), lt(conversations.id, opts.before.id)),
+        ),
+      )
+    : eq(conversations.userId, userId);
 
   return db
     .select()
     .from(conversations)
     .where(where)
-    .orderBy(desc(conversations.lastMessageAt), desc(conversations.createdAt))
+    .orderBy(desc(sortTime), desc(conversations.id))
     .limit(opts.limit ?? 50)
     .all();
 }

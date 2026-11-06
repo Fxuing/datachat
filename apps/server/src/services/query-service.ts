@@ -52,14 +52,18 @@ export interface QueryServiceDeps {
  * from the database rather than trusted from the caller, so a missing/disabled
  * user or an un-granted datasource always fails closed.
  */
-function authorizeDatasourceAccess(deps: QueryServiceDeps, input: RunQueryInput): string | null {
-  const user = findUserById(deps.db, input.userId);
+export function authorizeDatasourceAccess(
+  db: Db,
+  userId: string,
+  datasourceId: string,
+): string | null {
+  const user = findUserById(db, userId);
   if (!user) return "用户不存在";
   if (user.status !== "active") return "用户已被禁用";
   const allowed = userCanAccessDatasource(
-    deps.db,
-    input.userId,
-    input.datasource.id,
+    db,
+    userId,
+    datasourceId,
     user.role === "admin",
   );
   return allowed ? null : "无权访问该数据源";
@@ -72,7 +76,7 @@ export async function runGuardedQuery(
   const { db, config, pools, artifacts } = deps;
   const action = input.action ?? "query";
 
-  const denied = authorizeDatasourceAccess(deps, input);
+  const denied = authorizeDatasourceAccess(db, input.userId, input.datasource.id);
   if (denied) {
     const auditId = recordAudit(db, {
       runId: input.runId,

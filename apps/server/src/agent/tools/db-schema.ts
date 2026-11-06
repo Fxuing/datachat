@@ -1,6 +1,7 @@
 import { Type, type Static } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { loadSchema } from "../../db/repositories/schema-cache.js";
+import { authorizeDatasourceAccess } from "../../services/query-service.js";
 import type { SchemaSnapshot, SchemaTable } from "../datasource/introspect.js";
 import { errorResult, safeJsonStringify, textResult, type AgentToolContext } from "./context.js";
 
@@ -20,6 +21,8 @@ export interface DbSchemaDetails {
   tableCount: number;
   returned: number;
   truncated: boolean;
+  code?: string;
+  message?: string;
 }
 
 interface TableOutput {
@@ -138,6 +141,16 @@ export function createDbSchemaTool(ctx: AgentToolContext): ToolDefinition<typeof
       "读取当前数据源的已缓存表结构。可用 search 搜索表名/列名，或用 table 精确查看一张表；未传参数时返回全部表。写 SQL 前先调用它。",
     parameters: schemaParameters,
     async execute(_toolCallId, params) {
+      const denied = authorizeDatasourceAccess(ctx.db, ctx.userId, ctx.datasourceId);
+      if (denied) {
+        return errorResult<DbSchemaDetails>("DATASOURCE_FORBIDDEN", denied, {
+          tableCount: 0,
+          returned: 0,
+          truncated: false,
+          code: "DATASOURCE_FORBIDDEN",
+          message: denied,
+        });
+      }
       const snapshot = loadSchema(ctx.db, ctx.datasourceId);
       if (!snapshot) {
         return errorResult(

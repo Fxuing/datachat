@@ -8,7 +8,7 @@ import { createSessionSigner } from "../src/auth/jwt.js";
 import { hashPassword } from "../src/auth/password.js";
 import { createDb, type Db } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
-import { artifacts } from "../src/db/schema.js";
+import { artifacts, runs } from "../src/db/schema.js";
 import {
   createConversation,
   findConversation,
@@ -38,8 +38,10 @@ const fakeRuntime = {
   position: 1,
   abort: vi.fn(() => true),
   remove: vi.fn(async () => undefined),
+  isBusy: vi.fn(() => false),
   shutdown: vi.fn(async () => undefined),
   getOrCreate: vi.fn(() => ({
+    queueLength: 0,
     enqueue: (input: { runId: string; content: string }) => {
       fakeRuntime.enqueued.push(input);
       return fakeRuntime.position++;
@@ -98,6 +100,7 @@ beforeEach(async () => {
   fakeRuntime.bus = new RunEventBus();
   fakeRuntime.abort.mockClear();
   fakeRuntime.remove.mockClear();
+  fakeRuntime.isBusy.mockReturnValue(false);
   fakeRuntime.getOrCreate.mockClear();
 });
 
@@ -179,7 +182,7 @@ describe("conversation routes", () => {
         payload: { modelId: "not-a-model" },
       });
       expect(invalid.statusCode).toBe(400);
-      expect(invalid.json().error.code).toBe("INVALID_MODEL");
+      expect(invalid.json().error.code).toBe("VALIDATION");
 
       const valid = await app.inject({
         method: "PATCH",
@@ -416,9 +419,121 @@ describe("conversation routes", () => {
     }
   });
 
+  it("exposes the active run so a reloaded page can resume streaming", async () => {
+    const conversation = createConversation(db, { userId, datasourceId });
+    const run = createRun(db, {
+      conversationId: conversation.id,
+      userId,
+      modelId: "deepseek-ai/DeepSeek-V3.2",
+    });
+    markRun(db, run.id, { status: "running", startedAt: Date.now() });
+
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversation.id}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().activeRun).toEqual({ id: run.id, status: "running" });
+
+      markRun(db, run.id, { status: "ok", endedAt: Date.now() });
+      const finished = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversation.id}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(finished.json().activeRun).toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("includes the terminal run error in history", async () => {
+    const conversation = createConversation(db, { userId, datasourceId });
+    const run = createRun(db, { conversationId: conversation.id, userId });
+    appendRunEvent(db, {
+      runId: run.id,
+      conversationId: conversation.id,
+      type: "user_message",
+      payload: { content: "hello" },
+    });
+    appendRunEvent(db, {
+      runId: run.id,
+      conversationId: conversation.id,
+      type: "run_end",
+      payload: { status: "error", error: "upstream exploded" },
+    });
+    markRun(db, run.id, { status: "error", error: "upstream exploded", endedAt: Date.now() });
+
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversation.id}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(response.json().messages[0]).toMatchObject({
+        status: "error",
+        error: "upstream exploded",
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects a message when the conversation queue is full", async () => {
+    const conversationId = await createTestConversation();
+    fakeRuntime.getOrCreate.mockImplementationOnce(() => ({
+      queueLength: 5,
+      enqueue: () => {
+        throw new Error("should not enqueue");
+      },
+    }));
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/conversations/${conversationId}/messages`,
+        cookies: { dc_session: cookie },
+        payload: { content: "hello" },
+      });
+      expect(response.statusCode).toBe(429);
+      expect(response.json().error.code).toBe("RATE_LIMITED");
+      expect(fakeRuntime.enqueued).toHaveLength(0);
+      expect(db.select().from(runs).all()).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses to delete a conversation while its runtime is busy", async () => {
+    const conversationId = await createTestConversation();
+    fakeRuntime.isBusy.mockReturnValueOnce(true);
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "DELETE",
+        url: `/api/conversations/${conversationId}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error).toMatchObject({
+        code: "CONFLICT",
+        message: "请先停止当前回答",
+      });
+      expect(findConversation(db, conversationId)).toBeDefined();
+      expect(fakeRuntime.remove).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   it("marks the run error when the runtime rejects the enqueue", async () => {
     const conversationId = await createTestConversation();
     fakeRuntime.getOrCreate.mockImplementationOnce(() => ({
+      queueLength: 0,
       enqueue: () => {
         throw new Error("runtime closed");
       },
@@ -433,6 +548,15 @@ describe("conversation routes", () => {
       });
       expect(response.statusCode).toBe(500);
       expect(response.json().error.code).toBe("ENQUEUE_FAILED");
+
+      const stored = db.select().from(runs).all();
+      expect(stored).toHaveLength(1);
+      expect(stored[0]).toMatchObject({ status: "error", error: "runtime closed" });
+      expect(stored[0]!.endedAt).toEqual(expect.any(Number));
+      expect(listRunEventsAfter(db, stored[0]!.id, 0).at(-1)).toMatchObject({
+        type: "run_end",
+        payloadJson: JSON.stringify({ status: "error", error: "runtime closed" }),
+      });
     } finally {
       await app.close();
     }
