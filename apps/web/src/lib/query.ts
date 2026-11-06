@@ -28,6 +28,7 @@ export const queryKeys = {
   adminUsers: ["adminUsers"] as const,
   audit: (filters: Record<string, unknown>) => ["audit", filters] as const,
   models: ["models"] as const,
+  adminSettings: ["admin-settings"] as const,
   skills: ["skills"] as const,
   skill: (id: string) => ["skill", id] as const,
   mcpServers: ["mcpServers"] as const,

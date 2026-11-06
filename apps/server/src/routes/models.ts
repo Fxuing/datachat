@@ -6,9 +6,12 @@ import {
   listChatModels,
   type ChatModelInfo,
 } from "../agent/model-runtime.js";
+import type { Db } from "../db/client.js";
+import { effectiveSettings } from "../services/app-settings.js";
 
 export interface ModelsRouteOptions {
   config: AppConfig;
+  db: Db;
   /** Test seam; production lazily creates the runtime on first request. */
   getRuntime?: () => Promise<ModelRuntime>;
 }
@@ -41,8 +44,13 @@ export async function modelsRoutes(
     }
     const runtime = await getRuntime();
     const models = listChatModels(runtime);
-    // The default is the first whitelisted model, matching the run-time fallback in
-    // resolveConversationModel() so the selected model and the executed model agree.
-    return { configured: true, models, defaultId: models[0]?.id ?? null };
+    // An admin-selected default wins while it is still whitelisted; otherwise fall
+    // back to the first model, matching resolveConversationModel().
+    const storedDefault = effectiveSettings(opts.db, opts.config).defaultModelId;
+    const defaultId =
+      storedDefault && models.some((model) => model.id === storedDefault)
+        ? storedDefault
+        : (models[0]?.id ?? null);
+    return { configured: true, models, defaultId };
   });
 }

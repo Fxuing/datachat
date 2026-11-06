@@ -85,6 +85,8 @@ export interface CreateShareInput {
   conversationId?: string;
   reportId?: string;
   expiresInDays?: number;
+  /** Admin-configured ceiling (`shareMaxDays`); defaults to the built-in maximum. */
+  maxExpiresInDays?: number;
   /** Clock seam for tests. */
   now?: number;
 }
@@ -114,11 +116,11 @@ function error(code: ShareErrorCode, message: string): { ok: false; code: ShareE
   return { ok: false, code, message };
 }
 
-function validateExpiry(expiresInDays: number): boolean {
+function validateExpiry(expiresInDays: number, maxDays: number): boolean {
   return (
     Number.isInteger(expiresInDays) &&
     expiresInDays >= SHARE_MIN_EXPIRES_IN_DAYS &&
-    expiresInDays <= SHARE_MAX_EXPIRES_IN_DAYS
+    expiresInDays <= maxDays
   );
 }
 
@@ -142,9 +144,11 @@ export function createShare(input: CreateShareInput): CreateShareResult {
     return error("VALIDATION", "必须且只能指定会话或报告");
   }
 
-  const expiresInDays = input.expiresInDays ?? SHARE_DEFAULT_EXPIRES_IN_DAYS;
-  if (!validateExpiry(expiresInDays)) {
-    return error("VALIDATION", "有效期必须为 1 到 365 天");
+  const maxDays = input.maxExpiresInDays ?? SHARE_MAX_EXPIRES_IN_DAYS;
+  const expiresInDays =
+    input.expiresInDays ?? Math.min(SHARE_DEFAULT_EXPIRES_IN_DAYS, maxDays);
+  if (!validateExpiry(expiresInDays, maxDays)) {
+    return error("VALIDATION", `有效期必须为 1 到 ${maxDays} 天`);
   }
 
   if (!isTargetFound(input.db, input.userId, input.conversationId, input.reportId)) {

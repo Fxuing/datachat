@@ -488,6 +488,31 @@ export function listModels(): Promise<ModelsResponse> {
   return apiRequest("/api/models");
 }
 
+export interface AdminSettings {
+  defaultModelId: string | null;
+  queryMaxRows: number;
+  queryPreviewRows: number;
+  queryTimeoutMs: number;
+  shareMaxDays: number;
+}
+
+export type AdminSettingsPatch = {
+  [K in keyof AdminSettings]?: AdminSettings[K] | null;
+};
+
+export function getAdminSettings(): Promise<{ settings: AdminSettings }> {
+  return apiRequest("/api/admin/settings");
+}
+
+export function updateAdminSettings(
+  patch: AdminSettingsPatch,
+): Promise<{ settings: AdminSettings }> {
+  return apiRequest("/api/admin/settings", {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
 export function getArtifact(id: string): Promise<ArtifactDetail> {
   return apiRequest(`/api/artifacts/${id}`);
 }

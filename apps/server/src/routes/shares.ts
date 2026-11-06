@@ -1,20 +1,22 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import {
   createShare,
   resolveShare,
   revokeShare,
-  SHARE_DEFAULT_EXPIRES_IN_DAYS,
   SHARE_MAX_EXPIRES_IN_DAYS,
   SHARE_MIN_EXPIRES_IN_DAYS,
   type ShareErrorCode,
 } from "../services/shares.js";
 import type { ArtifactStore } from "../services/artifacts.js";
+import { effectiveSettings } from "../services/app-settings.js";
 
 export interface ShareRouteOptions {
   db: Db;
   artifacts: ArtifactStore;
+  config: AppConfig;
 }
 
 const createBodySchema = z
@@ -26,7 +28,7 @@ const createBodySchema = z
       .int()
       .min(SHARE_MIN_EXPIRES_IN_DAYS)
       .max(SHARE_MAX_EXPIRES_IN_DAYS)
-      .default(SHARE_DEFAULT_EXPIRES_IN_DAYS),
+      .optional(),
   })
   .refine(
     (value) => (value.conversationId === undefined) !== (value.reportId === undefined),
@@ -62,7 +64,10 @@ export async function shareRoutes(
         ? { conversationId: body.data.conversationId }
         : {}),
       ...(body.data.reportId !== undefined ? { reportId: body.data.reportId } : {}),
-      expiresInDays: body.data.expiresInDays,
+      ...(body.data.expiresInDays !== undefined
+        ? { expiresInDays: body.data.expiresInDays }
+        : {}),
+      maxExpiresInDays: effectiveSettings(opts.db, opts.config).shareMaxDays,
     });
     if (!result.ok) {
       const status = ERROR_STATUS[result.code];
