@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { AppConfig } from "../../src/config.js";
 
 /** Shared AppConfig fixture; spread it when a test needs its own dataDir/dbPath. */
@@ -6,6 +7,9 @@ export const testConfig: AppConfig = {
   appSecret: "test-secret-test-secret-test-secret-32",
   dataDir: "./data-test",
   dbPath: ":memory:",
+  // `apps/server/test/helpers` → repo root → `agent/`.
+  agentDir: path.resolve(import.meta.dirname, "../../../../agent"),
+  agentAuthPath: path.resolve(import.meta.dirname, "../../../../data-test/agent/auth.json"),
   logLevel: "silent",
   siliconflowBaseUrl: "https://api.siliconflow.cn/v1",
   appOrigins: [],

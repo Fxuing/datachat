@@ -7,6 +7,7 @@ import { createSessionSigner } from "./auth/jwt.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
 import { datasourceRoutes } from "./routes/datasources.js";
 import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
+import { modelsRoutes } from "./routes/models.js";
 import { PoolRegistry } from "./agent/datasource/pool.js";
 import { ArtifactStore } from "./services/artifacts.js";
 import type { AppConfig } from "./config.js";
@@ -91,6 +92,7 @@ export async function buildApp({
   const pools = new PoolRegistry();
   await app.register(datasourceRoutes, { config, db, pools });
   await app.register(datasourceSchemaRoutes, { config, db, pools });
+  await app.register(modelsRoutes, { config });
   app.addHook("onClose", async () => {
     await artifacts.close();
     await pools.closeAll();

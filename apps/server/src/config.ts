@@ -77,6 +77,10 @@ export interface AppConfig {
   appSecret: string;
   dataDir: string;
   dbPath: string;
+  /** Repo-level agent assets (models.json, prompts, skills). */
+  agentDir: string;
+  /** Pi credential store; kept out of the repo so it can be mounted as a volume. */
+  agentAuthPath: string;
   logLevel: string;
   siliconflowApiKey?: string;
   siliconflowBaseUrl: string;
@@ -115,6 +119,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     appSecret: parsed.APP_SECRET,
     dataDir,
     dbPath: path.join(dataDir, "datachat.db"),
+    agentDir: path.resolve(REPO_ROOT, "agent"),
+    agentAuthPath: path.join(dataDir, "agent", "auth.json"),
     logLevel: parsed.LOG_LEVEL,
     siliconflowApiKey: parsed.SILICONFLOW_API_KEY,
     siliconflowBaseUrl: parsed.SILICONFLOW_BASE_URL,
