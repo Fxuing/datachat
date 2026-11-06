@@ -16,26 +16,35 @@ const envSchema = z
       emptyToUndefined,
       z.coerce.number().int().min(1).max(65535).default(8080),
     ),
-    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    NODE_ENV: z.preprocess(
+      emptyToUndefined,
+      z.enum(["development", "test", "production"]).default("development"),
+    ),
     APP_SECRET: z.string().min(32, "APP_SECRET 至少 32 个字符"),
-    DATA_DIR: z.string().default("./data"),
-    LOG_LEVEL: z
-      .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
-      .default("info"),
+    DATA_DIR: z.preprocess(emptyToUndefined, z.string().default("./data")),
+    LOG_LEVEL: z.preprocess(
+      emptyToUndefined,
+      z
+        .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
+        .default("info"),
+    ),
     SILICONFLOW_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
     SILICONFLOW_BASE_URL: z.string().url().default("https://api.siliconflow.cn/v1"),
-    ADMIN_USERNAME: z.string().default("admin"),
+    ADMIN_USERNAME: z.string().min(1, "ADMIN_USERNAME 不能为空").default("admin"),
     ADMIN_PASSWORD: z.preprocess(emptyToUndefined, z.string().min(8).optional()),
   })
   .superRefine((env, ctx) => {
-    if (PLACEHOLDER_SECRETS.has(env.APP_SECRET)) {
+    if (PLACEHOLDER_SECRETS.has(env.APP_SECRET.trim())) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["APP_SECRET"],
         message: "APP_SECRET must be a real random secret",
       });
     }
-    if (env.ADMIN_PASSWORD !== undefined && PLACEHOLDER_PASSWORDS.has(env.ADMIN_PASSWORD)) {
+    if (
+      env.ADMIN_PASSWORD !== undefined &&
+      PLACEHOLDER_PASSWORDS.has(env.ADMIN_PASSWORD.trim())
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["ADMIN_PASSWORD"],
