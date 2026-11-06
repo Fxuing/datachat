@@ -35,6 +35,10 @@ interface ToolDetails {
   code?: unknown;
   message?: unknown;
   durationMs?: unknown;
+  chartArtifactId?: unknown;
+  points?: unknown;
+  title?: unknown;
+  spec?: unknown;
 }
 
 interface ToolResultLike {
@@ -179,6 +183,31 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
             summary: summarizeToolResult(event.result),
           },
         });
+
+        if (event.toolName === "make_chart") {
+          if (
+            !event.isError &&
+            details &&
+            typeof details.chartArtifactId === "string" &&
+            details.chartArtifactId &&
+            typeof details.points === "number" &&
+            typeof details.title === "string" &&
+            details.spec !== null &&
+            typeof details.spec === "object" &&
+            !Array.isArray(details.spec)
+          ) {
+            persist({
+              type: "chart",
+              payload: {
+                chartArtifactId: details.chartArtifactId,
+                spec: details.spec as Record<string, unknown>,
+                points: details.points,
+                title: details.title,
+              },
+            });
+          }
+          return;
+        }
 
         if (event.toolName !== "db_query") return;
         if (!event.isError && details && details.guard === "ok") {

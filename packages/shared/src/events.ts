@@ -83,9 +83,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("chart"),
     payload: z.object({
-      artifactId: z.string(),
+      chartArtifactId: z.string(),
       // ECharts option; kept as a JSON object because shared does not depend on echarts.
       spec: z.record(z.unknown()),
+      points: z.number().int().nonnegative(),
+      title: z.string(),
     }),
   }),
   z.object({

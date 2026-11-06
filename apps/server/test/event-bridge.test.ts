@@ -221,6 +221,44 @@ describe("bridgeSessionEvents", () => {
     });
   });
 
+  it("maps make_chart into a chart event", () => {
+    const { session } = setup();
+    const spec = { option: { series: [] }, chart: { type: "bar", x: "month", y: "amount" } };
+    const result = {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ chartArtifactId: "chart-1", type: "bar", points: 2, title: "amount" }),
+        },
+      ],
+      details: { chartArtifactId: "chart-1", points: 2, title: "amount", spec },
+    };
+
+    send(session, {
+      type: "tool_execution_start",
+      toolCallId: "call-2",
+      toolName: "make_chart",
+      args: { artifactId: "artifact-1", type: "bar" },
+    });
+    send(session, {
+      type: "tool_execution_end",
+      toolCallId: "call-2",
+      toolName: "make_chart",
+      result,
+      isError: false,
+      durationMs: 5,
+    });
+
+    const rows = stored();
+    expect(rows.map((row) => row.event.type)).toEqual(["tool_start", "tool_end", "chart"]);
+    expect(rows[2]?.event.payload).toEqual({
+      chartArtifactId: "chart-1",
+      spec,
+      points: 2,
+      title: "amount",
+    });
+  });
+
   it("swallows event persistence failures and keeps the session subscribed", () => {
     const session = new FakeAgentSession();
     const failingDb = {

@@ -324,6 +324,35 @@ export class ArtifactStore {
     return writer;
   }
 
+  /** Persist a chart spec; charts never own a JSONL result file. */
+  createChart(input: {
+    conversationId: string;
+    userId: string;
+    runId: string | null;
+    columns: ColumnInfo[];
+    spec: unknown;
+    rowCount: number;
+  }): ArtifactMeta {
+    const id = randomUUID();
+    this.db
+      .insert(artifacts)
+      .values({
+        id,
+        conversationId: input.conversationId,
+        userId: input.userId,
+        runId: input.runId,
+        kind: "chart",
+        storagePath: null,
+        columnsJson: JSON.stringify(input.columns),
+        rowCount: input.rowCount,
+        truncated: 0,
+        specJson: JSON.stringify(input.spec),
+        createdAt: Date.now(),
+      })
+      .run();
+    return { id, rowCount: input.rowCount, truncated: false };
+  }
+
   get(id: string): ArtifactRecord | null {
     const row = this.db.select().from(artifacts).where(eq(artifacts.id, id)).get();
     return row ? toRecord(row) : null;
@@ -401,7 +430,9 @@ export class ArtifactStore {
 
   async read(id: string): Promise<{ meta: ArtifactRecord; rows: unknown[][] } | null> {
     const meta = this.get(id);
-    if (!meta || !meta.storagePath) return null;
+    if (!meta) return null;
+    if (meta.kind === "chart") return { meta, rows: [] };
+    if (!meta.storagePath) return null;
     const rows: unknown[][] = [];
     const stream = createReadStream(this.resolvePath(meta.storagePath)).pipe(createGunzip());
     const lines = createInterface({ input: stream, crlfDelay: Infinity });
