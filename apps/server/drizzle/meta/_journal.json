@@ -15,6 +15,13 @@
       "when": 1793935963761,
       "tag": "0001_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793937000000,
+      "tag": "0002_hardening",
+      "breakpoints": true
     }
   ]
 }

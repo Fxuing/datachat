@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { createDb, type DbHandle } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { queryAudit } from "../src/db/schema.js";
-import { recordAudit, redactSecrets, type AuditStatus } from "../src/services/audit.js";
+import { recordAudit, redactSecrets, MAX_AUDIT_SQL_LENGTH, type AuditStatus } from "../src/services/audit.js";
 
 let root: string;
 let handle: DbHandle;
@@ -49,6 +49,23 @@ describe("recordAudit", () => {
       expect(row?.createdAt).toBeGreaterThan(0);
     },
   );
+
+  it("caps stored SQL while hashing the full statement", () => {
+    const sql = `SELECT '${"a".repeat(MAX_AUDIT_SQL_LENGTH + 500)}'`;
+    const id = recordAudit(handle.db, {
+      runId: null,
+      conversationId: null,
+      userId: "user-1",
+      datasourceId: "ds-1",
+      action: "query",
+      sqlText: sql,
+      status: "ok",
+    });
+
+    const row = handle.db.select().from(queryAudit).where(eq(queryAudit.id, id)).get();
+    expect(row?.sqlText).toHaveLength(MAX_AUDIT_SQL_LENGTH);
+    expect(row?.sqlHash).toBe(createHash("sha256").update(sql).digest("hex"));
+  });
 
   it("redacts credentials from stored error messages", () => {
     const id = recordAudit(handle.db, {

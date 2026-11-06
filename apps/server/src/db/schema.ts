@@ -30,7 +30,9 @@ export const datasources = sqliteTable("datasources", {
   database: text("database").notNull(),
   username: text("username").notNull(),
   passwordCipher: text("password_cipher").notNull(),
-  sslMode: text("ssl_mode", { enum: ["disable", "require"] }).notNull().default("disable"),
+  sslMode: text("ssl_mode", { enum: ["disable", "require", "no-verify"] })
+    .notNull()
+    .default("disable"),
   /** Connection options (charset, TLS extras) as JSON; spec §6 requires the column. */
   optionsJson: text("options_json"),
   readOnlyVerified: integer("read_only_verified").notNull().default(0),
@@ -39,7 +41,10 @@ export const datasources = sqliteTable("datasources", {
   createdBy: text("created_by").notNull(),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
-});
+}, (t) => [
+  // The migration spells out `COLLATE NOCASE`; Drizzle only needs the index name.
+  uniqueIndex("datasources_name_nocase_unique").on(t.name),
+]);
 
 export const datasourceGrants = sqliteTable(
   "datasource_grants",
@@ -49,7 +54,10 @@ export const datasourceGrants = sqliteTable(
     userId: text("user_id").notNull(),
     createdAt: integer("created_at").notNull(),
   },
-  (t) => [uniqueIndex("datasource_grants_datasource_user_unique").on(t.datasourceId, t.userId)],
+  (t) => [
+    uniqueIndex("datasource_grants_datasource_user_unique").on(t.datasourceId, t.userId),
+    index("datasource_grants_user_idx").on(t.userId),
+  ],
 );
 
 export const datasourceSchemaCache = sqliteTable("datasource_schema_cache", {
@@ -95,7 +103,10 @@ export const runs = sqliteTable(
     startedAt: integer("started_at"),
     endedAt: integer("ended_at"),
   },
-  (t) => [index("runs_conversation_idx").on(t.conversationId)],
+  (t) => [
+    index("runs_conversation_idx").on(t.conversationId),
+    index("runs_conversation_created_idx").on(t.conversationId, t.createdAt),
+  ],
 );
 
 export const runEvents = sqliteTable(
@@ -109,7 +120,10 @@ export const runEvents = sqliteTable(
     payloadJson: text("payload_json").notNull(),
     createdAt: integer("created_at").notNull(),
   },
-  (t) => [uniqueIndex("run_events_run_seq_unique").on(t.runId, t.seq)],
+  (t) => [
+    uniqueIndex("run_events_run_seq_unique").on(t.runId, t.seq),
+    index("run_events_conversation_seq_idx").on(t.conversationId, t.seq),
+  ],
 );
 
 export const queryAudit = sqliteTable(
@@ -118,25 +132,46 @@ export const queryAudit = sqliteTable(
     id: text("id").primaryKey(),
     runId: text("run_id"),
     conversationId: text("conversation_id"),
-    userId: text("user_id").notNull(),
-    datasourceId: text("datasource_id").notNull(),
-    action: text("action", { enum: ["query", "explain", "export"] }).notNull().default("query"),
+    userId: text("user_id"),
+    datasourceId: text("datasource_id"),
+    action: text("action", {
+      enum: [
+        "query",
+        "explain",
+        "export",
+        "login",
+        "login_failed",
+        "user_create",
+        "user_update",
+        "datasource_create",
+        "datasource_update",
+        "datasource_delete",
+        "grant_update",
+      ],
+    })
+      .notNull()
+      .default("query"),
     sqlText: text("sql_text").notNull(),
     sqlHash: text("sql_hash").notNull(),
     status: text("status", { enum: ["ok", "rejected", "error", "timeout"] }).notNull(),
     rowCount: integer("row_count"),
     durationMs: integer("duration_ms"),
     errorMessage: text("error_message"),
+    detailJson: text("detail_json"),
     createdAt: integer("created_at").notNull(),
   },
-  (t) => [index("query_audit_datasource_created_idx").on(t.datasourceId, t.createdAt)],
+  (t) => [
+    index("query_audit_datasource_created_idx").on(t.datasourceId, t.createdAt),
+    index("query_audit_created_idx").on(t.createdAt),
+  ],
 );
 
 export const artifacts = sqliteTable(
   "artifacts",
   {
     id: text("id").primaryKey(),
-    conversationId: text("conversation_id").notNull(),
+    conversationId: text("conversation_id"),
+    userId: text("user_id"),
     runId: text("run_id"),
     kind: text("kind", { enum: ["result", "chart"] }).notNull(),
     storagePath: text("storage_path"),
@@ -146,7 +181,10 @@ export const artifacts = sqliteTable(
     specJson: text("spec_json"),
     createdAt: integer("created_at").notNull(),
   },
-  (t) => [index("artifacts_run_idx").on(t.runId)],
+  (t) => [
+    index("artifacts_run_idx").on(t.runId),
+    index("artifacts_user_idx").on(t.userId),
+  ],
 );
 
 export const reports = sqliteTable("reports", {

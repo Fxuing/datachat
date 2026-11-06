@@ -39,15 +39,22 @@ const APP_TABLES = [
   "users",
 ];
 
-const INTEGRITY_INDEXES = [
-  "artifacts_run_idx",
-  "conversations_user_last_message_idx",
-  "datasource_grants_datasource_user_unique",
-  "query_audit_datasource_created_idx",
-  "run_events_run_seq_unique",
-  "runs_conversation_idx",
-  "users_username_nocase_unique",
-];
+const INTEGRITY_INDEXES: Record<string, string[]> = {
+  artifacts: ["artifacts_run_idx", "artifacts_user_idx"],
+  conversations: ["conversations_user_last_message_idx"],
+  datasource_grants: [
+    "datasource_grants_datasource_user_unique",
+    "datasource_grants_user_idx",
+  ],
+  datasources: ["datasources_name_nocase_unique"],
+  query_audit: [
+    "query_audit_datasource_created_idx",
+    "query_audit_created_idx",
+  ],
+  run_events: ["run_events_conversation_seq_idx", "run_events_run_seq_unique"],
+  runs: ["runs_conversation_idx", "runs_conversation_created_idx"],
+  users: ["users_username_nocase_unique"],
+};
 
 let dataDir: string;
 let config: AppConfig;
@@ -98,6 +105,19 @@ function indexNames(sqlite: DbHandle["sqlite"]): string[] {
   return rows.map((row) => row.name);
 }
 
+function indexList(sqlite: DbHandle["sqlite"], table: string): string[] {
+  const rows = sqlite.pragma(`index_list("${table}")`) as Array<{ name: string }>;
+  return rows.map((row) => row.name);
+}
+
+function assertIntegrityIndexes(sqlite: DbHandle["sqlite"]): void {
+  for (const [table, expected] of Object.entries(INTEGRITY_INDEXES)) {
+    expect(indexList(sqlite, table), `indexes on ${table}`).toEqual(
+      expect.arrayContaining(expected),
+    );
+  }
+}
+
 function columnNames(sqlite: DbHandle["sqlite"], table: string): string[] {
   const rows = sqlite.prepare(`pragma table_info("${table}")`).all() as Array<{ name: string }>;
   return rows.map((row) => row.name);
@@ -144,13 +164,48 @@ describe("database lifecycle", () => {
     const { db, sqlite } = openDb();
 
     expect(tableNames(sqlite)).toEqual(expect.arrayContaining(APP_TABLES));
-    expect(indexNames(sqlite)).toEqual(expect.arrayContaining(INTEGRITY_INDEXES));
+    assertIntegrityIndexes(sqlite);
     expect(columnNames(sqlite, "datasources")).toContain("options_json");
+    expect(columnNames(sqlite, "artifacts")).toEqual(
+      expect.arrayContaining(["user_id", "conversation_id"]),
+    );
+    expect(columnNames(sqlite, "query_audit")).toEqual(
+      expect.arrayContaining(["detail_json", "user_id", "datasource_id"]),
+    );
+    const artifactColumns = sqlite.pragma("table_info(\"artifacts\")") as Array<{
+      name: string;
+      notnull: number;
+    }>;
+    expect(artifactColumns.find((column) => column.name === "conversation_id")?.notnull).toBe(0);
+    const auditColumns = sqlite.pragma("table_info(\"query_audit\")") as Array<{
+      name: string;
+      notnull: number;
+    }>;
+    expect(auditColumns.find((column) => column.name === "user_id")?.notnull).toBe(0);
+    expect(auditColumns.find((column) => column.name === "datasource_id")?.notnull).toBe(0);
 
     expect(sqlite.pragma("journal_mode", { simple: true })).toBe("wal");
     expect(sqlite.pragma("foreign_keys", { simple: true })).toBe(1);
     expect(sqlite.pragma("busy_timeout", { simple: true })).toBe(5000);
     expect(countUsers(db)).toBe(0);
+  });
+
+  it("enforces case-insensitive datasource names and extended audit actions", () => {
+    const { sqlite } = openDb();
+    const insertDatasource = sqlite.prepare(
+      `insert into datasources
+        (id, name, type, host, port, database, username, password_cipher, created_by, created_at, updated_at)
+       values (?, ?, 'mysql', '127.0.0.1', 3306, 'analytics', 'app', 'cipher', 'admin', 1, 1)`,
+    );
+    insertDatasource.run("ds-1", "Analytics");
+    expect(() => insertDatasource.run("ds-2", "analytics")).toThrow(/UNIQUE constraint failed/);
+
+    const insertAudit = sqlite.prepare(
+      `insert into query_audit (id, action, sql_text, sql_hash, status, created_at)
+       values (?, ?, '', 'hash', 'ok', 1)`,
+    );
+    insertAudit.run("audit-1", "login_failed");
+    expect(() => insertAudit.run("audit-2", "not-an-action")).toThrow(/CHECK constraint failed/);
   });
 
   it("is idempotent when migrations run twice", () => {
@@ -178,11 +233,12 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(2);
-    expect(migrateDb(handle.db)).toBe(2);
+    expect(migrateDb(handle.db)).toBe(3);
+    expect(migrateDb(handle.db)).toBe(3);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");
+    assertIntegrityIndexes(handle.sqlite);
     expect(columnNames(handle.sqlite, "datasources")).toContain("options_json");
     expect(() =>
       insertRawUser(handle.sqlite, { id: "bad", username: "bad", role: "superadmin" }),
