@@ -3,12 +3,14 @@ import type { Column } from "@datachat/shared";
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
+  readonly details?: unknown;
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, details?: unknown) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -25,14 +27,18 @@ export function setUnauthorizedHandler(handler: (() => void) | undefined): void 
 async function parseError(response: Response): Promise<ApiError> {
   let code = `HTTP_${response.status}`;
   let message = "请求失败，请稍后重试";
+  let details: unknown;
   try {
-    const body = (await response.json()) as { error?: { code?: unknown; message?: unknown } };
+    const body = (await response.json()) as {
+      error?: { code?: unknown; message?: unknown; details?: unknown };
+    };
     if (typeof body.error?.code === "string") code = body.error.code;
     if (typeof body.error?.message === "string") message = body.error.message;
+    if (body.error?.details !== undefined) details = body.error.details;
   } catch {
     // Non-JSON error bodies keep the generic message.
   }
-  return new ApiError(code, message, response.status);
+  return new ApiError(code, message, response.status, details);
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -178,6 +184,33 @@ export interface ArtifactRowsPage {
   total: number;
 }
 
+export type SkillScope = "global" | "datasource";
+
+/** Skill row used by the admin list; deliberately excludes the markdown content. */
+export interface AdminSkill {
+  id: string;
+  name: string;
+  description: string;
+  scope: SkillScope;
+  datasourceId: string | null;
+  enabled: boolean;
+  updatedAt: number;
+}
+
+export interface AdminSkillDetail extends AdminSkill {
+  content: string;
+  createdAt: number;
+}
+
+export interface SkillInput {
+  name: string;
+  description: string;
+  content: string;
+  scope: SkillScope;
+  datasourceId?: string | null;
+  enabled?: boolean;
+}
+
 export function login(input: { username: string; password: string }): Promise<{ user: SessionUser }> {
   return apiRequest("/api/auth/login", {
     method: "POST",
@@ -263,4 +296,37 @@ export function getArtifactRows(
   if (options.limit !== undefined) params.set("limit", String(options.limit));
   const query = params.toString();
   return apiRequest(`/api/artifacts/${id}/rows${query ? `?${query}` : ""}`);
+}
+
+export function listSkills(): Promise<{ skills: AdminSkill[] }> {
+  return apiRequest("/api/admin/skills");
+}
+
+export function getSkill(id: string): Promise<{ skill: AdminSkillDetail }> {
+  return apiRequest(`/api/admin/skills/${id}`);
+}
+
+export function createSkill(input: SkillInput): Promise<{ skill: AdminSkillDetail }> {
+  return apiRequest("/api/admin/skills", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateSkill(
+  id: string,
+  input: Partial<SkillInput>,
+): Promise<{ skill: AdminSkillDetail }> {
+  return apiRequest(`/api/admin/skills/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteSkill(id: string): Promise<{ ok: boolean }> {
+  return apiRequest(`/api/admin/skills/${id}`, { method: "DELETE" });
+}
+
+export function seedSkills(): Promise<{ imported: number; skipped: number }> {
+  return apiRequest("/api/admin/skills/seed", { method: "POST" });
 }

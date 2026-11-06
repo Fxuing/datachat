@@ -14,6 +14,7 @@ import LoginPage from "./pages/LoginPage";
 import { PageSpinner } from "./components/ui/spinner";
 
 const ChatPage = lazy(() => import("./pages/ChatPage"));
+const SkillsPage = lazy(() => import("./pages/admin/SkillsPage"));
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const meQuery = useQuery({
@@ -28,6 +29,27 @@ function RequireAuth({ children }: { children: ReactNode }) {
   }
   if (meQuery.isError) {
     return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+}
+
+/** Admins only; a non-admin session is sent back to chat instead of seeing the page. */
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const meQuery = useQuery({
+    queryKey: queryKeys.me,
+    queryFn: fetchMe,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  if (meQuery.isPending) {
+    return <PageSpinner label="正在验证登录状态…" />;
+  }
+  if (meQuery.isError) {
+    return <Navigate to="/login" replace />;
+  }
+  if (meQuery.data.user.role !== "admin") {
+    return <Navigate to="/chat" replace />;
   }
   return <>{children}</>;
 }
@@ -58,6 +80,14 @@ function AppRoutes() {
             <RequireAuth>
               <ChatPage />
             </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/skills"
+          element={
+            <RequireAdmin>
+              <SkillsPage />
+            </RequireAdmin>
           }
         />
         <Route path="/" element={<Navigate to="/chat" replace />} />

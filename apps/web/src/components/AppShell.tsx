@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { LogOut } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { BookOpen, LogOut } from "lucide-react";
 import { logout, type SessionUser } from "../lib/api";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
 export interface AppShellProps {
@@ -14,6 +15,7 @@ export interface AppShellProps {
 
 export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
 
   const logoutMutation = useMutation({
@@ -37,6 +39,27 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">{sidebar}</div>
+
+        {user.role === "admin" ? (
+          <div className="shrink-0 border-t border-neutral-200 p-2">
+            <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+              管理
+            </p>
+            <Link
+              to="/admin/skills"
+              aria-current={location.pathname.startsWith("/admin/skills") ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+                location.pathname.startsWith("/admin/skills")
+                  ? "bg-neutral-100 font-medium text-neutral-900"
+                  : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900",
+              )}
+            >
+              <BookOpen className="h-4 w-4" />
+              技能管理
+            </Link>
+          </div>
+        ) : null}
 
         <div className="shrink-0 border-t border-neutral-200 p-3">
           <div className="flex items-center gap-2">

@@ -20,6 +20,8 @@ export const queryKeys = {
   conversation: (id: string) => ["conversation", id] as const,
   datasources: ["datasources"] as const,
   models: ["models"] as const,
+  skills: ["skills"] as const,
+  skill: (id: string) => ["skill", id] as const,
 };
 
 /**
