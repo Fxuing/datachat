@@ -14,6 +14,7 @@ import LoginPage from "./pages/LoginPage";
 import { PageSpinner } from "./components/ui/spinner";
 
 const ChatPage = lazy(() => import("./pages/ChatPage"));
+const ReportPage = lazy(() => import("./pages/ReportPage"));
 const SkillsPage = lazy(() => import("./pages/admin/SkillsPage"));
 const McpPage = lazy(() => import("./pages/admin/McpPage"));
 const DatasourcesPage = lazy(() => import("./pages/admin/DatasourcesPage"));
@@ -81,6 +82,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ChatPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/reports/:id"
+          element={
+            <RequireAuth>
+              <ReportPage />
             </RequireAuth>
           }
         />

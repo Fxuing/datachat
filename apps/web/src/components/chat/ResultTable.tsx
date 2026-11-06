@@ -1,6 +1,8 @@
 import type { Column } from "@datachat/shared";
 import { useEffect, useState } from "react";
+import { FileText } from "lucide-react";
 import { cn, formatCount } from "../../lib/utils";
+import { Button } from "../ui/button";
 import { ArtifactActions } from "./ArtifactActions";
 
 export const MAX_PREVIEW_ROWS = 100;
@@ -11,6 +13,8 @@ export interface ResultTableProps {
   rows: unknown[][];
   rowCount: number;
   truncated: boolean;
+  /** When provided, offers to turn this result into a report. */
+  onCreateReport?: (artifactId: string) => void;
 }
 
 function isNumeric(column: Column): boolean {
@@ -30,7 +34,14 @@ function renderValue(value: unknown) {
   return String(value);
 }
 
-export function ResultTable({ artifactId, columns, rows, rowCount, truncated }: ResultTableProps) {
+export function ResultTable({
+  artifactId,
+  columns,
+  rows,
+  rowCount,
+  truncated,
+  onCreateReport,
+}: ResultTableProps) {
   const [extraRows, setExtraRows] = useState<unknown[][]>([]);
 
   // A new artifact replaces the appended pages from the previous one.
@@ -103,12 +114,24 @@ export function ResultTable({ artifactId, columns, rows, rowCount, truncated }: 
             </span>
           ) : null}
         </div>
-        <ArtifactActions
-          artifactId={artifactId}
-          rowCount={rowCount}
-          shownRows={displayRows.length}
-          onRowsAppended={(rows) => setExtraRows((previous) => [...previous, ...rows])}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {onCreateReport ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onCreateReport(artifactId)}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              生成报告
+            </Button>
+          ) : null}
+          <ArtifactActions
+            artifactId={artifactId}
+            rowCount={rowCount}
+            shownRows={displayRows.length}
+            onRowsAppended={(rows) => setExtraRows((previous) => [...previous, ...rows])}
+          />
+        </div>
       </div>
     </div>
   );

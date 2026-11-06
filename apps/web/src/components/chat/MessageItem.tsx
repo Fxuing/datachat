@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Bot } from "lucide-react";
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -12,7 +13,26 @@ import { ToolCard } from "./ToolCard";
 export function MarkdownText({ content }: { content: string }) {
   return (
     <div className="markdown text-sm">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlight]}
+        components={{
+          a({ href, children, node: _node, ...props }) {
+            if (href?.startsWith("/") && !href.startsWith("//")) {
+              return (
+                <Link to={href} {...props}>
+                  {children}
+                </Link>
+              );
+            }
+            return (
+              <a href={href} {...props}>
+                {children}
+              </a>
+            );
+          },
+        }}
+      >
         {content}
       </ReactMarkdown>
     </div>
@@ -79,9 +99,11 @@ function HistoricalChart({ artifact }: { artifact: ChatArtifact }) {
 export function MessageItem({
   message,
   artifacts = [],
+  onCreateReport,
 }: {
   message: ChatMessage;
   artifacts?: ChatArtifact[];
+  onCreateReport?: (artifactId: string) => void;
 }) {
   const assistantText = message.assistant?.content ?? "";
   const charts = artifacts.filter(
@@ -115,7 +137,11 @@ export function MessageItem({
         {message.results.length > 0 ? (
           <div className="flex flex-col gap-1.5">
             {message.results.map((result) => (
-              <ResultTable key={result.artifactId} {...result} />
+              <ResultTable
+                key={result.artifactId}
+                {...result}
+                onCreateReport={onCreateReport}
+              />
             ))}
           </div>
         ) : null}

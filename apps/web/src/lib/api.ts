@@ -1,4 +1,9 @@
-import type { Column, DatasourceInput } from "@datachat/shared";
+import type {
+  Column,
+  DatasourceInput,
+  ReportDetail,
+  ReportSummary,
+} from "@datachat/shared";
 
 export class ApiError extends Error {
   readonly code: string;
@@ -322,6 +327,26 @@ export function sendMessage(
     method: "POST",
     body: JSON.stringify({ content }),
   });
+}
+
+export function createReport(input: {
+  conversationId: string;
+  title?: string;
+  markdown?: string;
+  artifactIds: string[];
+}): Promise<{ report: ReportSummary }> {
+  return apiRequest("/api/reports", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getReport(id: string): Promise<{ report: ReportDetail }> {
+  return apiRequest(`/api/reports/${id}`);
+}
+
+export function deleteReport(id: string): Promise<void> {
+  return apiRequest(`/api/reports/${id}`, { method: "DELETE" });
 }
 
 export function abortRun(runId: string): Promise<void> {

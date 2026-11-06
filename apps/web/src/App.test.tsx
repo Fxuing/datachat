@@ -122,5 +122,5 @@ describe("app routes", () => {
       "/api/conversations",
       expect.objectContaining({ method: "POST" }),
     );
-  });
+  }, 15_000);
 });

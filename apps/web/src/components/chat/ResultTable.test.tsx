@@ -126,4 +126,21 @@ describe("ResultTable", () => {
     expect(screen.getByRole("cell", { name: "103" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
   });
+
+  it("offers report creation when a callback is provided", async () => {
+    const onCreateReport = vi.fn();
+    render(
+      <ResultTable
+        artifactId="artifact-1"
+        columns={columns}
+        rows={[["alice", 42]]}
+        rowCount={1}
+        truncated={false}
+        onCreateReport={onCreateReport}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "生成报告" }));
+    expect(onCreateReport).toHaveBeenCalledWith("artifact-1");
+  });
 });

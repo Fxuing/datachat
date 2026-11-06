@@ -18,6 +18,8 @@ export interface MessageListProps {
   loading?: boolean;
   /** Conversation artifacts, used to restore charts for persisted runs. */
   artifacts?: ChatArtifact[];
+  /** Turns a result artifact into a report and opens it. */
+  onCreateReport?: (artifactId: string) => void;
 }
 
 function AssistantHeader() {
@@ -65,6 +67,7 @@ export function MessageList({
   optimisticText,
   loading = false,
   artifacts = [],
+  onCreateReport,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasContent = messages.length > 0 || showStream;
@@ -97,7 +100,12 @@ export function MessageList({
         {!hasContent ? <EmptyChat /> : null}
 
         {messages.map((message) => (
-          <MessageItem key={message.runId} message={message} artifacts={artifacts} />
+          <MessageItem
+            key={message.runId}
+            message={message}
+            artifacts={artifacts}
+            onCreateReport={onCreateReport}
+          />
         ))}
 
         {showStream ? (
@@ -128,7 +136,11 @@ export function MessageList({
               {stream.results.length > 0 ? (
                 <div className="flex flex-col gap-1.5">
                   {stream.results.map((result) => (
-                    <ResultTable key={result.artifactId} {...result} />
+                    <ResultTable
+                      key={result.artifactId}
+                      {...result}
+                      onCreateReport={onCreateReport}
+                    />
                   ))}
                 </div>
               ) : null}

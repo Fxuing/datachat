@@ -11,6 +11,7 @@ import { Button } from "../components/ui/button";
 import { useRunStream } from "../hooks/useRunStream";
 import {
   ApiError,
+  createReport,
   fetchMe,
   getConversation,
   listDatasources,
@@ -116,6 +117,17 @@ export default function ChatPage() {
       setSendError(errorMessage(error, "发送失败，请稍后重试"));
     },
   });
+
+  const reportMutation = useMutation({
+    mutationFn: (artifactId: string) =>
+      createReport({ conversationId: conversationId as string, artifactIds: [artifactId] }),
+    onSuccess: ({ report }) => navigate(`/reports/${report.id}`),
+    onError: (error) =>
+      setSendError(errorMessage(error, "生成报告失败，请稍后重试")),
+  });
+  const handleCreateReport = conversationId
+    ? (artifactId: string) => reportMutation.mutate(artifactId)
+    : undefined;
 
   // Once the persisted history contains the finished run, drop the optimistic block
   // so the same message is not rendered twice. A still-running persisted group does
@@ -248,6 +260,7 @@ export default function ChatPage() {
         stream={stream.state}
         showStream={showStream}
         optimisticText={optimisticText}
+        onCreateReport={handleCreateReport}
       />
     );
   }

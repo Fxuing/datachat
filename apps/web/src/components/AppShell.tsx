@@ -30,7 +30,7 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
 
   return (
     <div className="flex h-full min-h-0 bg-neutral-50">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-200 bg-white">
+      <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-200 bg-white print:hidden">
         <div className="flex h-14 shrink-0 items-center gap-2 border-b border-neutral-200 px-4">
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-neutral-900 text-[10px] font-semibold text-white">
             DC
@@ -118,7 +118,7 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {topbar ? (
-          <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4">
+          <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 print:hidden">
             {topbar}
           </header>
         ) : null}

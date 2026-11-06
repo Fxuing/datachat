@@ -75,3 +75,40 @@
     @apply border-b border-neutral-200 px-2 py-1;
   }
 }
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto;
+    background: #fff;
+  }
+
+  body {
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .report-page {
+    overflow: visible !important;
+  }
+
+  .report-artifact {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .report-table-scroll {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .report-toolbar {
+    display: none !important;
+  }
+}
