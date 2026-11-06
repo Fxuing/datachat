@@ -37,6 +37,8 @@ const SYSTEM_SCHEMAS = new Set([
   "pg_catalog", "pg_toast",
 ]);
 const MAX_SQL_LENGTH = 100_000;
+/** Deep offsets still scan the skipped rows, so keep pagination bounded too. */
+const MAX_OFFSET = 100_000;
 
 export interface GuardInput {
   sql: string;
@@ -50,6 +52,15 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
   if (!trimmed) return { ok: false, code: "EMPTY", reason: "SQL 为空" };
   if (trimmed.length > MAX_SQL_LENGTH) {
     return { ok: false, code: "FORBIDDEN_CONSTRUCT", reason: "SQL 过长" };
+  }
+  // MySQL executes `/*! ... */` (versioned) and `/*+ ... */` (optimizer hints).
+  // The parser treats them as comments, so reject them before parsing instead.
+  if (trimmed.includes("/*!") || trimmed.includes("/*+")) {
+    return {
+      ok: false,
+      code: "FORBIDDEN_CONSTRUCT",
+      reason: "禁止使用可执行注释或优化器提示",
+    };
   }
 
   let ast: unknown;
@@ -74,6 +85,7 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
   }
 
   let violation: string | null = null;
+  let violationCode: GuardErrorCode = "FORBIDDEN_CONSTRUCT";
   let tableCount = 0;
   walk(ast, (node) => {
     if (violation) return;
@@ -99,6 +111,14 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
       violation = "禁止加锁读（FOR UPDATE / LOCK IN SHARE MODE）";
       return;
     }
+    if (type === "select") {
+      const limitIssue = validateLimit(node.limit, maxRows);
+      if (limitIssue) {
+        violation = limitIssue.reason;
+        violationCode = limitIssue.code;
+        return;
+      }
+    }
     if (Array.isArray(node.from)) {
       for (const entry of node.from) {
         if (entry === null || typeof entry !== "object") continue;
@@ -110,34 +130,72 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
           violation = `禁止访问系统库：${schema}`;
           return;
         }
+        if (typeof schema !== "string" || schema === "") {
+          // `pg_stat_activity` and friends live in pg_catalog implicitly when the
+          // schema is omitted, so the qualifier check alone is not enough.
+          const bare = table.includes(".") ? table.split(".")[0]! : table;
+          if (isImplicitSystemName(bare)) {
+            violation = `禁止访问系统表：${table}`;
+            return;
+          }
+        }
       }
     }
   });
 
   if (violation) {
-    return { ok: false, code: "FORBIDDEN_CONSTRUCT", reason: violation };
+    return { ok: false, code: violationCode, reason: violation };
   }
 
   if (tableCount > maxTables) {
     return { ok: false, code: "TOO_MANY_TABLES", reason: `关联表数量超过 ${maxTables}` };
   }
 
-  if (rootType === "select") {
-    const limit = root.limit as { separator?: string; seperator?: string; value?: unknown } | null | undefined;
+  if (rootType === "select" && !root.set_op && !root._next) {
+    const limit = root.limit as
+      | { separator?: string; seperator?: string; value?: unknown }
+      | null
+      | undefined;
     const values = limitValue(limit);
     if (values === null) {
       return { ok: true, sql: `${trimmed}\nLIMIT ${maxRows + 1}` };
     }
-    const count = limitCount(values, limit);
-    if (count === null) {
-      return { ok: false, code: "FORBIDDEN_CONSTRUCT", reason: "LIMIT 必须是数字常量" };
-    }
-    if (count > maxRows) {
-      return { ok: false, code: "LIMIT_TOO_LARGE", reason: `LIMIT ${count} 超过上限 ${maxRows}` };
-    }
   }
 
   return { ok: true, sql: trimmed };
+}
+
+/** Validate every LIMIT/OFFSET, including nested selects and UNION branches. */
+function validateLimit(
+  limit: unknown,
+  maxRows: number,
+): { code: GuardErrorCode; reason: string } | null {
+  if (limit === null || typeof limit !== "object") return null;
+  const node = limit as { separator?: string; seperator?: string; value?: unknown };
+  const values = limitValue(node);
+  if (values === null) return null;
+  const separator = node.seperator ?? node.separator ?? "";
+  const isComma = separator === ",";
+  const isOffset = separator === "offset";
+  const countNode = values[isComma ? 1 : 0];
+  const offsetNode = isComma ? values[0] : isOffset ? values[1] : undefined;
+  const count = numericConstant(countNode);
+  if (count === null) {
+    return { code: "FORBIDDEN_CONSTRUCT", reason: "LIMIT 必须是数字常量" };
+  }
+  if (count > maxRows) {
+    return { code: "LIMIT_TOO_LARGE", reason: `LIMIT ${count} 超过上限 ${maxRows}` };
+  }
+  if (offsetNode !== undefined) {
+    const offset = numericConstant(offsetNode);
+    if (offset === null) {
+      return { code: "FORBIDDEN_CONSTRUCT", reason: "OFFSET 必须是数字常量" };
+    }
+    if (offset > MAX_OFFSET) {
+      return { code: "LIMIT_TOO_LARGE", reason: `OFFSET ${offset} 超过上限 ${MAX_OFFSET}` };
+    }
+  }
+  return null;
 }
 
 function walk(value: unknown, visit: (node: Record<string, unknown>) => void, seen = new Set<unknown>()): void {
@@ -181,6 +239,12 @@ function isSystemSchema(schema: string): boolean {
   );
 }
 
+const IMPLICIT_SYSTEM_NAME = /^(pg_|pg_catalog|information_schema|pg_toast)/i;
+
+function isImplicitSystemName(name: string): boolean {
+  return IMPLICIT_SYSTEM_NAME.test(name);
+}
+
 /** Returned `null` means the query has no LIMIT; an empty list is how the PG parser
  * represents "no LIMIT", so treat it the same as an absent clause. */
 function limitValue(limit: { value?: unknown } | null | undefined): unknown[] | null {
@@ -189,12 +253,8 @@ function limitValue(limit: { value?: unknown } | null | undefined): unknown[] | 
   return raw;
 }
 
-function limitCount(values: unknown[], limit: { separator?: string; seperator?: string } | null | undefined): number | null {
-  const separator = limit?.seperator ?? limit?.separator ?? "";
-  // MySQL `LIMIT offset, count` and standard `LIMIT count OFFSET offset` both keep
-  // the row cap in a fixed position.
-  const index = separator === "," ? 1 : 0;
-  const node = values[index] as { type?: unknown; value?: unknown } | undefined;
+function numericConstant(value: unknown): number | null {
+  const node = value as { type?: unknown; value?: unknown } | undefined;
   if (!node || node.type !== "number" || typeof node.value !== "number") return null;
   return node.value;
 }

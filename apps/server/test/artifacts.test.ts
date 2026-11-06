@@ -10,6 +10,8 @@ import { ArtifactStore, decodeValue } from "../src/services/artifacts.js";
 let root: string;
 let handle: DbHandle;
 let store: ArtifactStore;
+const USER = "user-1";
+const OTHER = "user-2";
 
 beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "datachat-artifacts-"));
@@ -26,7 +28,7 @@ afterEach(() => {
 
 describe("ArtifactStore", () => {
   it("writes gzipped JSONL rows and records metadata", async () => {
-    const writer = store.openResult({ conversationId: "c1", runId: "r1" });
+    const writer = store.openResult({ userId: USER, conversationId: "c1", runId: "r1" });
     await writer.write([1, "a"]);
     await writer.write([2, null]);
     const meta = await writer.finish({
@@ -70,7 +72,7 @@ describe("ArtifactStore", () => {
 
     const date = new Date("2024-01-02T03:04:05.006Z");
     const buffer = Buffer.from([1, 2, 3]);
-    const writer = store.openResult({ conversationId: "c1", runId: null });
+    const writer = store.openResult({ userId: USER, conversationId: "c1", runId: null });
     await writer.write([1n, date, buffer, new FakeDecimal("12.34"), Number.NaN]);
     const meta = await writer.finish({ columns: [], rowCount: 1, truncated: false });
 
@@ -97,11 +99,11 @@ describe("ArtifactStore", () => {
   });
 
   it("lists, filters and deletes artifacts", async () => {
-    const first = store.openResult({ conversationId: "c1", runId: "r1" });
+    const first = store.openResult({ userId: USER, conversationId: "c1", runId: "r1" });
     await first.write([1]);
     const firstMeta = await first.finish({ columns: [], rowCount: 1, truncated: false });
 
-    const second = store.openResult({ conversationId: "c2", runId: "r2" });
+    const second = store.openResult({ userId: USER, conversationId: "c2", runId: "r2" });
     await second.write([2]);
     const secondMeta = await second.finish({ columns: [], rowCount: 1, truncated: true });
 
@@ -120,7 +122,7 @@ describe("ArtifactStore", () => {
   });
 
   it("abort removes the partial file and leaves no artifact row", async () => {
-    const writer = store.openResult({ conversationId: "c1", runId: null });
+    const writer = store.openResult({ userId: USER, conversationId: "c1", runId: null });
     await writer.write([1]);
     await writer.abort();
 
@@ -130,13 +132,60 @@ describe("ArtifactStore", () => {
   });
 
   it("rejects artifact paths that escape the storage root", async () => {
-    const writer = store.openResult({ conversationId: "c1", runId: null });
+    const writer = store.openResult({ userId: USER, conversationId: "c1", runId: null });
     await writer.write([1]);
     const meta = await writer.finish({ columns: [], rowCount: 1, truncated: false });
     handle.sqlite
       .prepare("UPDATE artifacts SET storage_path = ? WHERE id = ?")
       .run("../escape.jsonl.gz", meta.id);
     await expect(store.read(meta.id)).rejects.toThrow(/escapes storage root/);
+  });
+
+  it("scopes artifacts to their owner and never aborts a finalized file", async () => {
+    const writer = store.openResult({ userId: USER, conversationId: "c1", runId: null });
+    await writer.write([1]);
+    const meta = await writer.finish({ columns: [], rowCount: 1, truncated: false });
+
+    const record = store.get(meta.id);
+    expect(record?.userId).toBe(USER);
+    expect(record?.conversationId).toBe("c1");
+    expect(store.getForUser(meta.id, OTHER)).toBeNull();
+    expect(store.getForUser(meta.id, USER)?.id).toBe(meta.id);
+
+    const file = path.join(root, "artifacts", `${meta.id}.jsonl.gz`);
+    await writer.abort();
+    expect(fs.existsSync(file)).toBe(true);
+    expect(store.get(meta.id)?.id).toBe(meta.id);
+
+    await expect(store.deleteForUser(meta.id, OTHER)).resolves.toBe(false);
+    await expect(store.deleteForUser(meta.id, USER)).resolves.toBe(true);
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it("times out a stuck finalize instead of hanging", async () => {
+    const timed = new ArtifactStore(handle.db, path.join(root, "artifacts"), {
+      finalizeTimeoutMs: 20,
+      abortTimeoutMs: 20,
+    });
+    await timed.init();
+    const writer = timed.openResult({ userId: USER, conversationId: null, runId: null });
+    await writer.write([1]);
+    // Simulate an output stream that never emits "finish".
+    (writer as unknown as { gzip: { end: () => void } }).gzip.end = () => undefined;
+    await expect(writer.finish({ columns: [], rowCount: 1, truncated: false })).rejects.toThrow(
+      /timed out/,
+    );
+    expect(timed.list()).toEqual([]);
+  });
+
+  it("surfaces output-stream errors instead of waiting for a drain that never comes", async () => {
+    const writer = store.openResult({ userId: USER, conversationId: null, runId: null });
+    (writer as unknown as { out: { emit: (event: string, error: Error) => void } }).out.emit(
+      "error",
+      new Error("disk full"),
+    );
+    await expect(writer.write([1])).rejects.toThrow(/disk full/);
+    await writer.abort();
   });
 
   it("decodes plain values unchanged", () => {

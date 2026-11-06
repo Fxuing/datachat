@@ -30,7 +30,7 @@ function datasourceRow(overrides: Partial<DatasourceRow> = {}): DatasourceRow {
     passwordCipher: "unused-by-rejected-paths",
     sslMode: "disable",
     optionsJson: null,
-    readOnlyVerified: 0,
+    readOnlyVerified: 1,
     status: "ok",
     lastCheckedAt: null,
     createdBy: "u1",
@@ -176,6 +176,32 @@ describe("runGuardedQuery", () => {
     if (!disabled.ok) expect(disabled.reason).toBe("用户已被禁用");
 
     expect(calls).toEqual({ poolGets: 0, artifactOpens: 0 });
+  });
+
+  it("refuses a datasource that has not passed read-only verification", async () => {
+    const db = setup();
+    insertUser(db, {
+      id: "u1",
+      username: "alice",
+      passwordHash: "not-used",
+      role: "admin",
+      createdAt: Date.now(),
+    });
+    const { deps, calls } = rejectionDeps(db);
+
+    const result = await runGuardedQuery(deps, {
+      datasource: datasourceRow({ readOnlyVerified: 0 }),
+      userId: "u1",
+      conversationId: null,
+      runId: null,
+      sql: "SELECT 1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("FORBIDDEN");
+    expect(calls).toEqual({ poolGets: 0, artifactOpens: 0 });
+    const audit = db.select().from(queryAudit).all();
+    expect(audit.map((row) => row.status)).toEqual(["rejected"]);
   });
 
   it("allows an admin to reach the guard for an ungranted datasource", async () => {

@@ -21,6 +21,7 @@ const allowed: Array<[string, SqlDialect]> = [
   ["SELECT * FROM users LIMIT 0", "mysql"],
   ["SELECT * FROM users LIMIT 10 OFFSET 100", "mysql"],
   ["SELECT * FROM users LIMIT 5000, 10", "mysql"],
+  ["SELECT * FROM users LIMIT 10 OFFSET 1000", "mysql"],
   ["SELECT * FROM users WHERE id IN (SELECT id FROM u)", "mysql"],
   ["SELECT * FROM (SELECT * FROM t) x", "mysql"],
   ["WITH RECURSIVE r AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM r WHERE n < 5) SELECT n FROM r", "postgres"],
@@ -63,6 +64,16 @@ const rejected: Array<[string, SqlDialect, string]> = [
   ["SELECT * FROM users LIMIT 999999", "mysql", "LIMIT_TOO_LARGE"],
   ["SELECT * FROM users LIMIT 10, 5000", "mysql", "LIMIT_TOO_LARGE"],
   ["SELECT * FROM users LIMIT ?", "mysql", "FORBIDDEN_CONSTRUCT"],
+  ["SELECT * FROM users LIMIT 10 OFFSET 200000", "mysql", "LIMIT_TOO_LARGE"],
+  ["SELECT * FROM (SELECT * FROM t LIMIT 999999) x", "mysql", "LIMIT_TOO_LARGE"],
+  ["SELECT * FROM t1 UNION SELECT * FROM t2 LIMIT 999999", "postgres", "LIMIT_TOO_LARGE"],
+  ["SELECT * FROM (SELECT * FROM t LIMIT 10 OFFSET 999999) x", "mysql", "LIMIT_TOO_LARGE"],
+  ["SELECT 1 /*!50000 UNION SELECT password_hash FROM users */", "mysql", "FORBIDDEN_CONSTRUCT"],
+  ["SELECT 1 /*!50000 INTO OUTFILE '/tmp/x' */", "mysql", "FORBIDDEN_CONSTRUCT"],
+  ["SELECT 1 /*!50000 SLEEP(10) */", "mysql", "FORBIDDEN_CONSTRUCT"],
+  ["SELECT /*+ MAX_EXECUTION_TIME(0) */ * FROM users", "mysql", "FORBIDDEN_CONSTRUCT"],
+  ["SELECT * FROM pg_stat_activity", "postgres", "FORBIDDEN_CONSTRUCT"],
+  ["SELECT * FROM pg_shadow", "postgres", "FORBIDDEN_CONSTRUCT"],
   ["SELECT * FROM information_schema.tables", "mysql", "FORBIDDEN_CONSTRUCT"],
   ["SELECT * FROM mysql.user", "mysql", "FORBIDDEN_CONSTRUCT"],
   ["SELECT * FROM performance_schema.threads", "mysql", "FORBIDDEN_CONSTRUCT"],
@@ -109,6 +120,16 @@ describe("guardSql", () => {
   it("appends a limit for postgres selects without an explicit limit", () => {
     const result = guardSql({ sql: "SELECT id FROM users", dialect: "postgres", maxRows: 100 });
     expect(result).toEqual({ ok: true, sql: "SELECT id FROM users\nLIMIT 101" });
+  });
+
+  it("does not append a second LIMIT to a UNION and keeps its outer limit", () => {
+    const sql = "SELECT * FROM t1 UNION SELECT * FROM t2 LIMIT 5";
+    expect(guardSql({ sql, dialect: "postgres", maxRows: 100 })).toEqual({ ok: true, sql });
+  });
+
+  it("does not append a LIMIT to a UNION without one", () => {
+    const sql = "SELECT * FROM t1 UNION SELECT * FROM t2";
+    expect(guardSql({ sql, dialect: "postgres", maxRows: 100 })).toEqual({ ok: true, sql });
   });
 
   it("keeps an existing safe limit", () => {

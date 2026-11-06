@@ -50,8 +50,8 @@ function createMysqlPool(rows: Row[] | "hang") {
       };
       return query;
     },
-    destroy: () => cancel?.(new Error("connection destroyed")),
-    release: () => undefined,
+    destroy: vi.fn(() => cancel?.(new Error("connection destroyed"))),
+    release: vi.fn(),
   };
 
   return {
@@ -130,7 +130,91 @@ describe("executeReadOnly MySQL", () => {
     expect(result.truncated).toBe(true);
     expect(result.columns.map((column) => column.name)).toEqual(["id", "name"]);
     expect(result.previewRows).toEqual(seen);
-    expect(fake.connection.release).toBeTypeOf("function");
+    expect(fake.connection.release).toHaveBeenCalledTimes(1);
+    expect(fake.connection.destroy).not.toHaveBeenCalled();
+  });
+
+  it("returns columns for a zero-row result (WHERE 1=0)", async () => {
+    const fake = createMysqlPool([]);
+    const result = await executeReadOnly(
+      {
+        dialect: "mysql",
+        pool: fake.pool,
+        sql: "SELECT id, name FROM users WHERE 1 = 0",
+        maxRows: 10,
+        previewRows: 10,
+        timeoutMs: 1000,
+        guard: {},
+      },
+      async () => undefined,
+    );
+    expect(result.rowCount).toBe(0);
+    expect(result.columns).toEqual([
+      { name: "id", type: "unknown" },
+      { name: "name", type: "unknown" },
+    ]);
+    expect(fake.connection.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("times out while waiting to acquire a connection", async () => {
+    const fake = {
+      pool: {
+        getConnection: vi.fn(() => new Promise(() => undefined)),
+      } as unknown as MysqlPool,
+    };
+    await expect(
+      executeReadOnly(
+        {
+          dialect: "mysql",
+          pool: fake.pool,
+          sql: "SELECT 1",
+          maxRows: 10,
+          previewRows: 10,
+          timeoutMs: 20,
+        },
+        async () => undefined,
+      ),
+    ).rejects.toBeInstanceOf(SqlTimeoutError);
+  });
+
+  it("aborts while waiting for acquisition and disposes a late connection", async () => {
+    let resolveConnection: ((connection: unknown) => void) | undefined;
+    const late = {
+      query: vi.fn(async () => [{}, []]),
+      destroy: vi.fn(),
+      release: vi.fn(),
+    };
+    const pool = {
+      getConnection: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveConnection = resolve;
+          }),
+      ),
+    } as unknown as MysqlPool;
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+
+    await expect(
+      executeReadOnly(
+        {
+          dialect: "mysql",
+          pool,
+          sql: "SELECT 1",
+          maxRows: 10,
+          previewRows: 10,
+          timeoutMs: 5000,
+          signal: controller.signal,
+        },
+        async () => undefined,
+      ),
+    ).rejects.toBeInstanceOf(SqlAbortedError);
+
+    resolveConnection?.(late);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(late.destroy).toHaveBeenCalledTimes(1);
+    expect(late.release).not.toHaveBeenCalled();
   });
 
   it("keeps only previewRows in memory", async () => {

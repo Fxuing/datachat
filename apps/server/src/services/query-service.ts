@@ -87,6 +87,21 @@ export async function runGuardedQuery(
     return { ok: false, code: "FORBIDDEN", reason: denied, auditId };
   }
 
+  if (input.datasource.readOnlyVerified !== 1) {
+    const reason = "数据源尚未通过只读校验，已拒绝执行";
+    const auditId = recordAudit(db, {
+      runId: input.runId,
+      conversationId: input.conversationId,
+      userId: input.userId,
+      datasourceId: input.datasource.id,
+      action,
+      sqlText: input.sql,
+      status: "rejected",
+      errorMessage: reason,
+    });
+    return { ok: false, code: "FORBIDDEN", reason, auditId };
+  }
+
   const guard = guardSql({
     sql: input.sql,
     dialect: input.datasource.type,
@@ -111,9 +126,11 @@ export async function runGuardedQuery(
 
   const started = Date.now();
   const writer = artifacts.openResult({
-    conversationId: input.conversationId ?? "adhoc",
+    userId: input.userId,
+    conversationId: input.conversationId,
     runId: input.runId,
   });
+  let finished = false;
 
   try {
     const connection = {
@@ -147,17 +164,25 @@ export async function runGuardedQuery(
       rowCount: result.rowCount,
       truncated: result.truncated,
     });
-    const auditId = recordAudit(db, {
-      runId: input.runId,
-      conversationId: input.conversationId,
-      userId: input.userId,
-      datasourceId: input.datasource.id,
-      action,
-      sqlText: guard.sql,
-      status: "ok",
-      rowCount: result.rowCount,
-      durationMs: Date.now() - started,
-    });
+    finished = true;
+    // The artifact is already durable; an audit hiccup must not turn success into
+    // failure (or cause the catch block to delete a finalized file).
+    let auditId = "";
+    try {
+      auditId = recordAudit(db, {
+        runId: input.runId,
+        conversationId: input.conversationId,
+        userId: input.userId,
+        datasourceId: input.datasource.id,
+        action,
+        sqlText: guard.sql,
+        status: "ok",
+        rowCount: result.rowCount,
+        durationMs: Date.now() - started,
+      });
+    } catch {
+      // Keep the successful result; only the audit row is lost.
+    }
     return {
       ok: true,
       artifactId: meta.id,
@@ -169,20 +194,25 @@ export async function runGuardedQuery(
       auditId,
     };
   } catch (error) {
-    await writer.abort().catch(() => undefined);
+    if (!finished) await writer.abort().catch(() => undefined);
     const timeout = error instanceof SqlTimeoutError || /timeout|MAX_EXECUTION_TIME/i.test(String(error));
     const aborted = error instanceof SqlAbortedError;
-    const auditId = recordAudit(db, {
-      runId: input.runId,
-      conversationId: input.conversationId,
-      userId: input.userId,
-      datasourceId: input.datasource.id,
-      action,
-      sqlText: guard.sql,
-      status: timeout ? "timeout" : "error",
-      durationMs: Date.now() - started,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
+    let auditId = "";
+    try {
+      auditId = recordAudit(db, {
+        runId: input.runId,
+        conversationId: input.conversationId,
+        userId: input.userId,
+        datasourceId: input.datasource.id,
+        action,
+        sqlText: guard.sql,
+        status: timeout ? "timeout" : "error",
+        durationMs: Date.now() - started,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    } catch {
+      // Audit storage failure must not mask the original query error.
+    }
     return {
       ok: false,
       code: timeout ? "SQL_TIMEOUT" : aborted ? "SQL_ABORTED" : "SQL_ERROR",

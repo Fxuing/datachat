@@ -1,5 +1,5 @@
 import type { Pool as MysqlPool, PoolConnection as MysqlConnection } from "mysql2/promise";
-import type { Pool as PgPool, QueryResult } from "pg";
+import type { Pool as PgPool, PoolClient, QueryResult } from "pg";
 import Cursor from "pg-cursor";
 import { guardSql, type GuardErrorCode } from "./guard.js";
 import type { ColumnInfo } from "../../services/artifacts.js";
@@ -114,10 +114,12 @@ export async function executeReadOnly(
   const shouldStop = (): boolean => truncated || input.signal?.aborted === true;
 
   try {
-    if (input.dialect === "mysql") {
-      await streamMysql(input, sql, consume, shouldStop);
-    } else {
-      await streamPostgres(input, sql, consume, shouldStop);
+    const streamedColumns =
+      input.dialect === "mysql"
+        ? await streamMysql(input, sql, consume, shouldStop)
+        : await streamPostgres(input, sql, consume, shouldStop);
+    if (columnsRef.columns.length === 0 && streamedColumns.length > 0) {
+      columnsRef.columns = streamedColumns;
     }
   } catch (error) {
     if (input.signal?.aborted) throw new SqlAbortedError();
@@ -155,28 +157,51 @@ async function streamMysql(
   sql: string,
   consume: (batch: Batch) => Promise<void>,
   shouldStop: () => boolean,
-): Promise<void> {
+): Promise<ColumnInfo[]> {
   const pool = input.pool as MysqlPool;
   throwIfAborted(input.signal);
-  const connection = await pool.getConnection();
+  let connection: MysqlConnection | null = null;
   let destroyed = false;
   let timedOut = false;
   let timer: NodeJS.Timeout | undefined;
+  let rejectAcquisitionTimeout: ((error: Error) => void) | undefined;
 
   const destroy = () => {
     destroyed = true;
-    connection.destroy();
+    connection?.destroy();
   };
-  const onAbort = () => destroy();
+  const onAbort = () => {
+    destroy();
+    rejectAcquisitionTimeout?.(new SqlAbortedError());
+  };
+
+  // The timeout starts before pool acquisition: waiting for a free connection is
+  // part of the query budget, not an unbounded prelude to it.
+  timer = setTimeout(() => {
+    timedOut = true;
+    destroy();
+    rejectAcquisitionTimeout?.(new SqlTimeoutError());
+  }, Math.max(1, input.timeoutMs));
+  timer.unref?.();
+  const acquisitionTimeout = new Promise<never>((_, reject) => {
+    rejectAcquisitionTimeout = reject;
+  });
+  const acquisition = pool.getConnection();
+  acquisition.then((late) => {
+    if (timedOut || input.signal?.aborted) late.destroy();
+  }).catch(() => undefined);
 
   try {
     input.signal?.addEventListener("abort", onAbort, { once: true });
-    throwIfAborted(input.signal);
-    timer = setTimeout(() => {
-      timedOut = true;
-      destroy();
-    }, Math.max(1, input.timeoutMs));
-    timer.unref?.();
+    try {
+      connection = await Promise.race([acquisition, acquisitionTimeout]);
+    } catch (error) {
+      if (input.signal?.aborted) throw new SqlAbortedError();
+      if (timedOut) throw new SqlTimeoutError();
+      throw error;
+    }
+    if (input.signal?.aborted) throw new SqlAbortedError();
+    if (timedOut) throw new SqlTimeoutError();
 
     await (connection as MysqlConnection).query(
       `SET SESSION MAX_EXECUTION_TIME = ${Math.max(1, Math.floor(input.timeoutMs))}`,
@@ -213,16 +238,20 @@ async function streamMysql(
       }
     }
     if (input.signal?.aborted) throw new SqlAbortedError();
+    if (timedOut) throw new SqlTimeoutError();
     if (rows.length > 0) await consume({ columns, rows });
+    return columns;
   } catch (error) {
     destroy();
     throw mapStreamError(error, input, timedOut);
   } finally {
     if (timer) clearTimeout(timer);
+    rejectAcquisitionTimeout = undefined;
     input.signal?.removeEventListener("abort", onAbort);
-    if (!destroyed) {
-      await connection.query("SET SESSION MAX_EXECUTION_TIME = 0").catch(() => undefined);
-      connection.release();
+    const active = connection as MysqlConnection | null;
+    if (active && !destroyed) {
+      await active.query("SET SESSION MAX_EXECUTION_TIME = 0").catch(() => undefined);
+      active.release();
     }
   }
 }
@@ -232,18 +261,19 @@ async function streamPostgres(
   sql: string,
   consume: (batch: Batch) => Promise<void>,
   shouldStop: () => boolean,
-): Promise<void> {
+): Promise<ColumnInfo[]> {
   const pool = input.pool as PgPool;
   throwIfAborted(input.signal);
-  const client = await pool.connect();
+  let client: PoolClient | null = null;
   let failed = false;
   let released = false;
   let timedOut = false;
   let cursor: Cursor | null = null;
   let timer: NodeJS.Timeout | undefined;
+  let rejectAcquisitionTimeout: ((error: Error) => void) | undefined;
 
   const release = (destroy: boolean) => {
-    if (released) return;
+    if (released || !client) return;
     released = true;
     try {
       client.release(destroy);
@@ -255,16 +285,36 @@ async function streamPostgres(
     failed = true;
     release(true);
   };
-  const onAbort = () => destroy();
+  const onAbort = () => {
+    destroy();
+    rejectAcquisitionTimeout?.(new SqlAbortedError());
+  };
+
+  timer = setTimeout(() => {
+    timedOut = true;
+    destroy();
+    rejectAcquisitionTimeout?.(new SqlTimeoutError());
+  }, Math.max(1, input.timeoutMs));
+  timer.unref?.();
+  const acquisitionTimeout = new Promise<never>((_, reject) => {
+    rejectAcquisitionTimeout = reject;
+  });
+  const acquisition = pool.connect();
+  acquisition.then((late) => {
+    if (timedOut || input.signal?.aborted) late.release(true);
+  }).catch(() => undefined);
 
   try {
     input.signal?.addEventListener("abort", onAbort, { once: true });
-    throwIfAborted(input.signal);
-    timer = setTimeout(() => {
-      timedOut = true;
-      destroy();
-    }, Math.max(1, input.timeoutMs));
-    timer.unref?.();
+    try {
+      client = await Promise.race([acquisition, acquisitionTimeout]);
+    } catch (error) {
+      if (input.signal?.aborted) throw new SqlAbortedError();
+      if (timedOut) throw new SqlTimeoutError();
+      throw error;
+    }
+    if (input.signal?.aborted) throw new SqlAbortedError();
+    if (timedOut) throw new SqlTimeoutError();
 
     await client.query(`SET statement_timeout = ${Math.max(1, Math.floor(input.timeoutMs))}`);
     cursor = client.query(
@@ -289,14 +339,17 @@ async function streamPostgres(
       if (rows.length < BATCH_SIZE) break;
     }
     if (input.signal?.aborted) throw new SqlAbortedError();
+    if (timedOut) throw new SqlTimeoutError();
+    return columns;
   } catch (error) {
     failed = true;
     if (cursor && !released) await closeCursor(cursor);
     throw mapStreamError(error, input, timedOut);
   } finally {
     if (timer) clearTimeout(timer);
+    rejectAcquisitionTimeout = undefined;
     input.signal?.removeEventListener("abort", onAbort);
-    if (!failed && !released) {
+    if (client && !failed && !released) {
       await client.query("RESET statement_timeout").catch(() => undefined);
     }
     release(failed);
