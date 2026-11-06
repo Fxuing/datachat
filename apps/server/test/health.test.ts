@@ -3,18 +3,9 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { createDb } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
-import type { AppConfig } from "../src/config.js";
+import { testConfig } from "./helpers/config.js";
 
-const config: AppConfig = {
-  port: 0,
-  appSecret: "test-secret-test-secret-test-secret-32",
-  dataDir: "./data-test",
-  dbPath: ":memory:",
-  logLevel: "silent",
-  siliconflowBaseUrl: "https://api.siliconflow.cn/v1",
-  adminUsername: "admin",
-  isProduction: false,
-};
+const config = testConfig;
 
 describe("health", () => {
   let app: FastifyInstance | undefined;

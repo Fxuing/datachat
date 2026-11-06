@@ -56,6 +56,29 @@ describe("loadConfig", () => {
     expect(config.dataDir).toBe(path.resolve(import.meta.dirname, "../../../data"));
   });
 
+  it("applies query defaults and overrides", () => {
+    const defaults = loadConfig({ APP_SECRET: validSecret });
+    expect(defaults).toMatchObject({
+      queryMaxRows: 100_000,
+      queryPreviewRows: 200,
+      queryTimeoutMs: 30_000,
+    });
+    const custom = loadConfig({
+      APP_SECRET: validSecret,
+      QUERY_MAX_ROWS: "50",
+      QUERY_PREVIEW_ROWS: "5",
+      QUERY_TIMEOUT_MS: "1000",
+    });
+    expect(custom).toMatchObject({
+      queryMaxRows: 50,
+      queryPreviewRows: 5,
+      queryTimeoutMs: 1000,
+    });
+    expect(() => loadConfig({ APP_SECRET: validSecret, QUERY_MAX_ROWS: "0" })).toThrow(
+      /QUERY_MAX_ROWS/,
+    );
+  });
+
   it("parses a minimal valid env", () => {
     const config = loadConfig({ APP_SECRET: validSecret });
     expect(config).toMatchObject({

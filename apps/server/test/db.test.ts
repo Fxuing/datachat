@@ -17,6 +17,7 @@ import {
 import { bootstrapAdmin } from "../src/auth/bootstrap.js";
 import { hashPassword, verifyPassword } from "../src/auth/password.js";
 import type { AppConfig } from "../src/config.js";
+import { testConfig } from "./helpers/config.js";
 
 const SOURCE_MIGRATIONS_DIR = fileURLToPath(new URL("../drizzle", import.meta.url));
 const JOURNAL_PATH = path.join(SOURCE_MIGRATIONS_DIR, "meta", "_journal.json");
@@ -55,15 +56,10 @@ let handles: DbHandle[] = [];
 beforeEach(() => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "datachat-db-test-"));
   config = {
-    port: 0,
-    appSecret: "test-secret-test-secret-test-secret-32",
+    ...testConfig,
     dataDir,
     dbPath: path.join(dataDir, "datachat.db"),
-    logLevel: "silent",
-    siliconflowBaseUrl: "https://api.siliconflow.cn/v1",
-    adminUsername: "admin",
     adminPassword: "admin-password",
-    isProduction: false,
   };
 });
 

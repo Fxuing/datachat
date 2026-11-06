@@ -6,18 +6,9 @@ import { migrateDb } from "../src/db/migrate.js";
 import { insertUser } from "../src/db/repositories/users.js";
 import { hashPassword } from "../src/auth/password.js";
 import { createSessionSigner } from "../src/auth/jwt.js";
-import type { AppConfig } from "../src/config.js";
+import { testConfig } from "./helpers/config.js";
 
-const config: AppConfig = {
-  port: 0,
-  appSecret: "test-secret-test-secret-test-secret-32",
-  dataDir: "./data-test",
-  dbPath: ":memory:",
-  logLevel: "silent",
-  siliconflowBaseUrl: "https://api.siliconflow.cn/v1",
-  adminUsername: "admin",
-  isProduction: false,
-};
+const config = testConfig;
 
 const DS_ID = "11111111-1111-4111-8111-111111111111";
 

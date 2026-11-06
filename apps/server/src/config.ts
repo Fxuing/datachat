@@ -37,6 +37,18 @@ const envSchema = z
       .max(64, "ADMIN_USERNAME 最多 64 个字符")
       .default("admin"),
     ADMIN_PASSWORD: z.preprocess(emptyToUndefined, z.string().min(8).max(200).optional()),
+    QUERY_MAX_ROWS: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().positive().default(100_000),
+    ),
+    QUERY_PREVIEW_ROWS: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().positive().default(200),
+    ),
+    QUERY_TIMEOUT_MS: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().positive().default(30_000),
+    ),
   })
   .superRefine((env, ctx) => {
     if (PLACEHOLDER_SECRETS.has(env.APP_SECRET.trim())) {
@@ -69,6 +81,9 @@ export interface AppConfig {
   adminUsername: string;
   adminPassword?: string;
   isProduction: boolean;
+  queryMaxRows: number;
+  queryPreviewRows: number;
+  queryTimeoutMs: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -102,5 +117,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     adminUsername: parsed.ADMIN_USERNAME,
     adminPassword: parsed.ADMIN_PASSWORD,
     isProduction: parsed.NODE_ENV === "production",
+    queryMaxRows: parsed.QUERY_MAX_ROWS,
+    queryPreviewRows: parsed.QUERY_PREVIEW_ROWS,
+    queryTimeoutMs: parsed.QUERY_TIMEOUT_MS,
   };
 }
