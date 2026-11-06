@@ -23,6 +23,7 @@ export function Composer({
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const disabled = !conversationReady || active || submitting;
+  const canType = conversationReady;
   const trimmed = text.trim();
 
   const submit = async () => {
@@ -60,7 +61,7 @@ export function Composer({
             rows={2}
             maxLength={MAX_LENGTH}
             value={text}
-            disabled={disabled}
+            disabled={!canType}
             placeholder={
               conversationReady ? "输入问题，例如：users 表有多少行？" : "请先在左侧选择或新建会话"
             }

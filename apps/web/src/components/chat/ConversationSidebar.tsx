@@ -102,7 +102,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
   const createMutation = useMutation({
     mutationFn: (id: string) => createConversation({ datasourceId: id }),
     onSuccess: ({ conversation }) => {
-      queryClient.setQueryData<{ items: Conversation[]; nextCursor: number | null }>(
+      queryClient.setQueryData<{ items: Conversation[]; nextCursor: string | null }>(
         queryKeys.conversations,
         (previous) =>
           previous
@@ -128,7 +128,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteConversation(id),
     onSuccess: (_data, id) => {
-      queryClient.setQueryData<{ items: Conversation[]; nextCursor: number | null }>(
+      queryClient.setQueryData<{ items: Conversation[]; nextCursor: string | null }>(
         queryKeys.conversations,
         (previous) =>
           previous ? { ...previous, items: previous.items.filter((item) => item.id !== id) } : previous,

@@ -107,6 +107,29 @@ describe("runStreamReducer", () => {
     expect(state.results[0]).toMatchObject({ artifactId: "artifact-1", rowCount: 2 });
   });
 
+  it("clears the previous attempt's text when a retry starts", () => {
+    let state = apply(initialRunStreamState, 1, {
+      type: "run_start",
+      payload: { startedAt: 9 },
+    });
+    state = apply(state, 2, { type: "text_delta", payload: { text: "partial answer" } });
+    state = apply(state, 3, { type: "thinking_delta", payload: { text: "thinking" } });
+    state = apply(state, 4, { type: "assistant_message", payload: { content: "partial" } });
+
+    state = apply(state, 5, {
+      type: "retry",
+      payload: { attempt: 2, delayMs: 100, message: "overloaded" },
+    });
+
+    expect(state.text).toBe("");
+    expect(state.thinking).toBe("");
+    expect(state.finalText).toBeNull();
+    expect(state.notices).toHaveLength(1);
+
+    state = apply(state, 6, { type: "text_delta", payload: { text: "final answer" } });
+    expect(state.text).toBe("final answer");
+  });
+
   it("settles the run on run_end and ignores stale sequence numbers", () => {
     let state = apply(initialRunStreamState, 1, {
       type: "run_queued",

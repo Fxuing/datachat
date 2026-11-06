@@ -67,7 +67,9 @@ export function MessageItem({ message }: { message: ChatMessage }) {
           <p className="text-xs text-neutral-500">已停止生成</p>
         ) : null}
         {message.status === "error" && !assistantText ? (
-          <p className="text-xs text-red-600">本次回答失败，请重试。</p>
+          <p className="text-xs text-red-600">
+            {message.error ?? "本次回答失败，请重试。"}
+          </p>
         ) : null}
       </div>
     </div>

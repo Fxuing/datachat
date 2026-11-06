@@ -52,6 +52,14 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
+        <Route
+          path="/chat/:conversationId"
+          element={
+            <RequireAuth>
+              <ChatPage />
+            </RequireAuth>
+          }
+        />
         <Route path="/" element={<Navigate to="/chat" replace />} />
         <Route path="*" element={<Navigate to="/chat" replace />} />
       </Routes>

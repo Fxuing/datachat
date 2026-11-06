@@ -174,6 +174,9 @@ export function runStreamReducer(
         case "retry":
           return {
             ...base,
+            text: "",
+            thinking: "",
+            finalText: null,
             notices: [
               ...state.notices,
               {

@@ -137,12 +137,14 @@ export interface ChatMessage {
   tools: ChatTool[];
   results: ChatResult[];
   sqls: ChatSql[];
+  error: string | null;
   createdAt: number;
 }
 
 export interface ConversationDetail {
   conversation: Conversation;
   messages: ChatMessage[];
+  activeRun: { id: string; status: "queued" | "running" } | null;
 }
 
 export function login(input: { username: string; password: string }): Promise<{ user: SessionUser }> {
@@ -162,7 +164,7 @@ export function logout(): Promise<{ ok: boolean }> {
 
 export function listConversations(): Promise<{
   items: Conversation[];
-  nextCursor: number | null;
+  nextCursor: string | null;
 }> {
   return apiRequest("/api/conversations");
 }

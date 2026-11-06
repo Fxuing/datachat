@@ -87,6 +87,7 @@ export default function ChatPage() {
 
   const conversation = conversationQuery.data?.conversation;
   const messages = conversationQuery.data?.messages;
+  const activeRunFromServer = conversationQuery.data?.activeRun ?? null;
   const datasource = datasourcesQuery.data?.datasources.find(
     (item) => item.id === conversation?.datasourceId,
   );
@@ -141,6 +142,18 @@ export default function ChatPage() {
     setOptimisticText(null);
     setSendError(null);
   }, [conversationId]);
+
+  // Reattach to a run that was still queued/running when the page was (re)loaded.
+  useEffect(() => {
+    if (activeRunId || !activeRunFromServer) return;
+    const alreadyFinished = messages?.some(
+      (message) =>
+        message.runId === activeRunFromServer.id &&
+        message.status !== "queued" &&
+        message.status !== "running",
+    );
+    if (!alreadyFinished) setActiveRunId(activeRunFromServer.id);
+  }, [activeRunId, activeRunFromServer, messages]);
 
   const handleSend = async (content: string) => {
     setSendError(null);
