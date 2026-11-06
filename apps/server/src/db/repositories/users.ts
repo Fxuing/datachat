@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { normalizeUsername, type PublicUser, type UserRole } from "@datachat/shared";
 import type { Db } from "../client.js";
 import { users } from "../schema.js";
@@ -57,6 +57,15 @@ export function countAdmins(db: Db): number {
     .select({ count: sql<number>`count(*)` })
     .from(users)
     .where(eq(users.role, "admin"))
+    .get();
+  return Number(row?.count ?? 0);
+}
+
+export function countActiveAdmins(db: Db): number {
+  const row = db
+    .select({ count: sql<number>`count(*)` })
+    .from(users)
+    .where(and(eq(users.role, "admin"), eq(users.status, "active")))
     .get();
   return Number(row?.count ?? 0);
 }
