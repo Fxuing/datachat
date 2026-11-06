@@ -26,6 +26,24 @@ describe("loadConfig", () => {
     ).toThrow("APP_SECRET must be a real random secret");
   });
 
+  it("trims ADMIN_USERNAME and applies its length bounds", () => {
+    expect(loadConfig({ APP_SECRET: validSecret, ADMIN_USERNAME: "  admin  " }).adminUsername).toBe(
+      "admin",
+    );
+    expect(() => loadConfig({ APP_SECRET: validSecret, ADMIN_USERNAME: "a" })).toThrow(
+      /ADMIN_USERNAME/,
+    );
+    expect(() =>
+      loadConfig({ APP_SECRET: validSecret, ADMIN_USERNAME: "a".repeat(65) }),
+    ).toThrow(/ADMIN_USERNAME/);
+  });
+
+  it("rejects an ADMIN_PASSWORD longer than 200 characters", () => {
+    expect(() =>
+      loadConfig({ APP_SECRET: validSecret, ADMIN_PASSWORD: "x".repeat(201) }),
+    ).toThrow(/ADMIN_PASSWORD/);
+  });
+
   it("treats an empty ADMIN_PASSWORD as unset", () => {
     const config = loadConfig({ APP_SECRET: validSecret, ADMIN_PASSWORD: "" });
     expect(config.adminPassword).toBeUndefined();

@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+/** Canonical username form: trimmed and lower-cased at every DB boundary. */
+export function normalizeUsername(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 export const loginSchema = z.object({
   username: z.string().trim().min(1).max(64),
   password: z.string().min(1).max(200),

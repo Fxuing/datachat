@@ -30,8 +30,13 @@ const envSchema = z
     ),
     SILICONFLOW_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
     SILICONFLOW_BASE_URL: z.string().url().default("https://api.siliconflow.cn/v1"),
-    ADMIN_USERNAME: z.string().min(1, "ADMIN_USERNAME 不能为空").default("admin"),
-    ADMIN_PASSWORD: z.preprocess(emptyToUndefined, z.string().min(8).optional()),
+    ADMIN_USERNAME: z
+      .string()
+      .trim()
+      .min(2, "ADMIN_USERNAME 至少 2 个字符")
+      .max(64, "ADMIN_USERNAME 最多 64 个字符")
+      .default("admin"),
+    ADMIN_PASSWORD: z.preprocess(emptyToUndefined, z.string().min(8).max(200).optional()),
   })
   .superRefine((env, ctx) => {
     if (PLACEHOLDER_SECRETS.has(env.APP_SECRET.trim())) {
