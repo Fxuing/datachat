@@ -1,0 +1,254 @@
+import { describe, expect, it, vi } from "vitest";
+import type { Pool as MysqlPool } from "mysql2/promise";
+import type { Pool as PgPool } from "pg";
+import {
+  executeReadOnly,
+  SqlAbortedError,
+  SqlRejectedError,
+  SqlTimeoutError,
+} from "../../src/agent/sql/executor.js";
+
+type Row = unknown[];
+
+function createMysqlPool(rows: Row[] | "hang") {
+  let cancel: ((error: Error) => void) | undefined;
+  let executedSql: string | undefined;
+
+  const connection = {
+    query: (arg: unknown) => {
+      if (typeof arg === "string") return Promise.resolve([{}, []]);
+      executedSql = (arg as { sql: string }).sql;
+      let fieldsHandler: ((fields: Array<{ name: string }>) => void) | undefined;
+      const query = {
+        on(event: string, handler: (...args: never[]) => void) {
+          if (event === "fields") {
+            fieldsHandler = handler as unknown as (fields: Array<{ name: string }>) => void;
+          }
+          return query;
+        },
+        stream() {
+          if (rows === "hang") {
+            return {
+              [Symbol.asyncIterator]() {
+                return {
+                  next: () =>
+                    new Promise<IteratorResult<Row>>((_resolve, reject) => {
+                      cancel = reject;
+                    }),
+                };
+              },
+            };
+          }
+          return (async function* () {
+            fieldsHandler?.([{ name: "id" }, { name: "name" }]);
+            for (const row of rows) {
+              await Promise.resolve();
+              yield row;
+            }
+          })();
+        },
+      };
+      return query;
+    },
+    destroy: () => cancel?.(new Error("connection destroyed")),
+    release: () => undefined,
+  };
+
+  return {
+    pool: { getConnection: vi.fn(async () => connection) } as unknown as MysqlPool,
+    connection,
+    executedSql: () => executedSql,
+  };
+}
+
+describe("executeReadOnly MySQL", () => {
+  it("refuses a guard-rejected statement without touching the pool", async () => {
+    const fake = createMysqlPool([]);
+    const onRow = vi.fn(async () => undefined);
+
+    await expect(
+      executeReadOnly(
+        {
+          dialect: "mysql",
+          pool: fake.pool,
+          sql: "DELETE FROM users",
+          maxRows: 100,
+          previewRows: 10,
+          timeoutMs: 1000,
+          guard: {},
+        },
+        onRow,
+      ),
+    ).rejects.toMatchObject({ name: "SqlRejectedError", code: "FORBIDDEN_STATEMENT" });
+    expect(fake.pool.getConnection).not.toHaveBeenCalled();
+    expect(onRow).not.toHaveBeenCalled();
+  });
+
+  it("re-runs the guard and applies the auto-limit before execution", async () => {
+    const fake = createMysqlPool([[1, "a"]]);
+    await executeReadOnly(
+      {
+        dialect: "mysql",
+        pool: fake.pool,
+        sql: "SELECT id, name FROM users",
+        maxRows: 100,
+        previewRows: 10,
+        timeoutMs: 1000,
+        guard: {},
+      },
+      async () => undefined,
+    );
+    expect(fake.executedSql()).toContain("LIMIT 101");
+  });
+
+  it("streams rows, honors the row cap and flags truncation", async () => {
+    const fake = createMysqlPool([
+      [1, "a"],
+      [2, "b"],
+      [3, "c"],
+    ]);
+    const seen: Row[] = [];
+    const result = await executeReadOnly(
+      {
+        dialect: "mysql",
+        pool: fake.pool,
+        sql: "SELECT id, name FROM users",
+        maxRows: 2,
+        previewRows: 10,
+        timeoutMs: 1000,
+      },
+      async (row) => {
+        seen.push(row);
+      },
+    );
+
+    expect(seen).toEqual([
+      [1, "a"],
+      [2, "b"],
+    ]);
+    expect(result.rowCount).toBe(2);
+    expect(result.truncated).toBe(true);
+    expect(result.columns.map((column) => column.name)).toEqual(["id", "name"]);
+    expect(result.previewRows).toEqual(seen);
+    expect(fake.connection.release).toBeTypeOf("function");
+  });
+
+  it("keeps only previewRows in memory", async () => {
+    const fake = createMysqlPool([[1], [2], [3]]);
+    const result = await executeReadOnly(
+      {
+        dialect: "mysql",
+        pool: fake.pool,
+        sql: "SELECT id FROM users",
+        maxRows: 10,
+        previewRows: 1,
+        timeoutMs: 1000,
+      },
+      async () => undefined,
+    );
+    expect(result.rowCount).toBe(3);
+    expect(result.previewRows).toEqual([[1]]);
+  });
+
+  it("times out a hung query with SqlTimeoutError", async () => {
+    const fake = createMysqlPool("hang");
+    await expect(
+      executeReadOnly(
+        {
+          dialect: "mysql",
+          pool: fake.pool,
+          sql: "SELECT SLEEP(5)",
+          maxRows: 10,
+          previewRows: 10,
+          timeoutMs: 20,
+        },
+        async () => undefined,
+      ),
+    ).rejects.toBeInstanceOf(SqlTimeoutError);
+  });
+
+  it("cancels a running query with SqlAbortedError", async () => {
+    const fake = createMysqlPool("hang");
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+
+    await expect(
+      executeReadOnly(
+        {
+          dialect: "mysql",
+          pool: fake.pool,
+          sql: "SELECT SLEEP(5)",
+          maxRows: 10,
+          previewRows: 10,
+          timeoutMs: 5000,
+          signal: controller.signal,
+        },
+        async () => undefined,
+      ),
+    ).rejects.toBeInstanceOf(SqlAbortedError);
+  });
+
+  it("returns immediately when the signal is already aborted", async () => {
+    const fake = createMysqlPool([]);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      executeReadOnly(
+        {
+          dialect: "mysql",
+          pool: fake.pool,
+          sql: "SELECT 1",
+          maxRows: 10,
+          previewRows: 10,
+          timeoutMs: 1000,
+          signal: controller.signal,
+        },
+        async () => undefined,
+      ),
+    ).rejects.toBeInstanceOf(SqlAbortedError);
+    expect(fake.pool.getConnection).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeReadOnly PostgreSQL", () => {
+  it("refuses a guard-rejected statement without connecting", async () => {
+    const connect = vi.fn();
+    const pool = { connect } as unknown as PgPool;
+
+    await expect(
+      executeReadOnly(
+        {
+          dialect: "postgres",
+          pool,
+          sql: "DROP TABLE users",
+          maxRows: 100,
+          previewRows: 10,
+          timeoutMs: 1000,
+          guard: {},
+        },
+        async () => undefined,
+      ),
+    ).rejects.toBeInstanceOf(SqlRejectedError);
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("refuses a locked read without connecting", async () => {
+    const connect = vi.fn();
+    const pool = { connect } as unknown as PgPool;
+    await expect(
+      executeReadOnly(
+        {
+          dialect: "postgres",
+          pool,
+          sql: "SELECT * FROM users FOR UPDATE",
+          maxRows: 100,
+          previewRows: 10,
+          timeoutMs: 1000,
+          guard: {},
+        },
+        async () => undefined,
+      ),
+    ).rejects.toBeInstanceOf(SqlRejectedError);
+    expect(connect).not.toHaveBeenCalled();
+  });
+});

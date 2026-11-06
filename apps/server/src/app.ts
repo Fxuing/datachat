@@ -1,3 +1,4 @@
+import path from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./routes/auth.js";
@@ -7,6 +8,7 @@ import { adminUserRoutes } from "./routes/admin-users.js";
 import { datasourceRoutes } from "./routes/datasources.js";
 import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
 import { PoolRegistry } from "./agent/datasource/pool.js";
+import { ArtifactStore } from "./services/artifacts.js";
 import type { AppConfig } from "./config.js";
 import type { Db } from "./db/client.js";
 
@@ -52,11 +54,12 @@ export async function buildApp({
   await app.register(authRoutes, { config, db, signer });
   await app.register(adminUserRoutes, { db });
   await app.register(datasourceRoutes, { config, db });
-  // TODO(Task 8): create the ArtifactStore at `path.join(config.dataDir, "artifacts")`
-  // here and close it in the onClose hook once `services/artifacts.ts` exists.
+  const artifacts = new ArtifactStore(db, path.join(config.dataDir, "artifacts"));
+  await artifacts.init();
   const pools = new PoolRegistry();
   await app.register(datasourceSchemaRoutes, { config, db, pools });
   app.addHook("onClose", async () => {
+    await artifacts.close();
     await pools.closeAll();
   });
   return app;
