@@ -1,0 +1,138 @@
+import { describe, expect, it } from "vitest";
+import type { RunEvent } from "@datachat/shared";
+import {
+  initialRunStreamState,
+  runStreamReducer,
+  type RunStreamState,
+} from "./run-events";
+
+function apply(state: RunStreamState, seq: number, event: RunEvent): RunStreamState {
+  return runStreamReducer(state, { type: "event", seq, event });
+}
+
+describe("runStreamReducer", () => {
+  it("concatenates text deltas without duplicating the aggregated message", () => {
+    let state = apply(initialRunStreamState, 1, {
+      type: "run_start",
+      payload: { startedAt: 1_700_000_000_000 },
+    });
+    state = apply(state, 2, { type: "text_delta", payload: { text: "你好" } });
+    state = apply(state, 3, { type: "text_delta", payload: { text: "，世界" } });
+
+    expect(state.text).toBe("你好，世界");
+    expect(state.status).toBe("running");
+
+    state = apply(state, 4, { type: "assistant_message", payload: { content: "你好，世界" } });
+    expect(state.text).toBe("你好，世界");
+    expect(state.finalText).toBe("你好，世界");
+  });
+
+  it("tracks tool start/end updates in place and preserves arguments", () => {
+    let state = apply(initialRunStreamState, 1, {
+      type: "tool_start",
+      payload: { toolCallId: "call-1", name: "db_query", args: { sql: "select 1" } },
+    });
+    expect(state.tools).toHaveLength(1);
+    expect(state.tools[0]).toMatchObject({ status: "running", name: "db_query" });
+
+    state = apply(state, 2, {
+      type: "tool_end",
+      payload: {
+        toolCallId: "call-1",
+        name: "db_query",
+        isError: false,
+        durationMs: 120,
+        summary: "1 行",
+      },
+    });
+    expect(state.tools).toHaveLength(1);
+    expect(state.tools[0]).toMatchObject({
+      status: "ok",
+      durationMs: 120,
+      summary: "1 行",
+      args: { sql: "select 1" },
+    });
+
+    state = apply(state, 3, {
+      type: "tool_end",
+      payload: {
+        toolCallId: "call-2",
+        name: "db_schema",
+        isError: true,
+        durationMs: 30,
+        summary: "连接失败",
+      },
+    });
+    expect(state.tools).toHaveLength(2);
+    expect(state.tools[1]).toMatchObject({ status: "error", summary: "连接失败" });
+  });
+
+  it("dedupes sql and result events by audit/artifact id", () => {
+    let state = apply(initialRunStreamState, 1, {
+      type: "sql",
+      payload: { sql: "select 1", auditId: "audit-1", status: "ok" },
+    });
+    state = apply(state, 2, {
+      type: "result",
+      payload: {
+        artifactId: "artifact-1",
+        columns: [{ name: "n", type: "number" }],
+        rows: [[1]],
+        rowCount: 1,
+        truncated: false,
+      },
+    });
+    state = apply(state, 3, {
+      type: "sql",
+      payload: { sql: "select 2", auditId: "audit-1", status: "rejected" },
+    });
+    state = apply(state, 4, {
+      type: "result",
+      payload: {
+        artifactId: "artifact-1",
+        columns: [{ name: "n", type: "number" }],
+        rows: [[1], [2]],
+        rowCount: 2,
+        truncated: false,
+      },
+    });
+    state = apply(state, 5, {
+      type: "sql",
+      payload: { sql: "select 3", auditId: "audit-2", status: "error" },
+    });
+
+    expect(state.sqls).toHaveLength(2);
+    expect(state.sqls[0]).toMatchObject({ auditId: "audit-1", sql: "select 2", status: "rejected" });
+    expect(state.results).toHaveLength(1);
+    expect(state.results[0]).toMatchObject({ artifactId: "artifact-1", rowCount: 2 });
+  });
+
+  it("settles the run on run_end and ignores stale sequence numbers", () => {
+    let state = apply(initialRunStreamState, 1, {
+      type: "run_queued",
+      payload: { position: 3 },
+    });
+    expect(state).toMatchObject({ status: "queued", queuePosition: 3 });
+
+    state = apply(state, 2, { type: "run_start", payload: { startedAt: 5 } });
+    expect(state).toMatchObject({ status: "running", queuePosition: null });
+
+    state = apply(state, 2, { type: "text_delta", payload: { text: "stale" } });
+    expect(state.text).toBe("");
+
+    state = apply(state, 3, { type: "text_delta", payload: { text: "最终回答" } });
+    state = apply(state, 4, { type: "run_end", payload: { status: "ok" } });
+    expect(state).toMatchObject({
+      status: "ok",
+      text: "最终回答",
+      connection: "closed",
+      error: null,
+    });
+
+    const failed = runStreamReducer(
+      apply(initialRunStreamState, 1, { type: "run_start", payload: { startedAt: 9 } }),
+      { type: "event", seq: 2, event: { type: "run_end", payload: { status: "error", error: "执行失败" } } },
+    );
+    expect(failed).toMatchObject({ status: "error", error: "执行失败", connection: "closed" });
+  });
+});

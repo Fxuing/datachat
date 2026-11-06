@@ -1,21 +1,264 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router-dom";
+import { Share2 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { Composer } from "../components/chat/Composer";
+import { ConversationSidebar } from "../components/chat/ConversationSidebar";
+import { MessageList } from "../components/chat/MessageList";
 import { PageSpinner } from "../components/ui/spinner";
-import { fetchMe } from "../lib/api";
+import { Button } from "../components/ui/button";
+import { useRunStream } from "../hooks/useRunStream";
+import {
+  ApiError,
+  fetchMe,
+  getConversation,
+  listDatasources,
+  listModels,
+  sendMessage,
+  updateConversation,
+  type ChatModelInfo,
+  type ConversationDetail,
+} from "../lib/api";
 import { queryKeys } from "../lib/query";
 
-export default function ChatPage() {
-  const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
-  const user = meQuery.data?.user;
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.message;
+  return fallback;
+}
 
+function ModelSelector({
+  models,
+  currentId,
+  disabled,
+  onChange,
+}: {
+  models: ChatModelInfo[];
+  currentId: string;
+  disabled: boolean;
+  onChange: (modelId: string) => void;
+}) {
+  return (
+    <select
+      aria-label="选择模型"
+      className="h-8 max-w-[12rem] rounded-md border border-neutral-300 bg-white px-2 text-xs text-neutral-700 focus:border-neutral-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+      value={currentId}
+      disabled={disabled || models.length === 0}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      {currentId ? null : (
+        <option value="" disabled>
+          默认模型
+        </option>
+      )}
+      {models.map((model) => (
+        <option key={model.id} value={model.id}>
+          {model.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+export default function ChatPage() {
+  const { conversationId } = useParams<{ conversationId?: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [optimisticText, setOptimisticText] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
+  const datasourcesQuery = useQuery({
+    queryKey: queryKeys.datasources,
+    queryFn: listDatasources,
+  });
+  const conversationQuery = useQuery({
+    queryKey: queryKeys.conversation(conversationId ?? ""),
+    queryFn: () => getConversation(conversationId as string),
+    enabled: Boolean(conversationId),
+  });
+  const modelsQuery = useQuery({
+    queryKey: queryKeys.models,
+    queryFn: listModels,
+    enabled: Boolean(conversationId),
+  });
+
+  const conversation = conversationQuery.data?.conversation;
+  const messages = conversationQuery.data?.messages;
+  const datasource = datasourcesQuery.data?.datasources.find(
+    (item) => item.id === conversation?.datasourceId,
+  );
+
+  const stream = useRunStream({ runId: activeRunId, conversationId: conversationId ?? null });
+
+  const modelMutation = useMutation({
+    mutationFn: (modelId: string) => updateConversation(conversationId as string, { modelId }),
+    onSuccess: ({ conversation: updated }) => {
+      queryClient.setQueryData<ConversationDetail>(
+        queryKeys.conversation(conversationId as string),
+        (previous) => (previous ? { ...previous, conversation: updated } : previous),
+      );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+    },
+  });
+
+  const sendMutation = useMutation({
+    mutationFn: (content: string) => sendMessage(conversationId as string, content),
+    onSuccess: ({ runId }) => {
+      setActiveRunId(runId);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+    },
+    onError: (error) => {
+      setOptimisticText(null);
+      setSendError(errorMessage(error, "发送失败，请稍后重试"));
+    },
+  });
+
+  // Once the persisted history contains the finished run, drop the optimistic block
+  // so the same message is not rendered twice. A still-running persisted group does
+  // not clear the block, otherwise a background refetch (e.g. after a rename) would
+  // detach from the live stream.
+  const activeRunPersisted = Boolean(
+    activeRunId &&
+      messages?.some(
+        (message) =>
+          message.runId === activeRunId &&
+          message.status !== "queued" &&
+          message.status !== "running",
+      ),
+  );
+
+  useEffect(() => {
+    if (!activeRunPersisted) return;
+    setActiveRunId(null);
+    setOptimisticText(null);
+  }, [activeRunPersisted]);
+
+  useEffect(() => {
+    setActiveRunId(null);
+    setOptimisticText(null);
+    setSendError(null);
+  }, [conversationId]);
+
+  const handleSend = async (content: string) => {
+    setSendError(null);
+    setOptimisticText(content);
+    await sendMutation.mutateAsync(content);
+  };
+
+  const user = meQuery.data?.user;
   if (!user) {
     return <PageSpinner />;
   }
 
+  const showStream = !activeRunPersisted && (activeRunId !== null || optimisticText !== null);
+  const active = sendMutation.isPending || stream.active;
+  const models = modelsQuery.data;
+  const currentModelId = conversation?.modelId ?? models?.defaultId ?? "";
+  const topbar = (
+    <>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate text-sm font-medium text-neutral-900">
+          {conversation?.title ?? (conversationId ? "未命名会话" : "新对话")}
+        </span>
+        {datasource ? (
+          <span className="hidden shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-500 sm:inline">
+            {datasource.name} · {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {models?.configured === false ? (
+          <span
+            className="text-xs text-neutral-400"
+            title="服务端未配置 SILICONFLOW_API_KEY"
+          >
+            未配置模型
+          </span>
+        ) : (
+          <ModelSelector
+            models={models?.models ?? []}
+            currentId={currentModelId}
+            disabled={
+              !conversationId ||
+              modelsQuery.isPending ||
+              modelMutation.isPending ||
+              !conversation
+            }
+            onChange={(modelId) => modelMutation.mutate(modelId)}
+          />
+        )}
+        <Button variant="outline" size="sm" className="gap-1.5" disabled title="分享功能即将上线">
+          <Share2 className="h-3.5 w-3.5" />
+          分享
+        </Button>
+      </div>
+    </>
+  );
+
+  let content: ReactNode;
+  if (!conversationId) {
+    content = (
+      <MessageList
+        messages={[]}
+        stream={stream.state}
+        showStream={false}
+        optimisticText={null}
+      />
+    );
+  } else if (conversationQuery.isPending) {
+    content = <PageSpinner label="加载会话…" />;
+  } else if (conversationQuery.isError) {
+    const notFound = conversationQuery.error instanceof ApiError && conversationQuery.error.status === 404;
+    content = (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-neutral-500">
+        <p>{notFound ? "会话不存在或已被删除。" : "会话加载失败，请稍后重试。"}</p>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate("/chat")}>
+            返回
+          </Button>
+          {notFound ? null : (
+            <Button size="sm" onClick={() => void conversationQuery.refetch()}>
+              重试
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  } else {
+    content = (
+      <MessageList
+        messages={messages ?? []}
+        stream={stream.state}
+        showStream={showStream}
+        optimisticText={optimisticText}
+      />
+    );
+  }
+
   return (
-    <AppShell user={user} sidebar={<div className="p-4 text-xs text-neutral-500">会话列表即将上线</div>}>
-      <div className="flex h-full items-center justify-center text-sm text-neutral-500">
-        聊天页正在开发中
+    <AppShell user={user} sidebar={<ConversationSidebar activeId={conversationId} />} topbar={topbar}>
+      <div className="flex min-h-0 flex-1 flex-col">
+        {content}
+        {sendError ? (
+          <div className="mx-auto w-full max-w-3xl px-4 pb-2">
+            <p
+              role="alert"
+              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"
+            >
+              {sendError}
+            </p>
+          </div>
+        ) : null}
+        <Composer
+          conversationReady={Boolean(conversationId) && Boolean(conversation)}
+          active={active}
+          canStop={activeRunId !== null}
+          onSend={handleSend}
+          onStop={stream.stop}
+        />
       </div>
     </AppShell>
   );

@@ -1,0 +1,96 @@
+import type { Column } from "@datachat/shared";
+import { cn, formatCount } from "../../lib/utils";
+
+export const MAX_PREVIEW_ROWS = 100;
+
+export interface ResultTableProps {
+  columns: Column[];
+  rows: unknown[][];
+  rowCount: number;
+  truncated: boolean;
+}
+
+function isNumeric(column: Column): boolean {
+  return column.type === "number";
+}
+
+function renderValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return (
+      <span className="text-neutral-400" aria-label="空值">
+        ∅
+      </span>
+    );
+  }
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+export function ResultTable({ columns, rows, rowCount, truncated }: ResultTableProps) {
+  const previewRows = rows.slice(0, MAX_PREVIEW_ROWS);
+  const hiddenRows = Math.max(rowCount - previewRows.length, 0);
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+      <div className="max-h-80 overflow-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead className="sticky top-0 z-10 bg-neutral-50">
+            <tr>
+              {columns.map((column, index) => (
+                <th
+                  key={`${column.name}-${index}`}
+                  scope="col"
+                  className={cn(
+                    "border-b border-neutral-200 px-3 py-2 font-medium text-neutral-600",
+                    isNumeric(column) ? "text-right" : "text-left",
+                  )}
+                >
+                  {column.name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {previewRows.map((row, rowIndex) => (
+              <tr key={rowIndex} className="odd:bg-white even:bg-neutral-50/60">
+                {columns.map((column, columnIndex) => (
+                  <td
+                    key={`${column.name}-${columnIndex}`}
+                    data-type={column.type}
+                    className={cn(
+                      "border-b border-neutral-100 px-3 py-1.5 text-neutral-800",
+                      isNumeric(column) ? "text-right tabular-nums" : "text-left",
+                    )}
+                  >
+                    {renderValue(row[columnIndex])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {previewRows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={Math.max(columns.length, 1)}
+                  className="px-3 py-4 text-center text-neutral-400"
+                >
+                  查询结果为空
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
+        <span>
+          显示 {previewRows.length} / {formatCount(rowCount)} 行
+        </span>
+        {hiddenRows > 0 || truncated ? (
+          <span>
+            仅展示前 {previewRows.length} 行（共 {formatCount(rowCount)} 行），完整结果在导出中提供
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
