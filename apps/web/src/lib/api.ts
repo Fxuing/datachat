@@ -141,10 +141,41 @@ export interface ChatMessage {
   createdAt: number;
 }
 
+/** Chart/result artifact metadata attached to a conversation history response. */
+export interface ChatArtifact {
+  id: string;
+  runId: string | null;
+  kind: "result" | "chart";
+  columns: Column[];
+  rowCount: number;
+  truncated: boolean;
+  /** Persisted ECharts spec for `kind="chart"`; null when unavailable. */
+  spec: unknown;
+  createdAt: number;
+}
+
 export interface ConversationDetail {
   conversation: Conversation;
   messages: ChatMessage[];
+  artifacts: ChatArtifact[];
   activeRun: { id: string; status: "queued" | "running" } | null;
+}
+
+export interface ArtifactDetail {
+  id: string;
+  kind: "result" | "chart";
+  conversationId: string | null;
+  rowCount: number;
+  truncated: boolean;
+  columns: Column[];
+  createdAt: number;
+  spec: unknown;
+}
+
+export interface ArtifactRowsPage {
+  columns: Column[];
+  rows: unknown[][];
+  total: number;
 }
 
 export function login(input: { username: string; password: string }): Promise<{ user: SessionUser }> {
@@ -217,4 +248,19 @@ export function listDatasources(): Promise<{ datasources: DatasourceSummary[] }>
 
 export function listModels(): Promise<ModelsResponse> {
   return apiRequest("/api/models");
+}
+
+export function getArtifact(id: string): Promise<ArtifactDetail> {
+  return apiRequest(`/api/artifacts/${id}`);
+}
+
+export function getArtifactRows(
+  id: string,
+  options: { offset?: number; limit?: number } = {},
+): Promise<ArtifactRowsPage> {
+  const params = new URLSearchParams();
+  if (options.offset !== undefined) params.set("offset", String(options.offset));
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  const query = params.toString();
+  return apiRequest(`/api/artifacts/${id}/rows${query ? `?${query}` : ""}`);
 }

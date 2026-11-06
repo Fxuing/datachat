@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import { Bot, MessageSquare } from "lucide-react";
-import type { ChatMessage } from "../../lib/api";
+import type { ChatArtifact, ChatMessage } from "../../lib/api";
 import type { RunStreamState } from "../../lib/run-events";
 import { PageSpinner } from "../ui/spinner";
+import { ChartCard, chartOptionFromSpec } from "./ChartCard";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
 import { ResultTable } from "./ResultTable";
 import { RunStatus } from "./RunStatus";
@@ -15,6 +16,8 @@ export interface MessageListProps {
   showStream: boolean;
   optimisticText: string | null;
   loading?: boolean;
+  /** Conversation artifacts, used to restore charts for persisted runs. */
+  artifacts?: ChatArtifact[];
 }
 
 function AssistantHeader() {
@@ -61,6 +64,7 @@ export function MessageList({
   showStream,
   optimisticText,
   loading = false,
+  artifacts = [],
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasContent = messages.length > 0 || showStream;
@@ -76,6 +80,7 @@ export function MessageList({
     stream.tools.length,
     stream.sqls.length,
     stream.results.length,
+    stream.charts.length,
   ]);
 
   if (loading && !hasContent) {
@@ -92,7 +97,7 @@ export function MessageList({
         {!hasContent ? <EmptyChat /> : null}
 
         {messages.map((message) => (
-          <MessageItem key={message.runId} message={message} />
+          <MessageItem key={message.runId} message={message} artifacts={artifacts} />
         ))}
 
         {showStream ? (
@@ -124,6 +129,18 @@ export function MessageList({
                 <div className="flex flex-col gap-1.5">
                   {stream.results.map((result) => (
                     <ResultTable key={result.artifactId} {...result} />
+                  ))}
+                </div>
+              ) : null}
+              {stream.charts.length > 0 ? (
+                <div className="flex flex-col gap-1.5">
+                  {stream.charts.map((chart) => (
+                    <ChartCard
+                      key={chart.chartArtifactId}
+                      title={chart.title}
+                      option={chartOptionFromSpec(chart.spec)}
+                      points={chart.points}
+                    />
                   ))}
                 </div>
               ) : null}

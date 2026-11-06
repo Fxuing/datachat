@@ -1,9 +1,12 @@
 import type { Column } from "@datachat/shared";
+import { useEffect, useState } from "react";
 import { cn, formatCount } from "../../lib/utils";
+import { ArtifactActions } from "./ArtifactActions";
 
 export const MAX_PREVIEW_ROWS = 100;
 
 export interface ResultTableProps {
+  artifactId: string;
   columns: Column[];
   rows: unknown[][];
   rowCount: number;
@@ -27,9 +30,17 @@ function renderValue(value: unknown) {
   return String(value);
 }
 
-export function ResultTable({ columns, rows, rowCount, truncated }: ResultTableProps) {
+export function ResultTable({ artifactId, columns, rows, rowCount, truncated }: ResultTableProps) {
+  const [extraRows, setExtraRows] = useState<unknown[][]>([]);
+
+  // A new artifact replaces the appended pages from the previous one.
+  useEffect(() => {
+    setExtraRows([]);
+  }, [artifactId]);
+
   const previewRows = rows.slice(0, MAX_PREVIEW_ROWS);
-  const hiddenRows = Math.max(rowCount - previewRows.length, 0);
+  const displayRows = [...previewRows, ...extraRows];
+  const hiddenRows = Math.max(rowCount - displayRows.length, 0);
 
   return (
     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
@@ -52,7 +63,7 @@ export function ResultTable({ columns, rows, rowCount, truncated }: ResultTableP
             </tr>
           </thead>
           <tbody>
-            {previewRows.map((row, rowIndex) => (
+            {displayRows.map((row, rowIndex) => (
               <tr key={rowIndex} className="odd:bg-white even:bg-neutral-50/60">
                 {columns.map((column, columnIndex) => (
                   <td
@@ -68,7 +79,7 @@ export function ResultTable({ columns, rows, rowCount, truncated }: ResultTableP
                 ))}
               </tr>
             ))}
-            {previewRows.length === 0 ? (
+            {displayRows.length === 0 ? (
               <tr>
                 <td
                   colSpan={Math.max(columns.length, 1)}
@@ -82,14 +93,22 @@ export function ResultTable({ columns, rows, rowCount, truncated }: ResultTableP
         </table>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
-        <span>
-          显示 {previewRows.length} / {formatCount(rowCount)} 行
-        </span>
-        {hiddenRows > 0 || truncated ? (
+        <div className="flex flex-wrap items-center gap-2">
           <span>
-            仅展示前 {previewRows.length} 行（共 {formatCount(rowCount)} 行），完整结果在导出中提供
+            显示 {displayRows.length} / {formatCount(rowCount)} 行
           </span>
-        ) : null}
+          {hiddenRows > 0 || truncated ? (
+            <span>
+              仅展示前 {displayRows.length} 行（共 {formatCount(rowCount)} 行），完整结果在导出中提供
+            </span>
+          ) : null}
+        </div>
+        <ArtifactActions
+          artifactId={artifactId}
+          rowCount={rowCount}
+          shownRows={displayRows.length}
+          onRowsAppended={(rows) => setExtraRows((previous) => [...previous, ...rows])}
+        />
       </div>
     </div>
   );

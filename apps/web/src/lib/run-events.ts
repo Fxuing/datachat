@@ -27,6 +27,14 @@ export interface RunResultState {
   truncated: boolean;
 }
 
+export interface RunChartState {
+  chartArtifactId: string;
+  /** Persisted ECharts spec (`{option, chart}`), as emitted by `make_chart`. */
+  spec: Record<string, unknown>;
+  points: number;
+  title: string;
+}
+
 export interface RunNotice {
   kind: "retry" | "compaction";
   message: string;
@@ -40,6 +48,7 @@ export interface RunStreamState {
   tools: RunToolState[];
   sqls: RunSqlState[];
   results: RunResultState[];
+  charts: RunChartState[];
   notices: RunNotice[];
   error: string | null;
   queuePosition: number | null;
@@ -55,6 +64,7 @@ export const initialRunStreamState: RunStreamState = {
   tools: [],
   sqls: [],
   results: [],
+  charts: [],
   notices: [],
   error: null,
   queuePosition: null,
@@ -84,6 +94,15 @@ function upsertResult(results: RunResultState[], patch: RunResultState): RunResu
   const index = results.findIndex((result) => result.artifactId === patch.artifactId);
   if (index === -1) return [...results, patch];
   return results.map((result, current) => (current === index ? patch : result));
+}
+
+/** Chart events can be replayed on reconnect, so dedupe by chart artifact id. */
+function upsertChart(charts: RunChartState[], patch: RunChartState): RunChartState[] {
+  const index = charts.findIndex(
+    (chart) => chart.chartArtifactId === patch.chartArtifactId,
+  );
+  if (index === -1) return [...charts, patch];
+  return charts.map((chart, current) => (current === index ? patch : chart));
 }
 
 export function runStreamReducer(
@@ -171,6 +190,16 @@ export function runStreamReducer(
               truncated: event.payload.truncated,
             }),
           };
+        case "chart":
+          return {
+            ...base,
+            charts: upsertChart(state.charts, {
+              chartArtifactId: event.payload.chartArtifactId,
+              spec: event.payload.spec,
+              points: event.payload.points,
+              title: event.payload.title,
+            }),
+          };
         case "retry":
           return {
             ...base,
@@ -207,7 +236,6 @@ export function runStreamReducer(
             connection: "closed",
           };
         case "usage":
-        case "chart":
         case "report":
           return base;
         default:

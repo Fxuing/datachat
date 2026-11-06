@@ -41,6 +41,7 @@ const conversation: Conversation = {
 const detail: ConversationDetail = {
   conversation,
   messages: [],
+  artifacts: [],
   activeRun: { id: "run-1", status: "running" },
 };
 

@@ -244,6 +244,7 @@ export default function ChatPage() {
     content = (
       <MessageList
         messages={messages ?? []}
+        artifacts={conversationQuery.data?.artifacts ?? []}
         stream={stream.state}
         showStream={showStream}
         optimisticText={optimisticText}

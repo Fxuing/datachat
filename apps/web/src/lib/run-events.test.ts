@@ -107,6 +107,49 @@ describe("runStreamReducer", () => {
     expect(state.results[0]).toMatchObject({ artifactId: "artifact-1", rowCount: 2 });
   });
 
+  it("collects chart events by chart artifact id and dedupes replays", () => {
+    const chart = {
+      type: "chart" as const,
+      payload: {
+        chartArtifactId: "chart-1",
+        spec: { option: { series: [] }, chart: { type: "bar", x: "month", y: "total" } },
+        points: 3,
+        title: "每月订单金额",
+      },
+    };
+
+    let state = apply(initialRunStreamState, 1, {
+      type: "chart",
+      payload: {
+        chartArtifactId: "chart-0",
+        spec: { option: { series: [] } },
+        points: 1,
+        title: "旧图",
+      },
+    });
+    state = apply(state, 2, chart);
+    state = apply(state, 3, chart);
+
+    expect(state.charts).toHaveLength(2);
+    expect(state.charts[0]).toMatchObject({ chartArtifactId: "chart-0", title: "旧图" });
+    expect(state.charts[1]).toMatchObject({
+      chartArtifactId: "chart-1",
+      points: 3,
+      title: "每月订单金额",
+    });
+    expect(state.charts[1]?.spec).toMatchObject({ chart: { type: "bar" } });
+
+    // Same artifact id on a new seq updates in place instead of appending twice.
+    state = apply(state, 4, { ...chart, payload: { ...chart.payload, points: 5 } });
+    expect(state.charts).toHaveLength(2);
+    expect(state.charts[1]).toMatchObject({ chartArtifactId: "chart-1", points: 5 });
+
+    // A stale seq never reaches the chart branch, so a reconnect replay cannot duplicate.
+    const before = state;
+    state = apply(state, 3, chart);
+    expect(state).toBe(before);
+  });
+
   it("clears the previous attempt's text when a retry starts", () => {
     let state = apply(initialRunStreamState, 1, {
       type: "run_start",
