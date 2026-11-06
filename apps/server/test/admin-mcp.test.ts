@@ -59,8 +59,8 @@ beforeEach(async () => {
   userCookie = await signer.sign({ sub: userId, username: "bob", role: "user" });
 });
 
-function app() {
-  return buildApp({ config, db, enableRateLimit: false });
+function app(overrides: Partial<typeof config> = {}) {
+  return buildApp({ config: { ...config, ...overrides }, db, enableRateLimit: false });
 }
 
 const stdioServer = {
@@ -241,7 +241,7 @@ describe("admin mcp servers", () => {
       cookies: { dc_session: adminCookie },
       payload: {
         transport: "http",
-        url: "http://127.0.0.1:9999/mcp",
+        url: "https://mcp.example.com/mcp",
         headers: { "X-Api-Key": "header-secret-value" },
         enabled: false,
         name: "renamed-http",
@@ -254,7 +254,7 @@ describe("admin mcp servers", () => {
       command: null,
       args: [],
       env: [],
-      url: "http://127.0.0.1:9999/mcp",
+      url: "https://mcp.example.com/mcp",
       headers: [{ key: "X-Api-Key", hasValue: true }],
       enabled: false,
     });
@@ -269,6 +269,182 @@ describe("admin mcp servers", () => {
     });
     expect(backing.statusCode).toBe(400);
     expect(Object.keys(backing.json().error.details.fieldErrors)).toEqual(["command"]);
+  });
+
+  it("redacts credentials in urls and args in admin views", async () => {
+    const a = await app();
+    const http = await a.inject({
+      method: "POST",
+      url: "/api/admin/mcp-servers",
+      cookies: { dc_session: adminCookie },
+      payload: {
+        name: "redacted-http",
+        transport: "http",
+        url: "https://alice:hunter2@mcp.example.com/sse?token=abc123&x=1#frag",
+      },
+    });
+    expect(http.statusCode).toBe(201);
+    expect(http.body).not.toContain("alice");
+    expect(http.body).not.toContain("hunter2");
+    expect(http.body).not.toContain("abc123");
+    expect(http.json().server.url).toBe(
+      "https://mcp.example.com/sse?token=***&x=***",
+    );
+    expect(http.json().server.secretsUnreadable).toBe(false);
+
+    const stdio = await a.inject({
+      method: "POST",
+      url: "/api/admin/mcp-servers",
+      cookies: { dc_session: adminCookie },
+      payload: {
+        name: "redacted-stdio",
+        transport: "stdio",
+        command: "node",
+        args: ["server.mjs", "--token=abc123", "--api-key", "sk-live-123"],
+      },
+    });
+    expect(stdio.statusCode).toBe(201);
+    expect(stdio.body).not.toContain("abc123");
+    expect(stdio.body).not.toContain("sk-live-123");
+    expect(stdio.json().server.args).toEqual([
+      "server.mjs",
+      "--token=***",
+      "--api-key",
+      "***",
+    ]);
+
+    const row = db.select().from(mcpServers).all().find((item) => item.name === "redacted-http")!;
+    expect(row.url).toContain("token=abc123");
+  });
+
+  it("clears env when PATCH sends a top-level null", async () => {
+    const a = await app();
+    const created = await a.inject({
+      method: "POST",
+      url: "/api/admin/mcp-servers",
+      cookies: { dc_session: adminCookie },
+      payload: stdioServer,
+    });
+    const id = created.json().server.id as string;
+
+    const cleared = await a.inject({
+      method: "PATCH",
+      url: `/api/admin/mcp-servers/${id}`,
+      cookies: { dc_session: adminCookie },
+      payload: { env: null },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().server.env).toEqual([]);
+    const row = db.select().from(mcpServers).all()[0]!;
+    expect(row.envCipher).toBeNull();
+  });
+
+  it("refuses to overwrite unreadable secrets unless replaceSecrets is set", async () => {
+    const a = await app();
+    const created = await a.inject({
+      method: "POST",
+      url: "/api/admin/mcp-servers",
+      cookies: { dc_session: adminCookie },
+      payload: stdioServer,
+    });
+    const id = created.json().server.id as string;
+    db.update(mcpServers).set({ envCipher: "corrupted-ciphertext" }).run();
+
+    const detail = await a.inject({
+      method: "GET",
+      url: `/api/admin/mcp-servers/${id}`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().server.secretsUnreadable).toBe(true);
+    expect(detail.json().server.env).toEqual([]);
+
+    const replace = await a.inject({
+      method: "PATCH",
+      url: `/api/admin/mcp-servers/${id}`,
+      cookies: { dc_session: adminCookie },
+      payload: { env: { API_TOKEN: "new-secret" } },
+    });
+    expect(replace.statusCode).toBe(409);
+    expect(replace.json().error.code).toBe("SECRETS_UNREADABLE");
+
+    const clear = await a.inject({
+      method: "PATCH",
+      url: `/api/admin/mcp-servers/${id}`,
+      cookies: { dc_session: adminCookie },
+      payload: { env: null },
+    });
+    expect(clear.statusCode).toBe(409);
+    expect(db.select().from(mcpServers).all()[0]!.envCipher).toBe("corrupted-ciphertext");
+
+    const forced = await a.inject({
+      method: "PATCH",
+      url: `/api/admin/mcp-servers/${id}`,
+      cookies: { dc_session: adminCookie },
+      payload: { env: { API_TOKEN: "new-secret" }, replaceSecrets: true },
+    });
+    expect(forced.statusCode).toBe(200);
+    expect(forced.json().server.secretsUnreadable).toBe(false);
+    expect(forced.json().server.env).toEqual([{ key: "API_TOKEN", hasValue: true }]);
+    expect(loadMcpFor({ db, config, datasourceId }).servers[0]!.config).toMatchObject({
+      env: { API_TOKEN: "new-secret" },
+    });
+  });
+
+  it("rejects http endpoints on private, loopback or metadata addresses", async () => {
+    const a = await app();
+    for (const url of [
+      "http://127.0.0.1:9000/mcp",
+      "http://[::1]/mcp",
+      "http://169.254.169.254/latest/meta-data",
+      "http://10.1.2.3/mcp",
+      "http://localhost:9000/mcp",
+    ]) {
+      const response = await a.inject({
+        method: "POST",
+        url: "/api/admin/mcp-servers",
+        cookies: { dc_session: adminCookie },
+        payload: { name: `blocked-${randomUUID().slice(0, 8)}`, transport: "http", url },
+      });
+      expect(response.statusCode, url).toBe(400);
+      expect(response.json().error.code, url).toBe("HOST_NOT_ALLOWED");
+    }
+
+    const stdio = await a.inject({
+      method: "POST",
+      url: "/api/admin/mcp-servers",
+      cookies: { dc_session: adminCookie },
+      payload: { name: "switch-to-private", transport: "stdio", command: "node" },
+    });
+    const patched = await a.inject({
+      method: "PATCH",
+      url: `/api/admin/mcp-servers/${stdio.json().server.id}`,
+      cookies: { dc_session: adminCookie },
+      payload: { transport: "http", url: "http://127.0.0.1:9000/mcp" },
+    });
+    expect(patched.statusCode).toBe(400);
+    expect(patched.json().error.code).toBe("HOST_NOT_ALLOWED");
+
+    const permissive = await app({ mcpAllowPrivateHosts: true });
+    const stored = await permissive.inject({
+      method: "POST",
+      url: "/api/admin/mcp-servers",
+      cookies: { dc_session: adminCookie },
+      payload: {
+        name: "private-test",
+        transport: "http",
+        url: "http://169.254.169.254/latest/meta-data",
+      },
+    });
+    expect(stored.statusCode).toBe(201);
+
+    const tested = await a.inject({
+      method: "POST",
+      url: `/api/admin/mcp-servers/${stored.json().server.id}/test`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(tested.statusCode).toBe(400);
+    expect(tested.json().error.code).toBe("HOST_NOT_ALLOWED");
   });
 
   it("validates transport fields, bounds and datasource scope", async () => {

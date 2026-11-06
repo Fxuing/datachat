@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -88,9 +90,12 @@ const updateMcpServerSchema = z.object({
   command: commandSchema,
   args: argsSchema,
   url: urlSchema,
-  // `null` on a value means "keep the stored value" so the masked edit form can resubmit.
-  env: secretMapSchema(secretValueSchema.nullable()).optional(),
-  headers: secretMapSchema(secretValueSchema.nullable()).optional(),
+  // Top-level `null` clears the map to `{}`; `null` on a value means "keep the stored
+  // value" so the masked edit form can resubmit; a missing key removes the entry.
+  env: z.union([secretMapSchema(secretValueSchema.nullable()), z.null()]).optional(),
+  headers: z.union([secretMapSchema(secretValueSchema.nullable()), z.null()]).optional(),
+  // Required to overwrite env/headers whose stored ciphertext cannot be decrypted.
+  replaceSecrets: z.boolean().optional(),
   datasourceId: z.string().uuid().nullable().optional(),
   enabled: z.boolean().optional(),
 });
@@ -117,6 +122,57 @@ function isHttpUrl(value: string): boolean {
     return false;
   }
 }
+
+function isPrivateIpv4(address: string): boolean {
+  const parts = address.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) return false;
+  const [first, second] = parts as [number, number, number, number];
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+/** Loopback, link-local, RFC1918 and IPv6 unique-local addresses. */
+export function isPrivateAddress(address: string): boolean {
+  const family = isIP(address);
+  if (family === 4) return isPrivateIpv4(address);
+  if (family !== 6) return false;
+  const host = address.toLowerCase().split("%")[0]!;
+  if (host === "::" || host === "::1") return true;
+  if (host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd")) return true;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(host);
+  return mapped ? isPrivateIpv4(mapped[1]!) : false;
+}
+
+/**
+ * True when an http(s) MCP endpoint resolves to a loopback/link-local/private/metadata
+ * address. Literal IPs are checked directly; hostnames go through `dns.lookup({all:true})`
+ * so multi-record names cannot hide a private address behind a public one.
+ */
+export async function isBlockedMcpUrl(rawUrl: string): Promise<boolean> {
+  const url = new URL(rawUrl);
+  if (url.protocol !== "http:" && url.protocol !== "https:") return true;
+  const hostname = url.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
+  if (hostname === "metadata.google.internal" || hostname === "fd00:ec2::254") return true;
+  if (isIP(hostname)) return isPrivateAddress(hostname);
+  try {
+    const addresses = await lookup(hostname, { all: true });
+    return addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address));
+  } catch {
+    // Unresolvable: let the connection attempt report the DNS failure itself.
+    return false;
+  }
+}
+
+const HOST_NOT_ALLOWED = {
+  error: { code: "HOST_NOT_ALLOWED", message: "不允许连接回环、内网或元数据地址" },
+};
 
 function datasourceExists(db: Db, id: string): boolean {
   return db.select({ id: datasources.id }).from(datasources).where(eq(datasources.id, id)).get() !== undefined;
@@ -192,6 +248,14 @@ export async function adminMcpRoutes(
     if (findByName(db, input.name)) {
       return reply.code(409).send({ error: { code: "CONFLICT", message: "MCP 服务器名称已存在" } });
     }
+    if (
+      input.transport === "http" &&
+      input.url &&
+      !config.mcpAllowPrivateHosts &&
+      (await isBlockedMcpUrl(input.url))
+    ) {
+      return reply.code(400).send(HOST_NOT_ALLOWED);
+    }
 
     const stdio = input.transport === "stdio";
     const row = {
@@ -264,6 +328,14 @@ export async function adminMcpRoutes(
         return reply.code(409).send({ error: { code: "CONFLICT", message: "MCP 服务器名称已存在" } });
       }
     }
+    if (
+      nextTransport === "http" &&
+      nextUrl &&
+      !config.mcpAllowPrivateHosts &&
+      (await isBlockedMcpUrl(nextUrl))
+    ) {
+      return reply.code(400).send(HOST_NOT_ALLOWED);
+    }
 
     let envCipher: string | null;
     if (nextTransport !== "stdio") {
@@ -271,8 +343,17 @@ export async function adminMcpRoutes(
     } else if (input.env === undefined) {
       envCipher = existing.transport === "stdio" ? existing.envCipher : null;
     } else {
-      const current = existing.transport === "stdio" ? readSecretMap(existing.envCipher, key) : {};
-      envCipher = encryptSecretMap(mergeSecretPatch(input.env, current), key);
+      const stored = existing.transport === "stdio" ? existing.envCipher : null;
+      const current = readSecretMap(stored, key);
+      if (!current.ok && !input.replaceSecrets) {
+        return reply.code(409).send({
+          error: {
+            code: "SECRETS_UNREADABLE",
+            message: "已保存的 env 无法解密，请确认替换密钥后重试",
+          },
+        });
+      }
+      envCipher = encryptSecretMap(mergeSecretPatch(input.env ?? {}, current.map), key);
     }
 
     let headersCipher: string | null;
@@ -281,9 +362,20 @@ export async function adminMcpRoutes(
     } else if (input.headers === undefined) {
       headersCipher = existing.transport === "http" ? existing.headersCipher : null;
     } else {
-      const current =
-        existing.transport === "http" ? readSecretMap(existing.headersCipher, key) : {};
-      headersCipher = encryptSecretMap(mergeSecretPatch(input.headers, current), key);
+      const stored = existing.transport === "http" ? existing.headersCipher : null;
+      const current = readSecretMap(stored, key);
+      if (!current.ok && !input.replaceSecrets) {
+        return reply.code(409).send({
+          error: {
+            code: "SECRETS_UNREADABLE",
+            message: "已保存的 headers 无法解密，请确认替换密钥后重试",
+          },
+        });
+      }
+      headersCipher = encryptSecretMap(
+        mergeSecretPatch(input.headers ?? {}, current.map),
+        key,
+      );
     }
 
     let argsJson: string | null;
@@ -341,6 +433,19 @@ export async function adminMcpRoutes(
     if (!params.success) return notFound(reply);
     const row = db.select().from(mcpServers).where(eq(mcpServers.id, params.data.id)).get();
     if (!row) return notFound(reply);
+    if (
+      row.transport === "http" &&
+      row.url &&
+      !config.mcpAllowPrivateHosts &&
+      (await isBlockedMcpUrl(row.url))
+    ) {
+      audit(
+        request,
+        { name: row.name, transport: row.transport, enabled: row.enabled === 1 },
+        "error",
+      );
+      return reply.code(400).send(HOST_NOT_ALLOWED);
+    }
 
     let result;
     try {

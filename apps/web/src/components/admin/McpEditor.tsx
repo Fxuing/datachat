@@ -361,6 +361,7 @@ export function McpEditor({
                       value={form.argsText}
                       onChange={(event) => update("argsText", event.target.value)}
                     />
+                    <p className={fieldHintClass}>密钥请放 env/headers，不要放 URL/args。</p>
                   </div>
 
                   <SecretRowsEditor
@@ -384,7 +385,7 @@ export function McpEditor({
                       className="font-mono text-xs"
                       onChange={(event) => update("url", event.target.value)}
                     />
-                    <p className={fieldHintClass}>仅支持 http(s) 地址。</p>
+                    <p className={fieldHintClass}>仅支持 http(s) 地址。密钥请放 env/headers，不要放 URL/args。</p>
                   </div>
 
                   <SecretRowsEditor

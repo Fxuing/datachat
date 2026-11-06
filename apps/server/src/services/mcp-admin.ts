@@ -25,12 +25,16 @@ export interface McpServerView {
   scope: "global" | "datasource";
   datasourceId: string | null;
   command: string | null;
+  /** Redacted: sensitive flags keep their name but never their value. */
   args: string[];
+  /** Redacted: userinfo and query values are replaced, scheme/host/path kept. */
   url: string | null;
   /** Values are never returned; only the configured key names. */
   env: MaskedSecretEntry[];
   /** Values are never returned; only the configured key names. */
   headers: MaskedSecretEntry[];
+  /** True when the stored env/headers ciphertext cannot be decrypted or parsed. */
+  secretsUnreadable: boolean;
   enabled: boolean;
   createdAt: string;
 }
@@ -52,32 +56,39 @@ export function maskSecretEntries(
   ciphertext: string | null,
   key: Buffer,
 ): MaskedSecretEntry[] {
-  const map = readSecretMap(ciphertext, key);
-  return Object.entries(map).map(([name, value]) => ({
+  const result = readSecretMap(ciphertext, key);
+  return Object.entries(result.map).map(([name, value]) => ({
     key: name,
     hasValue: value.length > 0,
   }));
 }
 
+export type ReadSecretMapResult =
+  | { ok: true; map: Record<string, string> }
+  | { ok: false; map: Record<string, string> };
+
 /**
- * Decrypt a stored env/header blob. Unreadable ciphertext yields an empty map so the admin
- * list never fails because of a single broken row; the edit form simply shows no entries.
+ * Decrypt a stored env/header blob. A broken ciphertext or malformed payload returns
+ * `{ok:false}` with an empty map so callers can distinguish "no secrets configured" from
+ * "secrets exist but are unreadable" (and never silently overwrite the latter).
  */
 export function readSecretMap(
   ciphertext: string | null,
   key: Buffer,
-): Record<string, string> {
-  if (!ciphertext) return {};
+): ReadSecretMapResult {
+  if (!ciphertext) return { ok: true, map: {} };
   try {
     const parsed: unknown = JSON.parse(decryptSecret(ciphertext, key));
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const result: Record<string, string> = {};
-    for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof value === "string") result[name] = value;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, map: {} };
     }
-    return result;
+    const map: Record<string, string> = {};
+    for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === "string") map[name] = value;
+    }
+    return { ok: true, map };
   } catch {
-    return {};
+    return { ok: false, map: {} };
   }
 }
 
@@ -124,6 +135,7 @@ export function parseArgsJson(argsJson: string | null): string[] {
 
 export function toMcpServerView(row: McpServerRow, key: Buffer): McpServerView {
   const stdio = row.transport === "stdio";
+  const secrets = readSecretMap(stdio ? row.envCipher : row.headersCipher, key);
   return {
     id: row.id,
     name: row.name,
@@ -131,13 +143,62 @@ export function toMcpServerView(row: McpServerRow, key: Buffer): McpServerView {
     scope: row.datasourceId ? "datasource" : "global",
     datasourceId: row.datasourceId,
     command: stdio ? row.command : null,
-    args: stdio ? parseArgsJson(row.argsJson) : [],
-    url: stdio ? null : row.url,
+    args: stdio ? redactMcpArgs(parseArgsJson(row.argsJson)) : [],
+    url: stdio ? null : redactMcpUrl(row.url),
     env: stdio ? maskSecretEntries(row.envCipher, key) : [],
     headers: stdio ? [] : maskSecretEntries(row.headersCipher, key),
+    secretsUnreadable: !secrets.ok,
     enabled: row.enabled === 1,
     createdAt: new Date(row.createdAt).toISOString(),
   };
+}
+
+/**
+ * Display-safe URL: credentials and query values are replaced with `***` while the
+ * scheme, host and path stay readable (an admin still recognises the endpoint).
+ */
+export function redactMcpUrl(raw: string | null): string | null {
+  if (raw === null || raw === "") return raw;
+  try {
+    const url = new URL(raw);
+    url.username = "";
+    url.password = "";
+    for (const name of [...url.searchParams.keys()]) url.searchParams.set(name, "***");
+    url.hash = "";
+    return url.toString();
+  } catch {
+    // Not a parseable URL: mask anything that looks like a query value.
+    return raw.replace(/([?&][^=&#\s]+=)[^&#\s]*/g, "$1***");
+  }
+}
+
+const SENSITIVE_ARG = /(?:^|[^a-z0-9])(?:token|secret|password|key)(?:[^a-z0-9]|$)/i;
+
+/**
+ * Mask command arguments that carry credentials. `--token=abc` keeps the flag name,
+ * a bare `--token abc` masks the following argument, and a standalone sensitive value is
+ * replaced entirely.
+ */
+export function redactMcpArgs(args: readonly string[]): string[] {
+  const redacted: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (!SENSITIVE_ARG.test(arg)) {
+      redacted.push(arg);
+      continue;
+    }
+    const equals = arg.indexOf("=");
+    if (equals >= 0) {
+      redacted.push(`${arg.slice(0, equals + 1)}***`);
+      continue;
+    }
+    redacted.push(arg);
+    if (index + 1 < args.length) {
+      redacted.push("***");
+      index += 1;
+    }
+  }
+  return redacted;
 }
 
 function createTransport(config: McpServerConfig): Transport {
@@ -158,8 +219,13 @@ function createTransport(config: McpServerConfig): Transport {
 
 function secretValues(config: McpServerConfig): string[] {
   const map = "command" in config ? config.env : config.headers;
-  if (!map) return [];
-  return Object.values(map).filter((value) => typeof value === "string");
+  const values = map
+    ? Object.values(map).filter((value): value is string => typeof value === "string")
+    : [];
+  // Raw urls/args may be echoed by transport errors; redact those too.
+  if ("command" in config) values.push(...(config.args ?? []));
+  else values.push(config.url);
+  return values;
 }
 
 /** Strip configured secret values and any newlines from a transport/library error. */

@@ -79,6 +79,18 @@ describe("loadConfig", () => {
     );
   });
 
+  it("defaults MCP private hosts to blocked and parses the escape hatch", () => {
+    expect(loadConfig({ APP_SECRET: validSecret }).mcpAllowPrivateHosts).toBe(false);
+    expect(
+      loadConfig({ APP_SECRET: validSecret, MCP_ALLOW_PRIVATE_HOSTS: "true" })
+        .mcpAllowPrivateHosts,
+    ).toBe(true);
+    expect(
+      loadConfig({ APP_SECRET: validSecret, MCP_ALLOW_PRIVATE_HOSTS: "false" })
+        .mcpAllowPrivateHosts,
+    ).toBe(false);
+  });
+
   it("parses a minimal valid env", () => {
     const config = loadConfig({ APP_SECRET: validSecret });
     expect(config).toMatchObject({

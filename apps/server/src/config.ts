@@ -51,6 +51,14 @@ const envSchema = z
       emptyToUndefined,
       z.coerce.number().int().positive().default(30_000),
     ),
+    /** Allow MCP http(s) endpoints on loopback/private/metadata addresses (tests only). */
+    MCP_ALLOW_PRIVATE_HOSTS: z.preprocess(
+      emptyToUndefined,
+      z
+        .enum(["true", "false", "1", "0"])
+        .default("false")
+        .transform((value) => value === "true" || value === "1"),
+    ),
   })
   .superRefine((env, ctx) => {
     if (PLACEHOLDER_SECRETS.has(env.APP_SECRET.trim())) {
@@ -92,6 +100,8 @@ export interface AppConfig {
   queryMaxRows: number;
   queryPreviewRows: number;
   queryTimeoutMs: number;
+  /** Whether MCP http(s) urls may target loopback/link-local/RFC1918 addresses. */
+  mcpAllowPrivateHosts: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -134,5 +144,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     queryMaxRows: parsed.QUERY_MAX_ROWS,
     queryPreviewRows: parsed.QUERY_PREVIEW_ROWS,
     queryTimeoutMs: parsed.QUERY_TIMEOUT_MS,
+    mcpAllowPrivateHosts: parsed.MCP_ALLOW_PRIVATE_HOSTS,
   };
 }
