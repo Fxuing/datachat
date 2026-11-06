@@ -147,6 +147,7 @@ export const queryAudit = sqliteTable(
         "datasource_update",
         "datasource_delete",
         "grant_update",
+        "skill_change",
       ],
     })
       .notNull()

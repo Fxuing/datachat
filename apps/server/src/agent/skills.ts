@@ -83,9 +83,15 @@ export async function materializeSkills(db: Db, input: MaterializeSkillsInput): 
  * Import `agent/skills/<dir>/SKILL.md` into the global skills table. Idempotent by name:
  * existing names (including datasource-scoped overrides) are left untouched.
  */
-export function seedSkills(db: Db, agentDir: string): void {
+export interface SeedSkillsResult {
+  imported: number;
+  skipped: number;
+}
+
+export function seedSkills(db: Db, agentDir: string): SeedSkillsResult {
+  const result: SeedSkillsResult = { imported: 0, skipped: 0 };
   const skillsRoot = path.join(agentDir, "skills");
-  if (!fs.existsSync(skillsRoot)) return;
+  if (!fs.existsSync(skillsRoot)) return result;
 
   const existing = new Set(db.select({ name: skills.name }).from(skills).all().map((row) => row.name));
   const now = Date.now();
@@ -100,7 +106,10 @@ export function seedSkills(db: Db, agentDir: string): void {
     const name = typeof frontmatter.name === "string" ? frontmatter.name.trim() : entry.name;
     const description =
       typeof frontmatter.description === "string" ? frontmatter.description.trim() : "";
-    if (existing.has(name)) continue;
+    if (existing.has(name)) {
+      result.skipped += 1;
+      continue;
+    }
 
     db.insert(skills)
       .values({
@@ -117,5 +126,7 @@ export function seedSkills(db: Db, agentDir: string): void {
       })
       .run();
     existing.add(name);
+    result.imported += 1;
   }
+  return result;
 }

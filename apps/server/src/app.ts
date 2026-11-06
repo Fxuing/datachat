@@ -5,6 +5,7 @@ import { authRoutes } from "./routes/auth.js";
 import { registerAuthGuards } from "./auth/guard.js";
 import { createSessionSigner } from "./auth/jwt.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
+import { adminSkillRoutes } from "./routes/admin-skills.js";
 import { datasourceRoutes } from "./routes/datasources.js";
 import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
 import { modelsRoutes } from "./routes/models.js";
@@ -99,6 +100,7 @@ export async function buildApp({
   await app.register(healthRoutes, { db });
   await app.register(authRoutes, { config, db, signer });
   await app.register(adminUserRoutes, { db });
+  await app.register(adminSkillRoutes, { db, agentDir: config.agentDir });
   const artifacts =
     injectedArtifacts ??
     new ArtifactStore(db, path.join(config.dataDir, "artifacts"));

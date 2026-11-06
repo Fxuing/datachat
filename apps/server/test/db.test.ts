@@ -205,7 +205,8 @@ describe("database lifecycle", () => {
        values (?, ?, '', 'hash', 'ok', 1)`,
     );
     insertAudit.run("audit-1", "login_failed");
-    expect(() => insertAudit.run("audit-2", "not-an-action")).toThrow(/CHECK constraint failed/);
+    insertAudit.run("audit-2", "skill_change");
+    expect(() => insertAudit.run("audit-3", "not-an-action")).toThrow(/CHECK constraint failed/);
   });
 
   it("is idempotent when migrations run twice", () => {
@@ -233,8 +234,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(3);
-    expect(migrateDb(handle.db)).toBe(3);
+    expect(migrateDb(handle.db)).toBe(4);
+    expect(migrateDb(handle.db)).toBe(4);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");
