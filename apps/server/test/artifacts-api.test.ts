@@ -254,6 +254,31 @@ describe("artifact metadata and rows", () => {
 });
 
 describe("artifact download", () => {
+  it("paginates and exports a 1000-row artifact end to end", async () => {
+    const rows = Array.from({ length: 1000 }, (_, index) => [index + 1, `row-${index + 1}`]);
+    const id = await seedResult(rows);
+
+    const tail = await get(`/api/artifacts/${id}/rows?offset=500&limit=1000`);
+    expect(tail.statusCode).toBe(200);
+    expect(tail.json().total).toBe(1000);
+    expect(tail.json().rows).toHaveLength(500);
+    expect(tail.json().rows[0]).toEqual([501, "row-501"]);
+    expect(tail.json().rows.at(-1)).toEqual([1000, "row-1000"]);
+
+    const head = await get(`/api/artifacts/${id}/rows?offset=0&limit=1`);
+    expect(head.json()).toEqual({ columns, rows: [[1, "row-1"]], total: 1000 });
+
+    const response = await get(`/api/artifacts/${id}/download?format=csv`);
+    expect(response.statusCode).toBe(200);
+    const lines = response.body.split("\r\n");
+    expect(lines[0]).toBe("\uFEFFid,name");
+    expect(lines[1]).toBe("1,row-1");
+    expect(lines[1000]).toBe("1000,row-1000");
+    // header + 1000 data rows + the trailing empty segment after the final CRLF
+    expect(lines).toHaveLength(1002);
+    expect(lines.filter((line) => line !== "")).toHaveLength(1001);
+  });
+
   it("streams CSV with a BOM and RFC4180 escaping", async () => {
     const id = await seedResult([
       [1, "a,b"],

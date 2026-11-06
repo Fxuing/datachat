@@ -91,3 +91,29 @@ node scripts/smoke-server.mjs   # 需先 pnpm -r build；临时端口启动服�
 5. 刷新页面，历史消息、SQL 与结果元数据应从服务端恢复。
 
 结果预览行数默认为 200（`QUERY_PREVIEW_ROWS`），完整结果写入 `DATA_DIR/artifacts`；查询上限为 `QUERY_MAX_ROWS`（默认 100000），超时 `QUERY_TIMEOUT_MS`（默认 30000）。
+
+## 图表、导出、技能与 MCP
+
+### 图表
+
+提问时直接描述图形，例如“按月统计订单金额并画柱状图”。Agent 调用 `make_chart` 读取结果 artifact，生成 ECharts option（柱/线/面积/饼/散点，可指定 `x`、`y`、`series` 与 `sum/avg/count/min/max` 聚合），图表显示在对应回答下方；图表卡片右上角“下载 PNG”导出图片。图表只基于已生成的查询结果，不改写 SQL。
+
+### CSV / Excel 导出
+
+结果表格底部有“下载 CSV”和“下载 Excel”，对应 `GET /api/artifacts/:id/download?format=csv|xlsx`。CSV 带 UTF-8 BOM、按 RFC4180 转义；Excel 首行加粗并冻结，数值列保持 number。导出上限 100000 行（超出返回 413 `EXPORT_TOO_LARGE`），仅属主或管理员可下载，并写入 `action=export` 审计；图表 artifact 不支持导出。
+
+### Skills 管理
+
+1. 以管理员登录，左下角“管理”→“技能管理”（`/admin/skills`）。
+2. “新建技能”填写 name（`^[a-z0-9][a-z0-9-]{1,63}$`）、description、Markdown 正文与范围；范围选“数据源”时需选择数据源，同名数据源技能会覆盖全局技能。也可用“恢复内置技能”重新导入内置 3 个技能。
+3. 保存或启停后无需重启服务，**下一次会话创建时生效**（技能物化到 `DATA_DIR/skills/<conversationId>/`）；已打开的会话继续使用旧技能。
+
+### MCP 管理
+
+1. 以管理员登录，左下角“管理”→“MCP 服务器”（`/admin/mcp`），点击“新建”。
+2. 选择传输方式：`stdio` 填 command 与 args（每行一个），可选 env；`http` 填 `http(s)://` URL，可选 headers。可限定到某个数据源（默认全局），并设置启用状态。
+3. env / headers 加密存储，列表与编辑页只显示键名和“已设置”标记；值留空表示保持不变。
+4. “测试连接”会在 15s 内启动连接并调用 `tools/list`，成功显示工具数与前 5 个工具名，失败只显示脱敏错误。
+5. 保存后同样在**下一次会话创建时生效**，Agent 可调用其中启用的工具。
+
+管理员入口仅对 `admin` 角色显示；非管理员访问 `/admin/*` 会跳回 `/chat`。
