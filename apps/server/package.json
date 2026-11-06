@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@datachat/shared": "workspace:*",
+    "@earendil-works/pi-coding-agent": "1.5.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/rate-limit": "^10.3.0",
     "@node-rs/argon2": "^2.0.2",
@@ -21,6 +22,7 @@
     "node-sql-parser": "^5.3.4",
     "pg": "^8.13.1",
     "pg-cursor": "^2.12.1",
+    "typebox": "^1.4.4",
     "zod": "^3.24.1"
   },
   "devDependencies": {
