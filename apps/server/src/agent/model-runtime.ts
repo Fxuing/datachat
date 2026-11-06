@@ -23,6 +23,16 @@ export interface ChatModelInfo {
  */
 export type ChatModel = NonNullable<ReturnType<ModelRuntime["getModel"]>>;
 
+/** Raised when the catalog has no usable model at all (or the pinned id vanished). */
+export class ModelUnavailableError extends Error {
+  readonly code = "MODEL_RUNTIME_UNAVAILABLE";
+
+  constructor(message = "没有可用的模型") {
+    super(message);
+    this.name = "ModelUnavailableError";
+  }
+}
+
 /**
  * Builds the Pi model runtime from repo-level `agent/models.json`.
  *
@@ -53,4 +63,18 @@ export function listChatModels(runtime: ModelRuntime): ChatModelInfo[] {
 /** Resolves a whitelisted model id; unknown ids return undefined (route answers 400). */
 export function resolveChatModel(runtime: ModelRuntime, id: string): ChatModel | undefined {
   return runtime.getModel(CHAT_PROVIDER_ID, id);
+}
+
+/**
+ * Resolve the model a conversation should run with. A conversation without a pinned
+ * model follows `GET /api/models` (first whitelisted model), so both paths agree.
+ */
+export function resolveConversationModel(
+  runtime: ModelRuntime,
+  modelId: string | null,
+): ChatModel {
+  const id = modelId ?? listChatModels(runtime)[0]?.id;
+  const model = id ? resolveChatModel(runtime, id) : undefined;
+  if (!model) throw new ModelUnavailableError(modelId ? `模型不可用：${modelId}` : undefined);
+  return model;
 }

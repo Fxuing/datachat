@@ -12,10 +12,7 @@ import { updateConversation } from "../db/repositories/conversations.js";
 import { findDatasource } from "../db/repositories/datasources.js";
 import type { ArtifactStore } from "../services/artifacts.js";
 import type { PoolRegistry } from "./datasource/pool.js";
-import {
-  DEFAULT_MODEL_CANDIDATE,
-  resolveChatModel,
-} from "./model-runtime.js";
+import { resolveConversationModel } from "./model-runtime.js";
 import { createConversationResources } from "./resources.js";
 import type { AgentToolContext } from "./tools/context.js";
 import { buildAgentTools } from "./tools/index.js";
@@ -62,9 +59,7 @@ export async function createConversationSession(
   const datasource = findDatasource(input.db, conversation.datasourceId);
   if (!datasource) throw new Error("会话绑定的数据源不存在");
 
-  const modelId = conversation.modelId ?? DEFAULT_MODEL_CANDIDATE;
-  const model = resolveChatModel(input.runtime, modelId);
-  if (!model) throw new Error(`模型不可用：${modelId}`);
+  const model = resolveConversationModel(input.runtime, conversation.modelId);
 
   const toolContext: AgentToolContext = {
     db: input.db,
@@ -99,6 +94,7 @@ export async function createConversationSession(
 
   const { session } = await createAgentSession({
     cwd: workspaceDir,
+    agentDir: input.config.agentDir,
     sessionManager,
     resourceLoader: loader,
     modelRuntime: input.runtime,

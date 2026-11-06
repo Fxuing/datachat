@@ -157,6 +157,11 @@ export class ConversationRuntime {
         });
         try {
           await this.execute(job);
+        } catch (error) {
+          // execute() handles its own failures; this catch is the last line of
+          // defence so a DB/tool hiccup cannot leave an unhandled rejection or
+          // stall the rest of the queue.
+          this.endRun(job.runId, "error", errorMessage(error));
         } finally {
           settle();
           this.activeJob = undefined;
@@ -178,10 +183,10 @@ export class ConversationRuntime {
     }
     this.emitEvent(job.runId, { type: "run_start", payload: { startedAt: this.now() } });
     this.emitEvent(job.runId, { type: "user_message", payload: { content: job.content } });
-    touchConversation(this.db, this.conversationId);
 
     let bridge: EventBridge | undefined;
     try {
+      touchConversation(this.db, this.conversationId);
       const bundle = await this.ensureSession(job.runId);
       if (this.disposed) {
         this.endRun(job.runId, "aborted");
@@ -236,10 +241,21 @@ export class ConversationRuntime {
   }
 
   private async ensureSession(runId: string): Promise<SessionBundle> {
-    if (this.sessionBundle) return this.sessionBundle;
+    const conversation = findConversation(this.db, this.conversationId) ?? this.conversation;
+    this.conversation = conversation;
+
+    if (this.sessionBundle) {
+      const liveModelId = this.sessionBundle.session.model?.id ?? null;
+      if (conversation.modelId && liveModelId !== conversation.modelId) {
+        // PATCH /conversations/:id changed the model: drop the live Pi session but
+        // keep the same session file so the transcript carries over.
+        await this.disposeSession();
+      } else {
+        return this.sessionBundle;
+      }
+    }
+
     if (!this.sessionPromise) {
-      const conversation = findConversation(this.db, this.conversationId) ?? this.conversation;
-      this.conversation = conversation;
       this.sessionPromise = this.createSession({
         conversation,
         userId: this.userId,
@@ -253,6 +269,20 @@ export class ConversationRuntime {
       });
     }
     return this.sessionPromise;
+  }
+
+  /** Abort and dispose the live Pi session without touching the runtime itself. */
+  private async disposeSession(): Promise<void> {
+    const bundle = this.sessionBundle;
+    this.sessionBundle = undefined;
+    this.sessionPromise = undefined;
+    if (!bundle) return;
+    await bundle.session.abort().catch(() => undefined);
+    try {
+      await bundle.session.dispose();
+    } catch {
+      // A failed dispose must not prevent a fresh session from being created.
+    }
   }
 
   private emitEvent(runId: string, event: RunEvent): void {
@@ -341,11 +371,8 @@ export class ConversationRuntime {
 function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const name = (error as { name?: unknown }).name;
-  const message = (error as { message?: unknown }).message;
-  return (
-    name === "AbortError" ||
-    (typeof message === "string" && /abort/i.test(message))
-  );
+  const code = (error as { code?: unknown }).code;
+  return name === "AbortError" || code === "ABORT_ERR" || code === "ABORT";
 }
 
 function delay(ms: number): Promise<void> {
@@ -385,6 +412,7 @@ export class RuntimeManager {
   private readonly idleMs: number;
   private readonly now: () => number;
   private readonly runtimes = new Map<string, ConversationRuntime>();
+  private readonly disposing = new Map<string, Promise<void>>();
   private readonly sweeper: NodeJS.Timeout | undefined;
   private modelRuntimePromise: Promise<ModelRuntime> | undefined;
   private shutdownPromise: Promise<void> | undefined;
@@ -425,12 +453,25 @@ export class RuntimeManager {
     }
   }
 
-  getOrCreate(conversation: ConversationRow, userId: string): ConversationRuntime {
+  async getOrCreate(conversation: ConversationRow, userId: string): Promise<ConversationRuntime> {
     const existing = this.runtimes.get(conversation.id);
     if (existing) {
       existing.touch();
       return existing;
     }
+
+    // A runtime may still be tearing down (sweeper, LRU eviction, delete). Wait for
+    // that dispose to finish so two runtimes never own the same conversation file.
+    const pending = this.disposing.get(conversation.id);
+    if (pending) {
+      await pending;
+      const revived = this.runtimes.get(conversation.id);
+      if (revived) {
+        revived.touch();
+        return revived;
+      }
+    }
+
     const runtime = new ConversationRuntime({
       db: this.db,
       conversation,
@@ -450,9 +491,16 @@ export class RuntimeManager {
 
   async remove(conversationId: string): Promise<void> {
     const runtime = this.runtimes.get(conversationId);
-    if (!runtime) return;
-    this.runtimes.delete(conversationId);
-    await runtime.dispose();
+    if (runtime) {
+      this.runtimes.delete(conversationId);
+      await runtime.dispose();
+      return;
+    }
+    await this.disposing.get(conversationId);
+  }
+
+  isBusy(conversationId: string): boolean {
+    return this.runtimes.get(conversationId)?.busy ?? false;
   }
 
   /** Drop idle runtimes. Runs are never interrupted by the sweeper. */
@@ -460,8 +508,7 @@ export class RuntimeManager {
     for (const [conversationId, runtime] of this.runtimes) {
       if (runtime.busy) continue;
       if (now - runtime.lastUsedAt < this.idleMs) continue;
-      this.runtimes.delete(conversationId);
-      void runtime.dispose();
+      this.retire(conversationId, runtime);
     }
   }
 
@@ -474,7 +521,19 @@ export class RuntimeManager {
     if (this.sweeper) clearInterval(this.sweeper);
     const runtimes = [...this.runtimes.values()];
     this.runtimes.clear();
-    await Promise.all(runtimes.map((runtime) => runtime.dispose()));
+    const ownership = [...runtimes.map((runtime) => runtime.dispose()), ...this.disposing.values()];
+    await Promise.all(ownership);
+  }
+
+  private retire(conversationId: string, runtime: ConversationRuntime): void {
+    this.runtimes.delete(conversationId);
+    const pending = runtime.dispose().catch(() => undefined);
+    this.disposing.set(conversationId, pending);
+    void pending.finally(() => {
+      if (this.disposing.get(conversationId) === pending) {
+        this.disposing.delete(conversationId);
+      }
+    });
   }
 
   private evictOverflow(): void {
@@ -486,8 +545,7 @@ export class RuntimeManager {
       }
       // All runtimes are busy: go over the cap rather than aborting live work.
       if (!victim) return;
-      this.runtimes.delete(victim.conversationId);
-      void victim.dispose();
+      this.retire(victim.conversationId, victim);
     }
   }
 

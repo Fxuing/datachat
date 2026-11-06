@@ -9,6 +9,8 @@ import { ArtifactStore } from "./services/artifacts.js";
 import { createDb } from "./db/client.js";
 import { migrateDb } from "./db/migrate.js";
 import { bootstrapAdmin } from "./auth/bootstrap.js";
+import { seedSkills } from "./agent/skills.js";
+import { reconcileInterruptedRuns } from "./services/startup.js";
 
 const config = loadConfig();
 fs.mkdirSync(config.dataDir, { recursive: true });
@@ -65,6 +67,11 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 
 try {
   migrateDb(handle.db, { logger: app.log });
+  seedSkills(handle.db, config.agentDir);
+  const interrupted = reconcileInterruptedRuns(handle.db);
+  if (interrupted > 0) {
+    app.log.warn({ count: interrupted }, "closed runs interrupted by the previous shutdown");
+  }
   await bootstrapAdmin(handle.db, config, app.log);
   app.log.info({ dataDir: config.dataDir, dbPath: config.dbPath }, "resolved storage paths");
   await app.listen({ port: config.port, host: "0.0.0.0" });
