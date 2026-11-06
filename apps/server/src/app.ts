@@ -4,6 +4,7 @@ import { authRoutes } from "./routes/auth.js";
 import { registerAuthGuards } from "./auth/guard.js";
 import { createSessionSigner } from "./auth/jwt.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
+import { datasourceRoutes } from "./routes/datasources.js";
 import type { AppConfig } from "./config.js";
 import type { Db } from "./db/client.js";
 
@@ -48,5 +49,6 @@ export async function buildApp({
   await app.register(healthRoutes);
   await app.register(authRoutes, { config, db, signer });
   await app.register(adminUserRoutes, { db });
+  await app.register(datasourceRoutes, { config, db });
   return app;
 }
