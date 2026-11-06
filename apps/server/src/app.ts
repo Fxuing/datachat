@@ -13,6 +13,7 @@ import { modelsRoutes } from "./routes/models.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { artifactRoutes } from "./routes/artifacts.js";
 import { runRoutes } from "./routes/runs.js";
+import { reportRoutes } from "./routes/reports.js";
 import { PoolRegistry } from "./agent/datasource/pool.js";
 import { RuntimeManager } from "./agent/runtime.js";
 import { ArtifactStore } from "./services/artifacts.js";
@@ -124,6 +125,7 @@ export async function buildApp({
     runtime: agentRuntime,
   });
   await app.register(artifactRoutes, { db, artifacts });
+  await app.register(reportRoutes, { db, artifacts });
   await app.register(runRoutes, { db, runtime: agentRuntime });
   app.addHook("onClose", async () => {
     await agentRuntime.shutdown();

@@ -38,6 +38,24 @@ export const datasourceInputSchema = z.object({
 });
 export type DatasourceInput = z.infer<typeof datasourceInputSchema>;
 
+/** Report body budget; shared so the route, tool and editor agree. */
+export const REPORT_MAX_MARKDOWN_LENGTH = 50_000;
+/** One report references at most this many artifacts (spec §11.3). */
+export const REPORT_MAX_ARTIFACTS = 20;
+
+export interface ReportSummary {
+  id: string;
+  conversationId: string;
+  title: string;
+  artifactIds: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ReportDetail extends ReportSummary {
+  markdown: string;
+}
+
 export const apiErrorSchema = z.object({
   error: z.object({
     code: z.string(),
