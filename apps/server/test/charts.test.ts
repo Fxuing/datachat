@@ -109,6 +109,76 @@ describe("buildChartOption", () => {
     expect((option.tooltip as { trigger: string }).trigger).toBe("item");
   });
 
+  it("drops groups without numeric y instead of plotting 0 or ±Infinity", () => {
+    const rows: unknown[][] = [
+      ["a", 10],
+      ["a", null],
+      ["b", null],
+    ];
+    for (const aggregate of ["avg", "min", "max"] as const) {
+      const { option, points, skipped } = buildChartOption({
+        columns: xy,
+        rows,
+        chart: chart({ x: "x", aggregate }),
+      });
+      expect(points).toBe(1);
+      expect(skipped).toBe(2);
+      expect((option.xAxis as { data: string[] }).data).toEqual(["a"]);
+      expect(seriesOf(option)[0]!.data).toEqual([10]);
+      expect(JSON.stringify(option)).not.toContain("Infinity");
+      expect(JSON.stringify(option)).not.toContain("null,");
+    }
+  });
+
+  it("drops a single-row group with a null y when no aggregate is given", () => {
+    const { option, points, skipped } = buildChartOption({
+      columns: xy,
+      rows: [
+        ["a", 5],
+        ["b", null],
+      ],
+      chart: chart({ x: "x" }),
+    });
+    expect(points).toBe(1);
+    expect(skipped).toBe(1);
+    expect((option.xAxis as { data: string[] }).data).toEqual(["a"]);
+    expect(seriesOf(option)[0]!.data).toEqual([5]);
+  });
+
+  it("keeps sum/count groups whose y rows are all null", () => {
+    const rows: unknown[][] = [
+      [1, null],
+      [2, 4],
+    ];
+    const sum = buildChartOption({ columns: xy, rows, chart: chart({ aggregate: "sum" }) });
+    expect(sum.points).toBe(2);
+    expect(seriesOf(sum.option)[0]!.data).toEqual([0, 4]);
+
+    const count = buildChartOption({ columns: xy, rows, chart: chart({ aggregate: "count" }) });
+    expect(count.points).toBe(2);
+    expect(seriesOf(count.option)[0]!.data).toEqual([1, 1]);
+  });
+
+  it("counts only rendered scatter points and reports unparsable x rows as skipped", () => {
+    const columns: ColumnInfo[] = [
+      { name: "x", type: "string" },
+      { name: "y", type: "number" },
+    ];
+    const { option, points, skipped } = buildChartOption({
+      columns,
+      rows: [
+        ["1", 10],
+        ["n/a", 20],
+        ["n/a", null],
+        ["3", null],
+      ],
+      chart: chart({ type: "scatter", x: "x", aggregate: "avg" }),
+    });
+    expect(points).toBe(1);
+    expect(skipped).toBe(3);
+    expect(seriesOf(option)[0]!.data).toEqual([[1, 10]]);
+  });
+
   it("rejects more than 5000 points", () => {
     const rows = Array.from({ length: 5_001 }, (_, index) => [index, 1]);
     expect(() =>

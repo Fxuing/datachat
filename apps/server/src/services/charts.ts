@@ -112,6 +112,16 @@ function groupValue(group: Group, aggregate: ChartAggregate | undefined): number
   }
 }
 
+/**
+ * A group without any numeric y row has no meaningful avg/min/max (and no value at
+ * all without an aggregate). Rendering it would show 0 or ±Infinity, so drop it
+ * instead; `count` and `sum` stay valid for all-null groups.
+ */
+function hasPlottedValue(group: Group, aggregate: ChartAggregate | undefined): boolean {
+  if (aggregate === "count" || aggregate === "sum") return true;
+  return group.count > 0;
+}
+
 function compareText(left: string, right: string): number {
   return left.localeCompare(right);
 }
@@ -121,7 +131,7 @@ export function buildChartOption(input: {
   rows: unknown[][];
   columns: ColumnInfo[];
   chart: ChartInput;
-}): { option: Record<string, unknown>; points: number } {
+}): { option: Record<string, unknown>; points: number; skipped: number } {
   const { rows, columns, chart } = input;
   const xIndex = columnIndex(columns, chart.x);
   const yIndex = columnIndex(columns, chart.y);
@@ -133,11 +143,15 @@ export function buildChartOption(input: {
   const groups = new Map<string, Group>();
   let numericRows = 0;
   let skipped = 0;
+  let skippedY = 0;
 
   for (const row of rows) {
     if (!Array.isArray(row)) continue;
     const xRaw = row[xIndex];
-    if (xRaw === null || xRaw === undefined) continue;
+    if (xRaw === null || xRaw === undefined) {
+      skipped += 1;
+      continue;
+    }
     const seriesRaw = seriesIndex === null ? null : row[seriesIndex];
     const seriesLabel = seriesRaw === null || seriesRaw === undefined ? "" : labelOf(seriesRaw);
     const xLabel = labelOf(xRaw);
@@ -165,6 +179,7 @@ export function buildChartOption(input: {
     const yValue = numericValue(row[yIndex], columns[yIndex]!.type);
     if (yValue === null) {
       skipped += 1;
+      skippedY += 1;
       continue;
     }
     numericRows += 1;
@@ -178,7 +193,7 @@ export function buildChartOption(input: {
   if (rows.length > 0 && chart.aggregate !== "count" && numericRows === 0) {
     throw new ChartError(
       "Y_NOT_NUMERIC",
-      skipped > 0 ? `列「${chart.y}」没有可用的数值` : `列「${chart.y}」不是数值列`,
+      skippedY > 0 ? `列「${chart.y}」没有可用的数值` : `列「${chart.y}」不是数值列`,
     );
   }
 
@@ -193,7 +208,20 @@ export function buildChartOption(input: {
     }
   }
 
-  const sorted = [...groups.values()];
+  const sorted = [...groups.values()].filter((group) =>
+    hasPlottedValue(group, chart.aggregate),
+  );
+  // Scatter points need a numeric x too; rows the plot cannot place are reported
+  // as skipped instead of being counted as rendered points.
+  if (isScatter) {
+    for (const group of sorted) {
+      if (group.xNumber === null) {
+        // Rows with a null y are already counted above; only add rows that were
+        // otherwise plottable. `count` does not parse y, so every row counts there.
+        skipped += chart.aggregate === "count" ? group.rows : group.count;
+      }
+    }
+  }
   const hasNumericX = sorted.length > 0 && sorted.every((group) => group.xNumber !== null);
   const sortByX = !isPie && hasNumericX && (xType === "number" || xType === "date");
   sorted.sort((left, right) => {
@@ -245,7 +273,7 @@ export function buildChartOption(input: {
       ],
     };
     if (chart.title?.trim()) option.title = { text: title, left: "center" };
-    return { option, points: top.length };
+    return { option, points: top.length, skipped };
   }
 
   const hasSeries = seriesIndex !== null;
@@ -300,5 +328,8 @@ export function buildChartOption(input: {
   }
   if (chart.title?.trim()) option.title = { text: title, left: "center" };
 
-  return { option, points: sorted.length };
+  const points = isScatter
+    ? series.reduce((sum, item) => sum + item.data.length, 0)
+    : sorted.length;
+  return { option, points, skipped };
 }

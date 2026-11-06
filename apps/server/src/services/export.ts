@@ -10,6 +10,17 @@ const MIN_COLUMN_WIDTH = 10;
 const MAX_COLUMN_WIDTH = 60;
 const BOM = "\uFEFF";
 
+/**
+ * Spreadsheet apps treat a leading `= + - @`, tab or CR as a formula trigger, so a
+ * string cell must be prefixed with a literal `'` to stay text. Typed values
+ * (numbers, dates, booleans, bigints) are written unchanged.
+ */
+const FORMULA_TRIGGER = /^[=+\-@\t\r]/;
+
+function escapeFormula(text: string): string {
+  return FORMULA_TRIGGER.test(text) ? `'${text}` : text;
+}
+
 /** RFC4180: quote when the value contains a delimiter, quote or line break. */
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -30,6 +41,7 @@ function csvCell(value: unknown): string {
   } else {
     text = String(value);
   }
+  if (typeof value === "string") text = escapeFormula(text);
   if (/[",\r\n]/.test(text)) return `"${text.replaceAll('"', '""')}"`;
   return text;
 }

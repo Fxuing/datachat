@@ -37,6 +37,26 @@ describe("csvStream", () => {
     expect(output.trimEnd().split("\r\n")).toHaveLength(4);
   });
 
+  it("neutralizes spreadsheet formula triggers in string cells", async () => {
+    const rows = [
+      [1, "=SUM(A1:A2)", "-1+cmd|' /C calc'!A0", true, null],
+      [2, "+1", "@import", true, null],
+      [3, "\tlead-tab", "\rlead-cr", true, null],
+      [4, "-5.2", "plain", true, null],
+    ];
+    const output = (await collect(csvStream(columns, Readable.from(rows)))).toString("utf8");
+    const lines = output.trimEnd().split("\r\n");
+
+    expect(lines[1]).toBe("1,'=SUM(A1:A2),'-1+cmd|' /C calc'!A0,true,");
+    expect(lines[2]).toBe("2,'+1,'@import,true,");
+    expect(lines[3]).toBe(`3,'\tlead-tab,"'\rlead-cr",true,`);
+    expect(lines[4]).toBe("4,'-5.2,plain,true,");
+    // Typed numbers are untouched, so negative numbers stay numeric in the sheet.
+    expect(output).toContain("1,");
+    expect((await collect(csvStream(columns, Readable.from([[-1, "x", "y", true, null]]))))
+      .toString("utf8")).toContain("\r\n-1,x,y,true,");
+  });
+
   it("closes the row generator when the consumer destroys the stream", async () => {
     let closed = false;
     async function* rows(): AsyncGenerator<unknown[]> {
