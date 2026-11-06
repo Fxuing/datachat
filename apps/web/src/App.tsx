@@ -16,6 +16,7 @@ import { PageSpinner } from "./components/ui/spinner";
 const ChatPage = lazy(() => import("./pages/ChatPage"));
 const SkillsPage = lazy(() => import("./pages/admin/SkillsPage"));
 const McpPage = lazy(() => import("./pages/admin/McpPage"));
+const DatasourcesPage = lazy(() => import("./pages/admin/DatasourcesPage"));
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const meQuery = useQuery({
@@ -96,6 +97,14 @@ function AppRoutes() {
           element={
             <RequireAdmin>
               <McpPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/datasources"
+          element={
+            <RequireAdmin>
+              <DatasourcesPage />
             </RequireAdmin>
           }
         />

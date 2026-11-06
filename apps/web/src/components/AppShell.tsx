@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { BookOpen, LogOut, Plug } from "lucide-react";
+import { BookOpen, Database, LogOut, Plug } from "lucide-react";
 import { logout, type SessionUser } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
@@ -45,6 +45,21 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
             <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
               管理
             </p>
+            <Link
+              to="/admin/datasources"
+              aria-current={
+                location.pathname.startsWith("/admin/datasources") ? "page" : undefined
+              }
+              className={cn(
+                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+                location.pathname.startsWith("/admin/datasources")
+                  ? "bg-neutral-100 font-medium text-neutral-900"
+                  : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900",
+              )}
+            >
+              <Database className="h-4 w-4" />
+              数据源
+            </Link>
             <Link
               to="/admin/skills"
               aria-current={location.pathname.startsWith("/admin/skills") ? "page" : undefined}

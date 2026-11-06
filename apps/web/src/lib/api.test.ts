@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiRequest, setUnauthorizedHandler } from "./api";
+import {
+  ApiError,
+  apiRequest,
+  createDatasource,
+  getDatasourceSchema,
+  replaceDatasourceGrants,
+  setUnauthorizedHandler,
+  updateDatasource,
+} from "./api";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -92,5 +100,60 @@ describe("apiRequest", () => {
 
     await expect(apiRequest("/api/conversations/x")).rejects.toMatchObject({ status: 404 });
     expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("datasource helpers", () => {
+  it("only appends the schema search parameter when non-empty", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({ tables: [], refreshedAt: 1, stale: false, error: null, total: 0 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getDatasourceSchema("ds-1");
+    await getDatasourceSchema("ds-1", { search: "  order book  " });
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe("/api/datasources/ds-1/schema");
+    expect(String(fetchMock.mock.calls[1]![0])).toBe(
+      "/api/datasources/ds-1/schema?search=order+book",
+    );
+  });
+
+  it("sends datasource credentials and grants in JSON bodies", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({ ok: true }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createDatasource({
+      name: "events",
+      type: "mysql",
+      host: "db.internal",
+      port: 3306,
+      database: "events",
+      username: "writer",
+      password: "s3cret",
+      sslMode: "disable",
+    });
+    await updateDatasource("ds-1", { name: "events-renamed" });
+    await replaceDatasourceGrants("ds-1", ["u-1", "u-2"]);
+
+    const [postPath, postInit] = fetchMock.mock.calls[0]!;
+    expect(String(postPath)).toBe("/api/datasources");
+    expect(postInit?.method).toBe("POST");
+    expect(JSON.parse(String(postInit?.body))).toMatchObject({
+      name: "events",
+      password: "s3cret",
+    });
+
+    const [patchPath, patchInit] = fetchMock.mock.calls[1]!;
+    expect(String(patchPath)).toBe("/api/datasources/ds-1");
+    expect(patchInit?.method).toBe("PATCH");
+    expect(JSON.parse(String(patchInit?.body))).toEqual({ name: "events-renamed" });
+
+    const [putPath, putInit] = fetchMock.mock.calls[2]!;
+    expect(String(putPath)).toBe("/api/admin/datasources/ds-1/grants");
+    expect(putInit?.method).toBe("PUT");
+    expect(JSON.parse(String(putInit?.body))).toEqual({ userIds: ["u-1", "u-2"] });
   });
 });

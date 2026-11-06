@@ -1,4 +1,4 @@
-import type { Column } from "@datachat/shared";
+import type { Column, DatasourceInput } from "@datachat/shared";
 
 export class ApiError extends Error {
   readonly code: string;
@@ -97,6 +97,59 @@ export interface DatasourceSummary {
   status: string;
   readOnlyVerified: boolean;
   lastCheckedAt: number | null;
+}
+
+export interface DatasourceProbeResult {
+  ok: boolean;
+  serverVersion?: string;
+  readOnly: boolean;
+  warnings: string[];
+  error?: string;
+}
+
+export interface DatasourceSchemaColumn {
+  name: string;
+  type: string;
+  nullable: boolean;
+  defaultValue: string | null;
+  comment: string | null;
+}
+
+export interface DatasourceSchemaIndex {
+  name: string;
+  unique: boolean;
+  columns: string[];
+}
+
+export interface DatasourceSchemaForeignKey {
+  name: string;
+  columns: string[];
+  referencedTable: string;
+  referencedColumns: string[];
+}
+
+export interface DatasourceSchemaTable {
+  schema: string;
+  name: string;
+  comment: string | null;
+  rowEstimate: number | null;
+  columns: DatasourceSchemaColumn[];
+  primaryKey: string[];
+  indexes: DatasourceSchemaIndex[];
+  foreignKeys: DatasourceSchemaForeignKey[];
+}
+
+/**
+ * Response from `GET /api/datasources/:id/schema`. The route currently accepts
+ * only `search` and always returns the first 50 matching tables; `total` is the
+ * full match count, so the drawer paginates the returned rows on the client.
+ */
+export interface DatasourceSchemaResponse {
+  tables: DatasourceSchemaTable[];
+  refreshedAt: number;
+  stale: boolean;
+  error: string | null;
+  total: number;
 }
 
 export interface ChatModelInfo {
@@ -277,6 +330,68 @@ export function abortRun(runId: string): Promise<void> {
 
 export function listDatasources(): Promise<{ datasources: DatasourceSummary[] }> {
   return apiRequest("/api/datasources");
+}
+
+export function createDatasource(
+  input: DatasourceInput,
+): Promise<{ id: string; warnings: string[]; readOnly: boolean }> {
+  return apiRequest("/api/datasources", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateDatasource(
+  id: string,
+  input: Partial<DatasourceInput>,
+): Promise<{ ok: boolean }> {
+  return apiRequest(`/api/datasources/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteDatasource(id: string): Promise<{ ok: boolean }> {
+  return apiRequest(`/api/datasources/${id}`, { method: "DELETE" });
+}
+
+export function testDatasource(id: string): Promise<DatasourceProbeResult> {
+  return apiRequest(`/api/datasources/${id}/test`, { method: "POST" });
+}
+
+export function refreshDatasourceSchema(
+  id: string,
+): Promise<{ tableCount: number; refreshedAt: number }> {
+  return apiRequest(`/api/datasources/${id}/refresh-schema`, { method: "POST" });
+}
+
+export function getDatasourceSchema(
+  id: string,
+  options: { search?: string } = {},
+): Promise<DatasourceSchemaResponse> {
+  const params = new URLSearchParams();
+  const search = options.search?.trim();
+  if (search) params.set("search", search);
+  const query = params.toString();
+  return apiRequest(`/api/datasources/${id}/schema${query ? `?${query}` : ""}`);
+}
+
+export function listDatasourceGrants(id: string): Promise<{ userIds: string[] }> {
+  return apiRequest(`/api/admin/datasources/${id}/grants`);
+}
+
+export function replaceDatasourceGrants(
+  id: string,
+  userIds: string[],
+): Promise<{ ok: boolean }> {
+  return apiRequest(`/api/admin/datasources/${id}/grants`, {
+    method: "PUT",
+    body: JSON.stringify({ userIds }),
+  });
+}
+
+export function listAdminUsers(): Promise<{ users: SessionUser[] }> {
+  return apiRequest("/api/admin/users");
 }
 
 export function listModels(): Promise<ModelsResponse> {
