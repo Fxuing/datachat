@@ -45,6 +45,18 @@ export function EChart({ option, className, ariaLabel = "图表", onReady }: ECh
 
   const empty = isEmptyOption(option);
   const [failed, setFailed] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const lastOptionRef = useRef(option);
+
+  // A failed init may be environment-transient; try again when the chart data
+  // changes instead of latching the placeholder forever.
+  useEffect(() => {
+    if (option === lastOptionRef.current) return;
+    lastOptionRef.current = option;
+    if (!failed) return;
+    setFailed(false);
+    setRetryKey((key) => key + 1);
+  }, [option, failed]);
 
   useEffect(() => {
     if (empty) return;
@@ -59,6 +71,7 @@ export function EChart({ option, className, ariaLabel = "图表", onReady }: ECh
       setFailed(true);
       return;
     }
+    setFailed(false);
     chartRef.current = instance;
     onReadyRef.current?.(instance);
 
@@ -74,7 +87,7 @@ export function EChart({ option, className, ariaLabel = "图表", onReady }: ECh
       instance.dispose();
       chartRef.current = null;
     };
-  }, [empty]);
+  }, [empty, retryKey]);
 
   useEffect(() => {
     if (empty) return;

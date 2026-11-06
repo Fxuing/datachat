@@ -46,13 +46,20 @@ function describeTestOutcome(result: McpTestResult | undefined): string {
   return result.ok ? `可用工具 ${result.tools.length} 个` : "失败";
 }
 
+interface TestState {
+  status: "testing" | "success" | "error";
+  result: McpTestResult | null;
+  error: string | null;
+}
+
+const TESTING: TestState = { status: "testing", result: null, error: null };
+
 export default function McpPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [draft, setDraft] = useState<"new" | string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, McpTestResult>>({});
-  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testStates, setTestStates] = useState<Record<string, TestState>>({});
 
   const editingId = draft !== null && draft !== "new" ? draft : null;
 
@@ -91,13 +98,23 @@ export default function McpPage() {
   const testMutation = useMutation({
     mutationFn: (id: string) => testMcpServer(id),
     onMutate: (id) => {
-      setTestingId(id);
+      setTestStates((current) => ({ ...current, [id]: TESTING }));
     },
     onSuccess: (result, id) => {
-      setTestResults((current) => ({ ...current, [id]: result }));
+      setTestStates((current) => ({
+        ...current,
+        [id]: { status: "success", result, error: null },
+      }));
     },
-    onSettled: () => {
-      setTestingId(null);
+    onError: (error, id) => {
+      setTestStates((current) => ({
+        ...current,
+        [id]: {
+          status: "error",
+          result: null,
+          error: describeError(error, "测试请求失败，请稍后重试。"),
+        },
+      }));
     },
   });
 
@@ -199,7 +216,7 @@ export default function McpPage() {
                 </thead>
                 <tbody>
                   {servers.map((server) => {
-                    const tested = testResults[server.id];
+                    const testState = testStates[server.id];
                     return (
                       <tr key={server.id} className="border-t border-neutral-100">
                         <td className="max-w-[20rem] px-4 py-2.5">
@@ -236,8 +253,12 @@ export default function McpPage() {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-xs text-neutral-500">
-                          <span className={tested && !tested.ok ? "text-red-600" : undefined}>
-                            {describeTestOutcome(tested)}
+                          <span
+                            className={testState?.result && !testState.result.ok ? "text-red-600" : undefined}
+                          >
+                            {testState?.status === "testing"
+                              ? "测试中…"
+                              : describeTestOutcome(testState?.result ?? undefined)}
                           </span>
                         </td>
                         <td className="px-4 py-2.5">
@@ -311,7 +332,7 @@ export default function McpPage() {
             datasources={datasources}
             saving={saveMutation.isPending}
             deleting={deleteMutation.isPending}
-            testing={testingId === editingId}
+            testing={testStates[editingId]?.status === "testing"}
             error={
               saveMutation.error
                 ? describeError(saveMutation.error, "保存失败，请稍后重试。")
@@ -322,10 +343,14 @@ export default function McpPage() {
                 ? describeError(deleteMutation.error, "删除失败，请稍后重试。")
                 : null
             }
-            testResult={testResults[editingId] ?? null}
+            testResult={
+              testStates[editingId]?.status === "success"
+                ? (testStates[editingId]?.result ?? null)
+                : null
+            }
             testError={
-              testMutation.isError && testMutation.variables === editingId
-                ? describeError(testMutation.error, "测试请求失败，请稍后重试。")
+              testStates[editingId]?.status === "error"
+                ? (testStates[editingId]?.error ?? null)
                 : null
             }
             onSave={(input) => saveMutation.mutate({ id: editingId, input })}

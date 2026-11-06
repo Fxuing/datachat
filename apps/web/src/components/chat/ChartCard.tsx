@@ -57,12 +57,18 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
   const inlineRef = useRef<EChartsType | null>(null);
   const fullscreenRef = useRef<EChartsType | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenReady, setFullscreenReady] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const closeFullscreen = () => {
+    setFullscreen(false);
+    setFullscreenReady(false);
+  };
 
   useEffect(() => {
     if (!fullscreen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFullscreen(false);
+      if (event.key === "Escape") closeFullscreen();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -101,7 +107,7 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Button variant="ghost" size="sm" onClick={handleDownload}>
+          <Button variant="ghost" size="sm" onClick={handleDownload} disabled={fullscreen && !fullscreenReady}>
             <Download className="h-3.5 w-3.5" />
             下载 PNG
           </Button>
@@ -109,7 +115,10 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
             variant="ghost"
             size="sm"
             aria-label="全屏查看图表"
-            onClick={() => setFullscreen(true)}
+            onClick={() => {
+              setFullscreenReady(false);
+              setFullscreen(true);
+            }}
           >
             <Maximize2 className="h-3.5 w-3.5" />
             全屏
@@ -137,7 +146,7 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/60 p-4"
           role="presentation"
-          onClick={() => setFullscreen(false)}
+          onClick={() => closeFullscreen()}
         >
           <div
             role="dialog"
@@ -152,7 +161,7 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
                 variant="ghost"
                 size="icon"
                 aria-label="关闭全屏"
-                onClick={() => setFullscreen(false)}
+                onClick={() => closeFullscreen()}
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -164,6 +173,7 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
                   ariaLabel={title}
                   onReady={(instance) => {
                     fullscreenRef.current = instance;
+                    setFullscreenReady(instance !== null);
                   }}
                 />
               </Suspense>
