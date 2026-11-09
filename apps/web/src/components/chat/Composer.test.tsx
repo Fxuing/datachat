@@ -12,7 +12,11 @@ describe("Composer", () => {
         conversationReady
         active
         canStop={false}
+        models={[]}
+        modelId=""
+        modelPickerDisabled
         thinkingLevel="off"
+        onModelChange={() => undefined}
         onThinkingChange={() => undefined}
         onSend={onSend}
         onStop={() => undefined}

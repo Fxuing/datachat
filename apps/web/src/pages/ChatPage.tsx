@@ -10,15 +10,6 @@ import { MessageList } from "../components/chat/MessageList";
 import { ShareDialog } from "../components/ShareDialog";
 import { PageSpinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
 import { useRunStream } from "../hooks/useRunStream";
 import {
   ApiError,
@@ -29,7 +20,6 @@ import {
   listModels,
   sendMessage,
   updateConversation,
-  type ChatModelInfo,
   type ConversationDetail,
 } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -37,59 +27,6 @@ import { queryKeys } from "../lib/query";
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message;
   return fallback;
-}
-
-function groupModelsByProvider(models: ChatModelInfo[]): Array<[string, ChatModelInfo[]]> {
-  const groups = new Map<string, ChatModelInfo[]>();
-  for (const model of models) {
-    const list = groups.get(model.providerName) ?? [];
-    list.push(model);
-    groups.set(model.providerName, list);
-  }
-  return [...groups.entries()];
-}
-
-function ModelSelector({
-  models,
-  currentId,
-  disabled,
-  onChange,
-}: {
-  models: ChatModelInfo[];
-  currentId: string;
-  disabled: boolean;
-  onChange: (modelId: string) => void;
-}) {
-  const selected =
-    models.find((model) => model.id === currentId) ??
-    models.find((model) => model.modelId === currentId);
-
-  return (
-    <Select
-      value={selected?.id}
-      onValueChange={onChange}
-      disabled={disabled || models.length === 0}
-    >
-      <SelectTrigger
-        aria-label="选择模型"
-        className="h-8 w-auto max-w-[12rem] shrink-0 gap-1 px-2 text-xs text-inksoft"
-      >
-        <SelectValue placeholder="默认模型" />
-      </SelectTrigger>
-      <SelectContent align="start" className="w-[13rem]">
-        {groupModelsByProvider(models).map(([providerName, providerModels]) => (
-          <SelectGroup key={providerName}>
-            <SelectLabel>{providerName}</SelectLabel>
-            {providerModels.map((model) => (
-              <SelectItem key={model.id} value={model.id} className="text-xs">
-                {model.name}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        ))}
-      </SelectContent>
-    </Select>
-  );
 }
 
 export default function ChatPage() {
@@ -238,26 +175,6 @@ export default function ChatPage() {
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {models?.configured === false ? (
-          <span
-            className="text-xs text-muted"
-            title="服务端未配置 SILICONFLOW_API_KEY"
-          >
-            未配置模型
-          </span>
-        ) : (
-          <ModelSelector
-            models={models?.models ?? []}
-            currentId={currentModelId}
-            disabled={
-              !conversationId ||
-              modelsQuery.isPending ||
-              modelMutation.isPending ||
-              !conversation
-            }
-            onChange={(modelId) => modelMutation.mutate(modelId)}
-          />
-        )}
         <Button
           variant="outline"
           size="sm"
@@ -344,7 +261,13 @@ export default function ChatPage() {
           conversationReady={Boolean(conversationId) && Boolean(conversation)}
           active={active}
           canStop={activeRunId !== null}
+          models={models?.models ?? []}
+          modelId={currentModelId}
+          modelPickerDisabled={
+            modelsQuery.isPending || modelMutation.isPending || !conversation
+          }
           thinkingLevel={conversation?.thinkingLevel ?? "off"}
+          onModelChange={(modelId) => modelMutation.mutate(modelId)}
           onThinkingChange={(level) => thinkingMutation.mutate(level)}
           onSend={handleSend}
           onStop={stream.stop}

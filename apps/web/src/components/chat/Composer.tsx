@@ -1,26 +1,21 @@
 import { useState, type KeyboardEvent } from "react";
 import { SendHorizontal, Square } from "lucide-react";
 import { Button } from "../ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
+import { ModelPicker } from "./ModelPicker";
+import type { ChatModelInfo } from "../../lib/api";
 
 const MAX_LENGTH = 8_000;
-
-const THINKING_OPTIONS = [
-  { value: "off", label: "思考：关闭" },
-  { value: "minimal", label: "思考：极简" },
-  { value: "low", label: "思考：低" },
-  { value: "medium", label: "思考：中" },
-  { value: "high", label: "思考：高" },
-  { value: "xhigh", label: "思考：极高" },
-  { value: "max", label: "思考：最大" },
-] as const;
 
 export interface ComposerProps {
   conversationReady: boolean;
   active: boolean;
   canStop: boolean;
+  models: ChatModelInfo[];
+  modelId: string;
+  modelPickerDisabled: boolean;
   thinkingLevel: string;
+  onModelChange: (modelId: string) => void;
   onThinkingChange: (level: string) => void;
   onSend: (content: string) => Promise<void>;
   onStop: () => void;
@@ -30,7 +25,11 @@ export function Composer({
   conversationReady,
   active,
   canStop,
+  models,
+  modelId,
+  modelPickerDisabled,
   thinkingLevel,
+  onModelChange,
   onThinkingChange,
   onSend,
   onStop,
@@ -84,26 +83,14 @@ export function Composer({
             onKeyDown={onKeyDown}
             className="min-h-[52px] resize-none border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:border-0 focus-visible:ring-0"
           />
-          <Select
-            value={thinkingLevel}
-            onValueChange={onThinkingChange}
-            disabled={!conversationReady}
-          >
-            <SelectTrigger
-              aria-label="思考等级"
-              title="模型思考等级（对下一次提问生效）"
-              className="h-8 w-[7.5rem] shrink-0 gap-1 px-2 text-[11px] text-inksoft"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end" className="w-[8.5rem]">
-              {THINKING_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value} className="text-xs">
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <ModelPicker
+            models={models}
+            modelId={modelId}
+            thinkingLevel={thinkingLevel}
+            disabled={!conversationReady || modelPickerDisabled}
+            onModelChange={onModelChange}
+            onThinkingChange={onThinkingChange}
+          />
           {active && canStop ? (
             <Button variant="outline" className="gap-2" onClick={onStop}>
               <Square className="h-3.5 w-3.5 fill-current" />
