@@ -81,10 +81,13 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
       return;
     }
     setDownloadError(null);
+    const canvas = getComputedStyle(document.documentElement)
+      .getPropertyValue("--canvas")
+      .trim();
     const url = instance.getDataURL({
       type: "png",
       pixelRatio: 2,
-      backgroundColor: "#ffffff",
+      backgroundColor: canvas ? `rgb(${canvas})` : "#ffffff",
     });
     const anchor = document.createElement("a");
     anchor.href = url;

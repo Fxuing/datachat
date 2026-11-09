@@ -19,4 +19,5 @@ export const testConfig: AppConfig = {
   queryPreviewRows: 200,
   queryTimeoutMs: 5000,
   mcpAllowPrivateHosts: false,
+  trustProxy: false,
 };

@@ -72,7 +72,10 @@ export async function buildApp({
   pools: injectedPools,
   mcpTestTimeoutMs,
 }: BuildAppOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { level: config.logLevel } });
+  const app = Fastify({
+    logger: { level: config.logLevel },
+    trustProxy: config.trustProxy,
+  });
   const signer = createSessionSigner(config.appSecret);
 
   await app.register(import("@fastify/cookie"));

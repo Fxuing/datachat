@@ -31,10 +31,10 @@ const ACTION_VALUES = Object.keys(AUDIT_ACTION_LABELS) as AuditActionValue[];
 const STATUS_VALUES = Object.keys(AUDIT_STATUS_LABELS) as AuditStatusValue[];
 
 const STATUS_BADGE_CLASSES: Record<AuditStatusValue, string> = {
-  ok: "bg-successsoft text-success ring-emerald-200",
-  rejected: "bg-warningsoft text-warning ring-amber-200",
-  error: "bg-dangersoft text-danger ring-red-200",
-  timeout: "bg-orange-50 text-orange-700 ring-orange-200",
+  ok: "bg-successsoft text-success ring-current/25",
+  rejected: "bg-warningsoft text-warning ring-current/25",
+  error: "bg-dangersoft text-danger ring-current/25",
+  timeout: "bg-warningsoft text-warning ring-current/25",
 };
 
 interface FilterState {

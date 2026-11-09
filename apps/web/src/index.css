@@ -12,6 +12,7 @@
     --muted: 113 113 122;
     --line: 228 228 231;
     --line-strong: 212 212 216;
+    --ring: 79 70 229;
     --brand: 79 70 229;
     --brand-hover: 67 56 202;
     --brand-soft: 238 242 255;
@@ -23,7 +24,6 @@
     --warning-soft: 255 251 235;
     --danger: 185 28 28;
     --danger-soft: 254 242 242;
-    --ring: 129 140 248;
   }
 
   .dark {
@@ -35,6 +35,7 @@
     --muted: 158 158 168;
     --line: 42 42 50;
     --line-strong: 68 68 78;
+    --ring: 129 140 248;
     --brand: 99 102 241;
     --brand-hover: 129 140 248;
     --brand-soft: 30 27 75;
@@ -46,7 +47,6 @@
     --warning-soft: 69 26 3;
     --danger: 248 113 113;
     --danger-soft: 69 10 10;
-    --ring: 99 102 241;
   }
 
   html,
@@ -192,6 +192,16 @@
     --muted: 113 113 122;
     --line: 228 228 231;
     --line-strong: 212 212 216;
+    --ring: 79 70 229;
+    --brand: 79 70 229;
+    --brand-soft: 238 242 255;
+    --brand-text: 67 56 202;
+    --success: 22 163 74;
+    --success-soft: 240 253 244;
+    --warning: 217 119 6;
+    --warning-soft: 255 251 235;
+    --danger: 220 38 38;
+    --danger-soft: 254 242 242;
   }
 
   html,

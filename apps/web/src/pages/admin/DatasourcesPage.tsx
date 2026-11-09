@@ -282,8 +282,8 @@ export default function DatasourcesPage() {
                           <span
                             className={
                               datasource.type === "mysql"
-                                ? "rounded bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-700"
-                                : "rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] text-brandtext"
+                                ? "rounded bg-subtle px-1.5 py-0.5 text-[11px] text-inksoft"
+                                : "rounded bg-brandsoft px-1.5 py-0.5 text-[11px] text-brandtext"
                             }
                           >
                             {typeLabel(datasource.type)}

@@ -79,7 +79,7 @@ export default function LoginPage() {
         </div>
 
         <div className="relative max-w-md">
-          <p className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-surface/5 px-2.5 py-1 text-[11px] font-medium text-indigo-200">
+          <p className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-indigo-200">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             自然语言数据工作台
           </p>
@@ -88,26 +88,26 @@ export default function LoginPage() {
             <br />
             也能把数据问明白。
           </h1>
-          <p className="mt-4 text-sm leading-6 text-muted">
+          <p className="mt-4 text-sm leading-6 text-white/60">
             连接 MySQL 与 PostgreSQL，用中文直接提问。每一步查询可审计，结果可导出、可成图、可分享。
           </p>
 
           <ul className="mt-8 space-y-4">
             {highlights.map(({ icon: Icon, title, body }) => (
               <li key={title} className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-surface/5 text-indigo-300">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-indigo-300">
                   <Icon className="h-4 w-4" />
                 </span>
                 <span>
                   <span className="block text-[13px] font-medium text-neutral-100">{title}</span>
-                  <span className="block text-xs leading-5 text-muted">{body}</span>
+                  <span className="block text-xs leading-5 text-white/55">{body}</span>
                 </span>
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="relative text-[11px] text-muted">
+        <p className="relative text-[11px] text-white/40">
           只读访问 · SQL 审计 · 数据不出内网
         </p>
       </aside>

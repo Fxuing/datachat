@@ -66,6 +66,13 @@ function withChartTheme(option: ChartOption, theme: Theme): ChartOption {
     ...option,
     backgroundColor: "transparent",
     textStyle: { color: ink, ...(option.textStyle as object | undefined) },
+    title: {
+      ...(option.title as object | undefined),
+      textStyle: {
+        color: ink,
+        ...((option.title as AxisLike | undefined)?.textStyle as object | undefined),
+      },
+    },
     legend: {
       ...(option.legend as object | undefined),
       textStyle: { color: ink, ...((option.legend as AxisLike | undefined)?.textStyle as object | undefined) },

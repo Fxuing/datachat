@@ -52,6 +52,14 @@ const envSchema = z
       z.coerce.number().int().positive().default(30_000),
     ),
     /** Allow MCP http(s) endpoints on loopback/private/metadata addresses (tests only). */
+    /** Trust X-Forwarded-* headers; enable only behind the bundled nginx. */
+    TRUST_PROXY: z.preprocess(
+      emptyToUndefined,
+      z
+        .enum(["true", "false", "1", "0"])
+        .default("false")
+        .transform((value) => value === "true" || value === "1"),
+    ),
     MCP_ALLOW_PRIVATE_HOSTS: z.preprocess(
       emptyToUndefined,
       z
@@ -102,6 +110,7 @@ export interface AppConfig {
   queryTimeoutMs: number;
   /** Whether MCP http(s) urls may target loopback/link-local/RFC1918 addresses. */
   mcpAllowPrivateHosts: boolean;
+  trustProxy: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -145,5 +154,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     queryPreviewRows: parsed.QUERY_PREVIEW_ROWS,
     queryTimeoutMs: parsed.QUERY_TIMEOUT_MS,
     mcpAllowPrivateHosts: parsed.MCP_ALLOW_PRIVATE_HOSTS,
+    trustProxy: parsed.TRUST_PROXY,
   };
 }

@@ -29,6 +29,7 @@ export default {
         warning: "rgb(var(--warning) / <alpha-value>)",
         warningsoft: "rgb(var(--warning-soft) / <alpha-value>)",
         danger: "rgb(var(--danger) / <alpha-value>)",
+        ring: "rgb(var(--ring) / <alpha-value>)",
         dangersoft: "rgb(var(--danger-soft) / <alpha-value>)",
       },
       fontFamily: {

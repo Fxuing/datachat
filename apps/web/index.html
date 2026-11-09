@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DataChat</title>
+    <script>
+      // Apply the saved theme before the first paint to avoid a light flash.
+      try {
+        if (localStorage.getItem("datachat.theme") === "dark") {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        }
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

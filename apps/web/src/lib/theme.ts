@@ -37,6 +37,11 @@ export function getInitialTheme(): Theme {
 /** Apply the initial theme synchronously, before React renders, to avoid a flash. */
 export function initTheme(): void {
   apply(getInitialTheme());
+  if (typeof window === "undefined") return;
+  window.addEventListener("storage", (event) => {
+    if (event.key !== STORAGE_KEY) return;
+    apply(event.newValue === "dark" ? "dark" : "light");
+  });
 }
 
 export function setTheme(theme: Theme): void {
