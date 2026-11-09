@@ -228,6 +228,11 @@ export interface ConversationDetail {
   messages: ChatMessage[];
   artifacts: ChatArtifact[];
   activeRun: { id: string; status: "queued" | "running" } | null;
+  contextUsage?: {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
+  } | null;
 }
 
 export interface ArtifactDetail {

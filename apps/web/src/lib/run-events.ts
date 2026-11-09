@@ -50,6 +50,12 @@ export interface RunQuestion {
   options: RunQuestionOption[];
 }
 
+export interface RunContextUsage {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+}
+
 export interface RunQuestionState {
   toolCallId: string;
   questions: RunQuestion[];
@@ -70,6 +76,7 @@ export interface RunStreamState {
   results: RunResultState[];
   charts: RunChartState[];
   questions: RunQuestionState[];
+  contextUsage: RunContextUsage | null;
   notices: RunNotice[];
   error: string | null;
   queuePosition: number | null;
@@ -87,6 +94,7 @@ export const initialRunStreamState: RunStreamState = {
   results: [],
   charts: [],
   questions: [],
+  contextUsage: null,
   notices: [],
   error: null,
   queuePosition: null,
@@ -274,6 +282,8 @@ export function runStreamReducer(
             error: event.payload.error ?? null,
             connection: "closed",
           };
+        case "context_usage":
+          return { ...base, contextUsage: event.payload };
         case "usage":
         case "report":
           return base;

@@ -27,6 +27,7 @@ const RUN_EVENT_TYPES = [
   "retry",
   "compaction",
   "usage",
+  "context_usage",
   "run_end",
 ] as const satisfies readonly RunEvent["type"][];
 

@@ -267,6 +267,7 @@ export default function ChatPage() {
             modelsQuery.isPending || modelMutation.isPending || !conversation
           }
           thinkingLevel={conversation?.thinkingLevel ?? "off"}
+          contextUsage={stream.state.contextUsage ?? conversationQuery.data?.contextUsage ?? null}
           onModelChange={(modelId) => modelMutation.mutate(modelId)}
           onThinkingChange={(level) => thinkingMutation.mutate(level)}
           onSend={handleSend}

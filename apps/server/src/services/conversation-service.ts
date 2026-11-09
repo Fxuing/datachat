@@ -87,6 +87,12 @@ export interface ConversationDetail {
   artifacts: ConversationArtifact[];
   /** Set while a run is queued/running, so a reloaded page can resume streaming. */
   activeRun: { id: string; status: "queued" | "running" } | null;
+  /** Latest context usage reported by the agent session, if any. */
+  contextUsage?: {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
+  } | null;
 }
 
 interface MessageGroup {
@@ -213,9 +219,14 @@ export function getConversationDetail(
   conversation: ConversationRow,
 ): ConversationDetail {
   const grouped = new Map<string, MessageGroup>();
+  let contextUsage: ConversationDetail["contextUsage"] = null;
   for (const row of listConversationEvents(db, conversation.id, 2_000)) {
     const event = parseEvent(row);
     if (!event) continue;
+    if (event.type === "context_usage") {
+      contextUsage = event.payload;
+      continue;
+    }
     applyEvent(groupFor(grouped, row.runId, row.createdAt), event);
   }
 
@@ -264,6 +275,7 @@ export function getConversationDetail(
       const parsed = parseArtifactRow(row);
       return parsed ? [parsed] : [];
     }),
+    contextUsage,
   };
 }
 

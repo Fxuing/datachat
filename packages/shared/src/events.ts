@@ -93,6 +93,14 @@ export const runEventSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({
+    type: z.literal("context_usage"),
+    payload: z.object({
+      tokens: z.number().int().nonnegative().nullable(),
+      contextWindow: z.number().int().positive(),
+      percent: z.number().min(0).max(100).nullable(),
+    }),
+  }),
+  z.object({
     type: z.literal("sql"),
     payload: z.object({
       sql: z.string(),

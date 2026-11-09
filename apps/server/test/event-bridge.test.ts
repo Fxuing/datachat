@@ -286,4 +286,18 @@ describe("bridgeSessionEvents", () => {
     bridge.stop();
     expect(session.listenerCount).toBe(0);
   });
+
+  it("persists context usage reported by the session", () => {
+    const { session } = setup();
+    session.contextUsage = { tokens: 32_000, contextWindow: 128_000, percent: 25 };
+    send(session, { type: "message_end", message: assistantMessage("hi") });
+
+    const rows = stored();
+    expect(rows.map((row) => row.event.type)).toEqual(["context_usage"]);
+    expect(rows[0]?.event.payload).toEqual({
+      tokens: 32_000,
+      contextWindow: 128_000,
+      percent: 25,
+    });
+  });
 });

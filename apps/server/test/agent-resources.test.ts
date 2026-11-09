@@ -46,5 +46,8 @@ describe("conversation resources", () => {
     expect(extensions.errors).toEqual([]);
     const tools = extensions.extensions.flatMap((extension) => [...extension.tools.keys()]);
     expect(tools).toContain("ask_user_question");
+    // billion-context registers its acp tools during session_start, so only its
+    // extension entry is present at loader time.
+    expect(extensions.extensions.some((entry) => entry.path.includes("billion-context"))).toBe(true);
   });
 });

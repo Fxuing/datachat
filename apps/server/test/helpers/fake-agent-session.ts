@@ -18,6 +18,7 @@ export class FakeAgentSession {
   });
   isStreaming = false;
   thinkingLevel = "off";
+  contextUsage: { tokens: number | null; contextWindow: number; percent: number | null } | undefined;
 
   private readonly listeners = new Set<AgentSessionEventListener>();
 
@@ -30,6 +31,10 @@ export class FakeAgentSession {
 
   getActiveToolNames(): string[] {
     return [];
+  }
+
+  getContextUsage(): typeof this.contextUsage {
+    return this.contextUsage;
   }
 
   emit(event: AgentSessionEvent): void {

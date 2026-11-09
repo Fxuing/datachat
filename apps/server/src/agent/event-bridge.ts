@@ -162,6 +162,17 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
         usage.output += message.usage.output;
         usage.cacheRead += message.usage.cacheRead;
         usage.cacheWrite += message.usage.cacheWrite;
+        const contextUsage = input.session.getContextUsage();
+        if (contextUsage) {
+          persist({
+            type: "context_usage",
+            payload: {
+              tokens: contextUsage.tokens,
+              contextWindow: contextUsage.contextWindow,
+              percent: contextUsage.percent,
+            },
+          });
+        }
         return;
       }
       case "tool_execution_start": {

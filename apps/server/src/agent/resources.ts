@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -44,6 +45,17 @@ function askUserQuestionExtensionPath(): string | undefined {
   }
 }
 
+/** Optional context-compression plugin; absent installs simply lose the acp tools. */
+function billionContextExtensionPath(): string | undefined {
+  try {
+    const packageJson = require.resolve("billion-context/package.json");
+    const entry = path.join(path.dirname(packageJson), "dist/agent/pi-native.js");
+    return existsSync(entry) ? entry : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Build the Pi resource loader for one conversation: a per-conversation workspace, the
  * materialized skill directory, the rendered system prompt, and MCP servers scoped to the
@@ -56,13 +68,17 @@ export async function createConversationResources(
   await fs.mkdir(workspaceDir, { recursive: true });
 
   const askUserExtension = askUserQuestionExtensionPath();
+  const billionContextExtension = billionContextExtensionPath();
+  const extensionPaths = [askUserExtension, billionContextExtension].filter(
+    (entry): entry is string => Boolean(entry),
+  );
   const eventBus = createEventBus();
   const loader = new DefaultResourceLoader({
     cwd: workspaceDir,
     agentDir: input.config.agentDir,
     eventBus,
     additionalSkillPaths: [input.skillsDir],
-    ...(askUserExtension ? { additionalExtensionPaths: [askUserExtension] } : {}),
+    ...(extensionPaths.length > 0 ? { additionalExtensionPaths: extensionPaths } : {}),
     noExtensions: true,
     // Auto-discovered host/project skills would collide with the materialized ones by name and
     // shadow datasource overrides, so only the conversation skill directory is loaded.

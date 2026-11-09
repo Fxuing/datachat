@@ -158,3 +158,9 @@ docker compose up -d --build
 - MCP 的 `stdio` 服务器等同于在本机执行命令，仅应添加可信服务器。
 - 报告导出 PDF 依赖浏览器打印，不生成服务端 PDF 文件。
 - 数据库集成测试默认跳过；设置 `RUN_DB_TESTS=1` 并准备 Docker 后运行。
+
+## 上下文压缩与使用率
+
+- 对话默认加载 [billion-context](https://github.com/ranxianglei/billion-context)（MIT）的 Pi 原生插件，长对话会在模型调用前自动压缩历史，并注册 `compress` / `decompress` / `search_context` / `acp_status` 等工具。
+- 输入框左下角的圆环显示当前会话的上下文占用（`tokens / contextWindow`）；达到 70% 变琥珀色、90% 变红色。
+- 如需关闭，设置环境变量 `BILI_NATIVE_PI=0` 后重启服务。
