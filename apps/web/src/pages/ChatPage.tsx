@@ -122,6 +122,17 @@ export default function ChatPage() {
     },
   });
 
+  const thinkingMutation = useMutation({
+    mutationFn: (thinkingLevel: string) =>
+      updateConversation(conversationId as string, { thinkingLevel }),
+    onSuccess: ({ conversation: updated }) => {
+      queryClient.setQueryData<ConversationDetail>(
+        queryKeys.conversation(conversationId as string),
+        (previous) => (previous ? { ...previous, conversation: updated } : previous),
+      );
+    },
+  });
+
   const sendMutation = useMutation({
     mutationFn: (content: string) => sendMessage(conversationId as string, content),
     onSuccess: ({ runId }) => {
@@ -305,6 +316,8 @@ export default function ChatPage() {
           conversationReady={Boolean(conversationId) && Boolean(conversation)}
           active={active}
           canStop={activeRunId !== null}
+          thinkingLevel={conversation?.thinkingLevel ?? "off"}
+          onThinkingChange={(level) => thinkingMutation.mutate(level)}
           onSend={handleSend}
           onStop={stream.stop}
         />

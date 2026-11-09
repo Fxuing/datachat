@@ -195,6 +195,23 @@ describe("conversation routes", () => {
         "siliconflow::deepseek-ai/DeepSeek-V3.2",
       );
       expect(valid.json().conversation).not.toHaveProperty("piSessionFile");
+
+      const thinking = await app.inject({
+        method: "PATCH",
+        url: `/api/conversations/${conversationId}`,
+        cookies: { dc_session: cookie },
+        payload: { thinkingLevel: "high" },
+      });
+      expect(thinking.statusCode).toBe(200);
+      expect(thinking.json().conversation.thinkingLevel).toBe("high");
+
+      const badThinking = await app.inject({
+        method: "PATCH",
+        url: `/api/conversations/${conversationId}`,
+        cookies: { dc_session: cookie },
+        payload: { thinkingLevel: "loud" },
+      });
+      expect(badThinking.statusCode).toBe(400);
     } finally {
       await app.close();
     }

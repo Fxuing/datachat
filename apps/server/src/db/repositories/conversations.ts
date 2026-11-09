@@ -98,6 +98,7 @@ export function findOwnedConversation(
 export interface UpdateConversationPatch {
   title?: string | null;
   modelId?: string | null;
+  thinkingLevel?: string;
   piSessionFile?: string | null;
 }
 
@@ -105,6 +106,7 @@ export function updateConversation(db: Db, id: string, patch: UpdateConversation
   const changes: Partial<typeof conversations.$inferInsert> = { updatedAt: Date.now() };
   if (patch.title !== undefined) changes.title = patch.title;
   if (patch.modelId !== undefined) changes.modelId = patch.modelId;
+  if (patch.thinkingLevel !== undefined) changes.thinkingLevel = patch.thinkingLevel;
   if (patch.piSessionFile !== undefined) changes.piSessionFile = patch.piSessionFile;
 
   db.update(conversations).set(changes).where(eq(conversations.id, id)).run();

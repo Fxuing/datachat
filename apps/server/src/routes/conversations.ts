@@ -54,9 +54,11 @@ const createBodySchema = z.object({
   title: z.string().trim().min(1).max(100).optional(),
   modelId: z.string().trim().min(1).max(200).optional(),
 });
+const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const updateBodySchema = z.object({
   title: z.string().trim().max(100).optional(),
   modelId: z.string().trim().min(1).max(200).optional(),
+  thinkingLevel: z.enum(THINKING_LEVELS).optional(),
 });
 const messageBodySchema = z.object({
   content: z.string().trim().min(1).max(8_000),
@@ -209,6 +211,9 @@ export async function conversationRoutes(
           ? { title: body.data.title.length > 0 ? body.data.title : null }
           : {}),
         ...(nextModelId !== undefined ? { modelId: nextModelId } : {}),
+        ...(body.data.thinkingLevel !== undefined
+          ? { thinkingLevel: body.data.thinkingLevel }
+          : {}),
       });
       const updated = findOwnedConversation(
         opts.db,

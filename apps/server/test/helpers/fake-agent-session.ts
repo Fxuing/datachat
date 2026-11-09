@@ -13,7 +13,11 @@ export class FakeAgentSession {
   readonly prompt = vi.fn(async (_text: string): Promise<void> => undefined);
   readonly abort = vi.fn(async (): Promise<void> => undefined);
   readonly dispose = vi.fn((): void => undefined);
+  readonly setThinkingLevel = vi.fn((level: string): void => {
+    this.thinkingLevel = level;
+  });
   isStreaming = false;
+  thinkingLevel = "off";
 
   private readonly listeners = new Set<AgentSessionEventListener>();
 

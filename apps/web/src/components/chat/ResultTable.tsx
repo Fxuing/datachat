@@ -17,6 +17,8 @@ export interface ResultTableProps {
   onCreateReport?: (artifactId: string) => void;
   /** Drop the outer frame when the table is already inside a card. */
   embedded?: boolean;
+  /** Height cap for the scrolling body; dialogs pass a taller value. */
+  maxBodyHeightClass?: string;
 }
 
 function isNumeric(column: Column): boolean {
@@ -44,6 +46,7 @@ export function ResultTable({
   truncated,
   onCreateReport,
   embedded = false,
+  maxBodyHeightClass = "max-h-80",
 }: ResultTableProps) {
   const [extraRows, setExtraRows] = useState<unknown[][]>([]);
 
@@ -63,7 +66,7 @@ export function ResultTable({
         !embedded && "rounded-lg border border-line",
       )}
     >
-      <div className="max-h-80 overflow-auto">
+      <div className={cn(maxBodyHeightClass, "overflow-auto")}>
         <table className="w-full border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-subtle/80">
             <tr>

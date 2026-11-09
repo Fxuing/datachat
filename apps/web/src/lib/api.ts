@@ -312,7 +312,7 @@ export function getConversation(id: string): Promise<ConversationDetail> {
 
 export function updateConversation(
   id: string,
-  patch: { title?: string; modelId?: string },
+  patch: { title?: string; modelId?: string; thinkingLevel?: string },
 ): Promise<{ conversation: Conversation }> {
   return apiRequest(`/api/conversations/${id}`, {
     method: "PATCH",

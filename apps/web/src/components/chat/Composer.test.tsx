@@ -12,6 +12,8 @@ describe("Composer", () => {
         conversationReady
         active
         canStop={false}
+        thinkingLevel="off"
+        onThinkingChange={() => undefined}
         onSend={onSend}
         onStop={() => undefined}
       />,

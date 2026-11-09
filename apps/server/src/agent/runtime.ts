@@ -251,6 +251,12 @@ export class ConversationRuntime {
         // keep the same session file so the transcript carries over.
         await this.disposeSession();
       } else {
+        const liveLevel = this.sessionBundle.session.thinkingLevel;
+        if (conversation.thinkingLevel !== liveLevel) {
+          this.sessionBundle.session.setThinkingLevel(
+            conversation.thinkingLevel as typeof liveLevel,
+          );
+        }
         return this.sessionBundle;
       }
     }

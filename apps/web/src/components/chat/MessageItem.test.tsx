@@ -50,6 +50,10 @@ describe("MessageItem", () => {
       </MemoryRouter>,
     );
     expect(screen.queryByText(/\[\[artifact:/)).not.toBeInTheDocument();
+    // Detail rows stay closed until the user asks for them.
+    expect(screen.queryByText("total")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查看数据" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("total")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
   });
