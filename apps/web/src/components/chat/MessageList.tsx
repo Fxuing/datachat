@@ -181,9 +181,6 @@ export function MessageList({
               {stream.text ? <MarkdownText content={stream.text} /> : null}
               {stream.charts.length > 0 ? (
                 <div className="flex flex-col gap-2">
-                  <div className="text-[11px] font-medium uppercase tracking-wider text-muted">
-                    图表
-                  </div>
                   {stream.charts.map((chart) => (
                     <ChartCard
                       key={chart.chartArtifactId}

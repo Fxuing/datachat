@@ -3,6 +3,7 @@ import type { EChartsType } from "echarts/core";
 import { Download, Maximize2, X } from "lucide-react";
 import { Button } from "../ui/button";
 import type { ChartOption } from "./EChart";
+import { normalizeChartOption } from "../../lib/chart-option";
 
 // ECharts is heavy; only load it once a chart card is actually rendered.
 const LazyEChart = lazy(() =>
@@ -59,6 +60,7 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenReady, setFullscreenReady] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const normalized = normalizeChartOption(option);
 
   const closeFullscreen = () => {
     setFullscreen(false);
@@ -131,7 +133,7 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
       <div className="h-64 px-2 py-2">
         <Suspense fallback={<ChartLoading />}>
           <LazyEChart
-            option={option}
+            option={normalized}
             ariaLabel={title}
             onReady={(instance) => {
               inlineRef.current = instance;
@@ -172,7 +174,7 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
             <div className="min-h-0 flex-1 p-3">
               <Suspense fallback={<ChartLoading />}>
                 <LazyEChart
-                  option={option}
+                  option={normalized}
                   ariaLabel={title}
                   onReady={(instance) => {
                     fullscreenRef.current = instance;

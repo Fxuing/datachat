@@ -233,7 +233,6 @@ export function MessageItem({
         ) : null}
         {standaloneCharts.length > 0 ? (
           <div className="flex flex-col gap-2">
-            <SectionLabel>图表</SectionLabel>
             <div className="flex flex-col gap-2">
               {standaloneCharts.map((chart) => (
                 <HistoricalChart key={chart.id} artifact={chart} />
