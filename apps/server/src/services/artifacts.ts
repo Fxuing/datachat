@@ -184,10 +184,13 @@ export class ResultWriter {
         .run();
       this.finalized = true;
     } catch (error) {
-      this.failure = error instanceof Error ? error : new Error(String(error));
-      await this.destroyStreams();
+      // Keep the original failure: destroying the streams can surface a secondary
+      // "write after destroy" error that must not mask the real cause.
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.failure ??= failure;
+      await this.destroyStreams().catch(() => undefined);
       await rm(this.filePath, { force: true, maxRetries: 3, retryDelay: 50 }).catch(() => undefined);
-      throw this.failure;
+      throw failure;
     } finally {
       // Keep the writer tracked by the store until finalize actually settles.
       this.notifyDone();

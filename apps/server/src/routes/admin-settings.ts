@@ -1,7 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { createAgentModelRuntime, listChatModels } from "../agent/model-runtime.js";
+import {
+  createAgentModelRuntime,
+  listChatModels,
+  modelKey,
+  resolveChatModel,
+} from "../agent/model-runtime.js";
+
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import {
@@ -12,6 +18,8 @@ import {
   type AppSettings,
   type SettingKey,
 } from "../services/app-settings.js";
+import { hasUsableProvider } from "../services/llm-catalog.js";
+import { enabledProviderIds } from "../services/llm-catalog.js";
 
 export interface AdminSettingsRouteOptions {
   db: Db;
@@ -70,20 +78,27 @@ export async function adminSettingsRoutes(
     const patch = parsed.data;
 
     if (patch.defaultModelId !== undefined && patch.defaultModelId !== null) {
-      if (!opts.config.siliconflowApiKey) {
-        return reply
-          .code(400)
-          .send(error("VALIDATION", "未配置模型服务，无法设置默认模型"));
+      if (!hasUsableProvider(opts.db, opts.config)) {
+        return reply.code(400).send(error("VALIDATION", "未配置模型服务，无法设置默认模型"));
       }
       let models;
       try {
-        models = listChatModels(await getRuntime());
+        models = listChatModels(
+          await getRuntime(),
+          enabledProviderIds(opts.db),
+        );
       } catch {
         return reply.code(503).send(error("MODEL_RUNTIME_UNAVAILABLE", "模型服务不可用"));
       }
-      if (!models.some((model) => model.id === patch.defaultModelId)) {
+      const model = resolveChatModel(
+        await getRuntime(),
+        patch.defaultModelId,
+        enabledProviderIds(opts.db),
+      );
+      if (!model) {
         return reply.code(400).send(error("VALIDATION", "模型不在白名单中"));
       }
+      patch.defaultModelId = modelKey(model);
     }
 
     saveSettings(opts.db, patch as Partial<Record<SettingKey, unknown | null>>);

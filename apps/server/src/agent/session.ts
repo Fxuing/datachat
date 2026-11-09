@@ -13,9 +13,11 @@ import { findDatasource } from "../db/repositories/datasources.js";
 import type { ArtifactStore } from "../services/artifacts.js";
 import type { PoolRegistry } from "./datasource/pool.js";
 import { resolveConversationModel } from "./model-runtime.js";
+
 import { createConversationResources } from "./resources.js";
 import type { AgentToolContext } from "./tools/context.js";
 import { buildAgentTools } from "./tools/index.js";
+import { enabledProviderIds } from "../services/llm-catalog.js";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 type ConversationThinkingLevel = (typeof THINKING_LEVELS)[number];
@@ -59,7 +61,8 @@ export async function createConversationSession(
   const datasource = findDatasource(input.db, conversation.datasourceId);
   if (!datasource) throw new Error("会话绑定的数据源不存在");
 
-  const model = resolveConversationModel(input.runtime, conversation.modelId);
+  const providerIds = enabledProviderIds(input.db);
+  const model = resolveConversationModel(input.runtime, conversation.modelId, providerIds);
 
   const toolContext: AgentToolContext = {
     db: input.db,

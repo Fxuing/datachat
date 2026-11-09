@@ -1,6 +1,7 @@
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
 import { listChatModels } from "../agent/model-runtime.js";
+
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import {
@@ -9,6 +10,7 @@ import {
   upsertSetting,
 } from "../db/repositories/settings.js";
 import { SHARE_MAX_EXPIRES_IN_DAYS } from "./shares.js";
+import { enabledProviderIds } from "../services/llm-catalog.js";
 
 export const SETTING_KEYS = [
   "defaultModelId",
@@ -140,9 +142,12 @@ export async function resolveDefaultModelId(input: {
   getRuntime: () => Promise<ModelRuntime>;
 }): Promise<string | null> {
   const stored = effectiveSettings(input.db, input.config).defaultModelId;
-  if (!stored || !input.config.siliconflowApiKey) return null;
+  if (!stored) return null;
   try {
-    const models = listChatModels(await input.getRuntime());
+    const models = listChatModels(
+      await input.getRuntime(),
+      enabledProviderIds(input.db),
+    );
     return models.some((model) => model.id === stored) ? stored : null;
   } catch {
     return null;

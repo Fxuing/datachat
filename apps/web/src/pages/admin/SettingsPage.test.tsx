@@ -15,32 +15,29 @@ const admin: SessionUser = {
 };
 
 const settings: AdminSettings = {
-  defaultModelId: "zai-org/GLM-5.3",
+  defaultModelId: "siliconflow::zai-org/GLM-5.3",
   queryMaxRows: 1_000,
   queryPreviewRows: 200,
   queryTimeoutMs: 5_000,
   shareMaxDays: 30,
 };
 
+function chatModel(modelId: string, name: string, contextWindow = 128_000, maxTokens = 8_192) {
+  return {
+    id: `siliconflow::${modelId}`,
+    modelId,
+    providerId: "siliconflow",
+    providerName: "SiliconFlow",
+    name,
+    contextWindow,
+    maxTokens,
+  };
+}
+
 const models = [
-  {
-    id: "deepseek-ai/DeepSeek-V3.2",
-    name: "DeepSeek V3.2",
-    contextWindow: 128_000,
-    maxTokens: 8_192,
-  },
-  {
-    id: "zai-org/GLM-5.3",
-    name: "GLM 5.3",
-    contextWindow: 128_000,
-    maxTokens: 8_192,
-  },
-  {
-    id: "Qwen/Qwen3.8-27B",
-    name: "Qwen3.8 27B",
-    contextWindow: 32_000,
-    maxTokens: 4_096,
-  },
+  chatModel("deepseek-ai/DeepSeek-V3.2", "DeepSeek V3.2"),
+  chatModel("zai-org/GLM-5.3", "GLM 5.3"),
+  chatModel("Qwen/Qwen3.8-27B", "Qwen3.8 27B", 32_000, 4_096),
 ];
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -103,15 +100,18 @@ describe("SettingsPage", () => {
     const modelSelect = (await screen.findByRole("combobox", {
       name: "默认模型",
     })) as HTMLSelectElement;
-    expect(modelSelect.value).toBe("zai-org/GLM-5.3");
+    expect(modelSelect.value).toBe("siliconflow::zai-org/GLM-5.3");
     expect(screen.getByRole("option", { name: /Qwen3.8 27B/ })).toBeDefined();
 
+    await userEvent.setup().click(screen.getByRole("button", { name: "查询限制" }));
     expect(
       (screen.getByRole("spinbutton", { name: "查询最大行数" }) as HTMLInputElement).value,
     ).toBe("1000");
     expect(
       (screen.getByRole("spinbutton", { name: "查询超时（毫秒）" }) as HTMLInputElement).value,
     ).toBe("5000");
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "分享" }));
     expect(
       (screen.getByRole("spinbutton", { name: "分享最长有效期（天）" }) as HTMLInputElement)
         .value,
@@ -123,24 +123,28 @@ describe("SettingsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
+    await screen.findByRole("combobox", { name: "默认模型" });
+    await user.click(screen.getByRole("button", { name: "查询限制" }));
     const maxRows = await screen.findByRole("spinbutton", { name: "查询最大行数" });
     await user.clear(maxRows);
     await user.type(maxRows, "2000");
 
+    await user.click(screen.getByRole("button", { name: "分享" }));
     const shareDays = screen.getByRole("spinbutton", { name: "分享最长有效期（天）" });
     await user.clear(shareDays);
     await user.type(shareDays, "14");
 
+    await user.click(screen.getByRole("button", { name: "通用" }));
     await user.selectOptions(
       screen.getByRole("combobox", { name: "默认模型" }),
-      "Qwen/Qwen3.8-27B",
+      "siliconflow::Qwen/Qwen3.8-27B",
     );
     await user.click(screen.getByRole("button", { name: "保存设置" }));
 
     await screen.findByText("设置已保存");
     expect(putBodies).toEqual([
       {
-        defaultModelId: "Qwen/Qwen3.8-27B",
+        defaultModelId: "siliconflow::Qwen/Qwen3.8-27B",
         queryMaxRows: 2_000,
         queryPreviewRows: 200,
         queryTimeoutMs: 5_000,
@@ -154,6 +158,8 @@ describe("SettingsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
+    await screen.findByRole("combobox", { name: "默认模型" });
+    await user.click(screen.getByRole("button", { name: "查询限制" }));
     const maxRows = await screen.findByRole("spinbutton", { name: "查询最大行数" });
     await user.clear(maxRows);
     await user.click(screen.getByRole("button", { name: "保存设置" }));

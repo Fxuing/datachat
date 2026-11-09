@@ -68,13 +68,13 @@ describe("GET /api/models", () => {
 
     expect(statusCode).toBe(200);
     expect(body.configured).toBe(true);
-    expect(body.defaultId).toBe("deepseek-ai/DeepSeek-V3.2");
+    expect(body.defaultId).toBe("siliconflow::deepseek-ai/DeepSeek-V3.2");
     expect(body.models).toHaveLength(4);
     expect(body.models.map((model: { id: string }) => model.id)).toEqual([
-      "deepseek-ai/DeepSeek-V3.2",
-      "zai-org/GLM-5.3",
-      "Qwen/Qwen3.8-27B",
-      "moonshotai/Kimi-K2.7-Code",
+      "siliconflow::deepseek-ai/DeepSeek-V3.2",
+      "siliconflow::zai-org/GLM-5.3",
+      "siliconflow::Qwen/Qwen3.8-27B",
+      "siliconflow::moonshotai/Kimi-K2.7-Code",
     ]);
     expect(body.models[0]).not.toHaveProperty("cost");
   });

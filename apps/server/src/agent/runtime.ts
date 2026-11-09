@@ -387,6 +387,8 @@ export interface RuntimeManagerOptions {
   config: AppConfig;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
+  /** Shared provider catalog resolver; defaults to a private lazy runtime. */
+  getModelRuntime?: () => Promise<ModelRuntime>;
   bus?: RunEventBus;
   createSession?: ConversationSessionFactory;
   maxRuntimes?: number;
@@ -407,6 +409,7 @@ export class RuntimeManager {
   private readonly config: AppConfig;
   private readonly pools: PoolRegistry;
   private readonly artifacts: ArtifactStore;
+  private readonly modelRuntimeFactory: (() => Promise<ModelRuntime>) | undefined;
   private readonly createSession: ConversationSessionFactory;
   private readonly maxRuntimes: number;
   private readonly idleMs: number;
@@ -422,6 +425,7 @@ export class RuntimeManager {
     this.config = options.config;
     this.pools = options.pools;
     this.artifacts = options.artifacts;
+    this.modelRuntimeFactory = options.getModelRuntime;
     this.bus = options.bus ?? new RunEventBus();
     this.createSession =
       options.createSession ??
@@ -551,7 +555,9 @@ export class RuntimeManager {
 
   private getModelRuntime(): Promise<ModelRuntime> {
     if (!this.modelRuntimePromise) {
-      this.modelRuntimePromise = createAgentModelRuntime(this.config).catch((error: unknown) => {
+      const factory =
+        this.modelRuntimeFactory ?? (() => createAgentModelRuntime(this.config, this.db));
+      this.modelRuntimePromise = factory().catch((error: unknown) => {
         this.modelRuntimePromise = undefined;
         throw error;
       });

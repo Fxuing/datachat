@@ -28,6 +28,8 @@ function testRuntimeConfig() {
   };
 }
 
+const PROVIDERS = ["siliconflow"] as const;
+
 describe("agent model runtime", () => {
   it("parses agent/models.json and lists the four whitelisted models in order", async () => {
     const config = testRuntimeConfig();
@@ -36,15 +38,18 @@ describe("agent model runtime", () => {
     // Pi expects a credential store to exist; first run seeds an empty one.
     expect(fs.readFileSync(config.agentAuthPath, "utf8").trim()).toBe("{}");
 
-    const models = listChatModels(runtime);
-    expect(models.map((model) => model.id)).toEqual([
+    const models = listChatModels(runtime, PROVIDERS);
+    expect(models.map((model) => model.modelId)).toEqual([
       "deepseek-ai/DeepSeek-V3.2",
       "zai-org/GLM-5.3",
       "Qwen/Qwen3.8-27B",
       "moonshotai/Kimi-K2.7-Code",
     ]);
     expect(models[0]).toEqual({
-      id: "deepseek-ai/DeepSeek-V3.2",
+      id: "siliconflow::deepseek-ai/DeepSeek-V3.2",
+      modelId: "deepseek-ai/DeepSeek-V3.2",
+      providerId: "siliconflow",
+      providerName: "SiliconFlow",
       name: "DeepSeek V3.2",
       contextWindow: 128_000,
       maxTokens: 8_192,
@@ -61,10 +66,10 @@ describe("agent model runtime", () => {
       "moonshotai/Kimi-K2.7-Code",
     ]) {
       expect(runtime.getModel("siliconflow", id)?.id).toBe(id);
-      expect(resolveChatModel(runtime, id)?.id).toBe(id);
+      expect(resolveChatModel(runtime, id, PROVIDERS)?.id).toBe(id);
     }
 
-    const preferred = resolveChatModel(runtime, DEFAULT_MODEL_CANDIDATE);
+    const preferred = resolveChatModel(runtime, DEFAULT_MODEL_CANDIDATE, PROVIDERS);
     expect(preferred?.provider).toBe("siliconflow");
     expect(preferred?.maxTokens).toBe(8_192);
   });
@@ -72,10 +77,10 @@ describe("agent model runtime", () => {
   it("never exposes providers outside the siliconflow whitelist", async () => {
     const runtime = await createAgentModelRuntime(testRuntimeConfig());
 
-    const models = listChatModels(runtime);
+    const models = listChatModels(runtime, PROVIDERS);
     expect(models).toHaveLength(4);
     for (const info of models) {
-      const model = resolveChatModel(runtime, info.id);
+      const model = resolveChatModel(runtime, info.id, PROVIDERS);
       expect(model?.provider).toBe("siliconflow");
     }
     // The runtime still knows about Pi's builtin providers; the catalog hides them.
@@ -85,7 +90,7 @@ describe("agent model runtime", () => {
   it("returns undefined for unknown model ids", async () => {
     const runtime = await createAgentModelRuntime(testRuntimeConfig());
 
-    expect(resolveChatModel(runtime, "openai/gpt-4o")).toBeUndefined();
+    expect(resolveChatModel(runtime, "openai/gpt-4o", PROVIDERS)).toBeUndefined();
     expect(resolveChatModel(runtime, "")).toBeUndefined();
   });
 

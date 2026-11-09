@@ -229,7 +229,7 @@ describe("admin settings", () => {
 
     const saved = await putSettings({ defaultModelId: "zai-org/GLM-5.3" }, appConfig);
     expect(saved.statusCode).toBe(200);
-    expect(saved.body.settings.defaultModelId).toBe("zai-org/GLM-5.3");
+    expect(saved.body.settings.defaultModelId).toBe("siliconflow::zai-org/GLM-5.3");
 
     const models = await withApp(async (app) => {
       const response = await app.inject({
@@ -240,7 +240,7 @@ describe("admin settings", () => {
       return { statusCode: response.statusCode, body: response.json() };
     }, appConfig);
     expect(models.statusCode).toBe(200);
-    expect(models.body.defaultId).toBe("zai-org/GLM-5.3");
+    expect(models.body.defaultId).toBe("siliconflow::zai-org/GLM-5.3");
 
     const created = await withApp(async (app) => {
       const response = await app.inject({
@@ -252,7 +252,7 @@ describe("admin settings", () => {
       return { statusCode: response.statusCode, body: response.json() };
     }, appConfig);
     expect(created.statusCode).toBe(201);
-    expect(created.body.conversation.modelId).toBe("zai-org/GLM-5.3");
+    expect(created.body.conversation.modelId).toBe("siliconflow::zai-org/GLM-5.3");
 
     const explicit = await withApp(async (app) => {
       const response = await app.inject({
@@ -264,7 +264,7 @@ describe("admin settings", () => {
       return { statusCode: response.statusCode, body: response.json() };
     }, appConfig);
     expect(explicit.statusCode).toBe(201);
-    expect(explicit.body.conversation.modelId).toBe("Qwen/Qwen3.8-27B");
+    expect(explicit.body.conversation.modelId).toBe("siliconflow::Qwen/Qwen3.8-27B");
 
     const invalid = await putSettings({ defaultModelId: "not-a-model" }, appConfig);
     expect(invalid.statusCode).toBe(400);
@@ -281,7 +281,7 @@ describe("admin settings", () => {
       });
       return response.json() as { defaultId: string | null };
     }, appConfig);
-    expect(fallback.defaultId).toBe("deepseek-ai/DeepSeek-V3.2");
+    expect(fallback.defaultId).toBe("siliconflow::deepseek-ai/DeepSeek-V3.2");
   });
 
   it("rejects defaultModelId when the model runtime is not configured", async () => {

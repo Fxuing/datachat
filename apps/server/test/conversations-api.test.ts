@@ -191,7 +191,9 @@ describe("conversation routes", () => {
         payload: { modelId: "deepseek-ai/DeepSeek-V3.2" },
       });
       expect(valid.statusCode).toBe(200);
-      expect(valid.json().conversation.modelId).toBe("deepseek-ai/DeepSeek-V3.2");
+      expect(valid.json().conversation.modelId).toBe(
+        "siliconflow::deepseek-ai/DeepSeek-V3.2",
+      );
       expect(valid.json().conversation).not.toHaveProperty("piSessionFile");
     } finally {
       await app.close();

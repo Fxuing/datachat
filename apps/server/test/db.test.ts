@@ -28,6 +28,7 @@ const APP_TABLES = [
   "datasource_grants",
   "datasource_schema_cache",
   "datasources",
+  "llm_providers",
   "mcp_servers",
   "query_audit",
   "reports",
@@ -235,8 +236,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(6);
-    expect(migrateDb(handle.db)).toBe(6);
+    expect(migrateDb(handle.db)).toBe(7);
+    expect(migrateDb(handle.db)).toBe(7);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

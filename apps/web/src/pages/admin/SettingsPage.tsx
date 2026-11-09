@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, RotateCcw, Save } from "lucide-react";
+import { ArrowLeft, Bot, Gauge, RotateCcw, Save, Settings, Share2 } from "lucide-react";
 import { AppShell } from "../../components/AppShell";
+import { LlmProvidersSection } from "../../components/admin/LlmProvidersSection";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { PageSpinner } from "../../components/ui/spinner";
@@ -13,6 +14,7 @@ import {
   updateAdminSettings,
   type AdminSettings,
   type AdminSettingsPatch,
+  type ChatModelInfo,
 } from "../../lib/api";
 import { describeApiError } from "../../lib/errors";
 import { queryKeys } from "../../lib/query";
@@ -31,7 +33,7 @@ interface NumberField {
   hint: string;
 }
 
-const NUMBER_FIELDS: NumberField[] = [
+const QUERY_FIELDS: NumberField[] = [
   {
     key: "queryMaxRows",
     label: "查询最大行数",
@@ -53,6 +55,9 @@ const NUMBER_FIELDS: NumberField[] = [
     max: 300_000,
     hint: "超过该时长的查询会被终止",
   },
+];
+
+const SHARE_FIELDS: NumberField[] = [
   {
     key: "shareMaxDays",
     label: "分享最长有效期（天）",
@@ -60,6 +65,17 @@ const NUMBER_FIELDS: NumberField[] = [
     max: 365,
     hint: "创建分享链接时允许设置的最长天数",
   },
+];
+
+const NUMBER_FIELDS = [...QUERY_FIELDS, ...SHARE_FIELDS];
+
+type Section = "general" | "providers" | "query" | "share";
+
+const SECTIONS: Array<{ id: Section; label: string; icon: typeof Settings }> = [
+  { id: "general", label: "通用", icon: Settings },
+  { id: "providers", label: "模型服务", icon: Bot },
+  { id: "query", label: "查询限制", icon: Gauge },
+  { id: "share", label: "分享", icon: Share2 },
 ];
 
 type Draft = Record<NumberKey, string> & { defaultModelId: string };
@@ -101,9 +117,20 @@ function validateDraft(draft: Draft): DraftErrors {
   return errors;
 }
 
+function groupModels(models: ChatModelInfo[]): Array<[string, ChatModelInfo[]]> {
+  const groups = new Map<string, ChatModelInfo[]>();
+  for (const model of models) {
+    const list = groups.get(model.providerName) ?? [];
+    list.push(model);
+    groups.set(model.providerName, list);
+  }
+  return [...groups.entries()];
+}
+
 export default function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [section, setSection] = useState<Section>("general");
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const settingsQuery = useQuery({
@@ -203,158 +230,225 @@ export default function SettingsPage() {
     saveMutation.mutate(toPatch(draft));
   };
 
+  const renderNumberField = (field: NumberField) => {
+    const error = errors[field.key];
+    const describedBy = error ? `${field.key}-error` : undefined;
+    return (
+      <div key={field.key}>
+        <label htmlFor={field.key} className="text-sm font-medium text-inksoft">
+          {field.label}
+        </label>
+        <Input
+          id={field.key}
+          aria-label={field.label}
+          type="number"
+          inputMode="numeric"
+          min={field.min}
+          max={field.max}
+          step={1}
+          className="mt-1.5"
+          value={draft?.[field.key] ?? ""}
+          disabled={busy}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+          onChange={(event) => updateDraft({ [field.key]: event.target.value })}
+        />
+        {error ? (
+          <p id={describedBy} role="alert" className="mt-1 text-xs text-danger">
+            {error}
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-muted">{field.hint}</p>
+        )}
+      </div>
+    );
+  };
+
+  const current = SECTIONS.find((item) => item.id === section)!;
+
   return (
     <AppShell user={user} sidebar={sidebar}>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-6 py-6">
+        <div className="mx-auto w-full max-w-5xl px-6 py-6">
           <h1 className="text-xl font-semibold tracking-tight text-ink">设置</h1>
           <p className="mt-1 text-sm text-muted">
-            默认模型会影响模型列表与新会话，分享上限会限制新建分享链接的有效期；未保存的项沿用服务端配置。
+            模型服务可接入任意兼容供应商；查询与分享限制对所有新请求生效。
           </p>
 
-          {draft === null ? (
-            settingsQuery.isError ? (
-              <div className="mt-4 rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger">
-                <p role="alert">{describeApiError(settingsQuery.error, "加载设置失败")}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => void settingsQuery.refetch()}
-                >
-                  重试
-                </Button>
-              </div>
-            ) : (
-              <div className="mt-4">
-                <PageSpinner />
-              </div>
-            )
-          ) : (
-            <form
-              noValidate
-              className="mt-4 space-y-5 rounded-xl border border-line bg-surface shadow-card p-6"
-              onSubmit={(event) => {
-                event.preventDefault();
-                submit();
-              }}
-            >
-              {notice ? (
-                <p
-                  role="status"
-                  className="rounded-md border border-success/20 bg-successsoft px-3 py-2 text-xs text-success"
-                >
-                  {notice}
-                </p>
-              ) : null}
-              {saveError ? (
-                <p
-                  role="alert"
-                  className="rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger"
-                >
-                  {saveError}
-                </p>
-              ) : null}
-
-              <div>
-                <label
-                  htmlFor="default-model"
-                  className="text-sm font-medium text-inksoft"
-                >
-                  默认模型
-                </label>
-                <select
-                  id="default-model"
-                  aria-label="默认模型"
-                  className={`${selectClass} mt-1.5`}
-                  value={draft.defaultModelId}
-                  disabled={busy}
-                  onChange={(event) => updateDraft({ defaultModelId: event.target.value })}
-                >
-                  <option value="">未设置（自动使用第一个可用模型）</option>
-                  {models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}（{model.id}）
-                    </option>
-                  ))}
-                  {draft.defaultModelId && !models.some((m) => m.id === draft.defaultModelId) ? (
-                    <option value={draft.defaultModelId}>{draft.defaultModelId}</option>
-                  ) : null}
-                </select>
-                <p className="mt-1.5 text-xs text-muted">
-                  {modelConfigured
-                    ? "新会话会使用该模型；未设置时使用第一个可用模型。"
-                    : "尚未配置模型服务，暂时只能使用自动选择。"}
-                </p>
-                {modelsQuery.isError ? (
-                  <p role="alert" className="mt-1 text-xs text-danger">
-                    {describeApiError(modelsQuery.error, "模型列表加载失败")}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                {NUMBER_FIELDS.map((field) => {
-                  const error = errors[field.key];
-                  const describedBy = error ? `${field.key}-error` : undefined;
+          <div className="mt-5 flex flex-col gap-5 md:flex-row">
+            <nav aria-label="设置分区" className="md:w-44 md:shrink-0">
+              <ul className="flex gap-1 overflow-x-auto md:flex-col">
+                {SECTIONS.map((item) => {
+                  const Icon = item.icon;
+                  const active = item.id === section;
                   return (
-                    <div key={field.key}>
-                      <label
-                        htmlFor={field.key}
-                        className="text-sm font-medium text-inksoft"
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        aria-current={active ? "page" : undefined}
+                        className={`flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${
+                          active
+                            ? "bg-brandsoft font-medium text-brandtext"
+                            : "text-inksoft hover:bg-subtle"
+                        }`}
+                        onClick={() => setSection(item.id)}
                       >
-                        {field.label}
-                      </label>
-                      <Input
-                        id={field.key}
-                        aria-label={field.label}
-                        type="number"
-                        inputMode="numeric"
-                        min={field.min}
-                        max={field.max}
-                        step={1}
-                        className="mt-1.5"
-                        value={draft[field.key]}
-                        disabled={busy}
-                        aria-invalid={error ? true : undefined}
-                        aria-describedby={describedBy}
-                        onChange={(event) => updateDraft({ [field.key]: event.target.value })}
-                      />
-                      {error ? (
-                        <p id={describedBy} role="alert" className="mt-1 text-xs text-danger">
-                          {error}
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-muted">{field.hint}</p>
-                      )}
-                    </div>
+                        <Icon className="h-4 w-4" />
+                        {item.label}
+                      </button>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
+            </nav>
 
-              <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
-                <Button type="submit" size="sm" className="gap-1.5" disabled={busy}>
-                  <Save className="h-3.5 w-3.5" />
-                  {saveMutation.isPending ? "保存中…" : "保存设置"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={busy}
-                  onClick={() => {
-                    setNotice(null);
-                    setSaveError(null);
-                    resetMutation.mutate();
-                  }}
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  {resetMutation.isPending ? "恢复中…" : "恢复默认"}
-                </Button>
+            <div className="min-w-0 flex-1">
+              <div className="rounded-xl border border-line bg-surface p-6 shadow-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold text-ink">{current.label}</h2>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {section === "general"
+                        ? "新会话默认使用的模型。"
+                        : section === "providers"
+                          ? "管理可用的模型供应商与模型白名单。"
+                          : section === "query"
+                            ? "限制单次查询返回规模与执行时长。"
+                            : "控制分享链接的最长有效期。"}
+                    </p>
+                  </div>
+                  {section !== "providers" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={busy}
+                      onClick={() => {
+                        setNotice(null);
+                        setSaveError(null);
+                        resetMutation.mutate();
+                      }}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {resetMutation.isPending ? "恢复中…" : "恢复默认"}
+                    </Button>
+                  ) : null}
+                </div>
+
+                {section === "providers" ? (
+                  <div className="mt-4">
+                    <LlmProvidersSection />
+                  </div>
+                ) : draft === null ? (
+                  settingsQuery.isError ? (
+                    <div className="mt-4 rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger">
+                      <p role="alert">{describeApiError(settingsQuery.error, "加载设置失败")}</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => void settingsQuery.refetch()}
+                      >
+                        重试
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-4">
+                      <PageSpinner />
+                    </div>
+                  )
+                ) : (
+                  <form
+                    noValidate
+                    className="mt-4 space-y-5"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      submit();
+                    }}
+                  >
+                    {notice ? (
+                      <p
+                        role="status"
+                        className="rounded-md border border-success/20 bg-successsoft px-3 py-2 text-xs text-success"
+                      >
+                        {notice}
+                      </p>
+                    ) : null}
+                    {saveError ? (
+                      <p
+                        role="alert"
+                        className="rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger"
+                      >
+                        {saveError}
+                      </p>
+                    ) : null}
+
+                    {section === "general" ? (
+                      <div>
+                        <label htmlFor="default-model" className="text-sm font-medium text-inksoft">
+                          默认模型
+                        </label>
+                        <select
+                          id="default-model"
+                          aria-label="默认模型"
+                          className={`${selectClass} mt-1.5`}
+                          value={draft.defaultModelId}
+                          disabled={busy}
+                          onChange={(event) =>
+                            updateDraft({ defaultModelId: event.target.value })
+                          }
+                        >
+                          <option value="">未设置（自动使用第一个可用模型）</option>
+                          {groupModels(models).map(([providerName, providerModels]) => (
+                            <optgroup key={providerName} label={providerName}>
+                              {providerModels.map((model) => (
+                                <option key={model.id} value={model.id}>
+                                  {model.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                          {draft.defaultModelId &&
+                          !models.some((model) => model.id === draft.defaultModelId) ? (
+                            <option value={draft.defaultModelId}>{draft.defaultModelId}</option>
+                          ) : null}
+                        </select>
+                        <p className="mt-1.5 text-xs text-muted">
+                          {modelConfigured
+                            ? "新会话会使用该模型；未设置时使用第一个可用模型。"
+                            : "尚未配置可用的模型服务，请先到「模型服务」添加。"}
+                        </p>
+                        {modelsQuery.isError ? (
+                          <p role="alert" className="mt-1 text-xs text-danger">
+                            {describeApiError(modelsQuery.error, "模型列表加载失败")}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {section === "query" ? (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {QUERY_FIELDS.map(renderNumberField)}
+                      </div>
+                    ) : null}
+
+                    {section === "share" ? (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {SHARE_FIELDS.map(renderNumberField)}
+                      </div>
+                    ) : null}
+
+                    <div className="flex items-center gap-2 border-t border-line pt-4">
+                      <Button type="submit" size="sm" className="gap-1.5" disabled={busy}>
+                        <Save className="h-3.5 w-3.5" />
+                        {saveMutation.isPending ? "保存中…" : "保存设置"}
+                      </Button>
+                    </div>
+                  </form>
+                )}
               </div>
-            </form>
-          )}
+            </div>
+          </div>
         </div>
       </div>
     </AppShell>

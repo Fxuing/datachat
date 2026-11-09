@@ -261,6 +261,18 @@ export const skills = sqliteTable(
   ],
 );
 
+export const llmProviders = sqliteTable("llm_providers", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  protocol: text("protocol", { enum: ["openai-completions", "anthropic-messages"] }).notNull(),
+  baseUrl: text("base_url").notNull(),
+  apiKeyCipher: text("api_key_cipher").notNull(),
+  modelsJson: text("models_json").notNull(),
+  enabled: integer("enabled").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   valueJson: text("value_json").notNull(),

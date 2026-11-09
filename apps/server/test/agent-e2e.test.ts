@@ -230,7 +230,10 @@ describe("agent chat end to end", () => {
     // The chat page asks for the model catalog before it can send a message.
     const models = await app.inject({ method: "GET", url: "/api/models", cookies });
     expect(models.statusCode).toBe(200);
-    expect(models.json()).toMatchObject({ configured: true, defaultId: "deepseek-ai/DeepSeek-V3.2" });
+    expect(models.json()).toMatchObject({
+      configured: true,
+      defaultId: "siliconflow::deepseek-ai/DeepSeek-V3.2",
+    });
     expect(models.json().models).toHaveLength(4);
 
     const created = await app.inject({

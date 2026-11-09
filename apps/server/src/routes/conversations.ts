@@ -19,11 +19,15 @@ import { createRun, markRun } from "../db/repositories/runs.js";
 import {
   createAgentModelRuntime,
   listChatModels,
+  modelKey,
+  resolveChatModel,
   type ChatModelInfo,
 } from "../agent/model-runtime.js";
 import type { RuntimeManager } from "../agent/runtime.js";
+
 import type { ArtifactStore } from "../services/artifacts.js";
 import { resolveDefaultModelId } from "../services/app-settings.js";
+import { enabledProviderIds } from "../services/llm-catalog.js";
 import {
   deleteConversationFiles,
   getConversationDetail,
@@ -114,18 +118,18 @@ export async function conversationRoutes(
       }
       let modelId = body.data.modelId;
       if (modelId !== undefined) {
-        let models: ChatModelInfo[];
+        const providerIds = enabledProviderIds(opts.db);
+        let model: ReturnType<typeof resolveChatModel>;
         try {
-          models = listChatModels(await getRuntime());
+          model = resolveChatModel(await getRuntime(), modelId, providerIds);
         } catch {
           return reply.code(503).send(error("MODEL_RUNTIME_UNAVAILABLE", "模型服务不可用"));
         }
-        if (models.length === 0) {
-          return reply.code(503).send(error("MODEL_RUNTIME_UNAVAILABLE", "没有可用的模型"));
-        }
-        if (!models.some((model) => model.id === modelId)) {
+        if (!model) {
           return reply.code(400).send(error("VALIDATION", "模型不在白名单中"));
         }
+        // Legacy bare ids are normalized to the canonical provider::model key.
+        modelId = modelKey(model);
       } else {
         // New conversations start on the admin default when it is still usable; a
         // missing/unavailable default leaves modelId null so the runner falls back.
@@ -185,22 +189,26 @@ export async function conversationRoutes(
         return reply.code(404).send(error("NOT_FOUND", "会话不存在"));
       }
 
+      let nextModelId: string | undefined;
       if (body.data.modelId !== undefined) {
-        const runtime = await getRuntime();
-        const models = listChatModels(runtime);
-        if (models.length === 0) {
-          return reply.code(503).send(error("MODEL_RUNTIME_UNAVAILABLE", "没有可用的模型"));
+        const providerIds = enabledProviderIds(opts.db);
+        let model: ReturnType<typeof resolveChatModel>;
+        try {
+          model = resolveChatModel(await getRuntime(), body.data.modelId, providerIds);
+        } catch {
+          return reply.code(503).send(error("MODEL_RUNTIME_UNAVAILABLE", "模型服务不可用"));
         }
-        if (!models.some((model) => model.id === body.data.modelId)) {
+        if (!model) {
           return reply.code(400).send(error("VALIDATION", "模型不在白名单中"));
         }
+        nextModelId = modelKey(model);
       }
 
       updateConversation(opts.db, conversation.id, {
         ...(body.data.title !== undefined
           ? { title: body.data.title.length > 0 ? body.data.title : null }
           : {}),
-        ...(body.data.modelId !== undefined ? { modelId: body.data.modelId } : {}),
+        ...(nextModelId !== undefined ? { modelId: nextModelId } : {}),
       });
       const updated = findOwnedConversation(
         opts.db,

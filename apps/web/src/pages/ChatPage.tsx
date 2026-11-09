@@ -29,6 +29,16 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function groupModelsByProvider(models: ChatModelInfo[]): Array<[string, ChatModelInfo[]]> {
+  const groups = new Map<string, ChatModelInfo[]>();
+  for (const model of models) {
+    const list = groups.get(model.providerName) ?? [];
+    list.push(model);
+    groups.set(model.providerName, list);
+  }
+  return [...groups.entries()];
+}
+
 function ModelSelector({
   models,
   currentId,
@@ -53,10 +63,14 @@ function ModelSelector({
           默认模型
         </option>
       )}
-      {models.map((model) => (
-        <option key={model.id} value={model.id}>
-          {model.name}
-        </option>
+      {groupModelsByProvider(models).map(([providerName, providerModels]) => (
+        <optgroup key={providerName} label={providerName}>
+          {providerModels.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.name}
+            </option>
+          ))}
+        </optgroup>
       ))}
     </select>
   );

@@ -19,6 +19,9 @@ import { reportRoutes } from "./routes/reports.js";
 import { shareRoutes } from "./routes/shares.js";
 import { PoolRegistry } from "./agent/datasource/pool.js";
 import { RuntimeManager } from "./agent/runtime.js";
+import { ModelRuntimeManager } from "./agent/model-runtime.js";
+import { seedLegacyLlmProvider } from "./services/llm-catalog.js";
+import { llmProviderRoutes } from "./routes/admin-llm-providers.js";
 import { ArtifactStore } from "./services/artifacts.js";
 import type { AppConfig } from "./config.js";
 import type { Db } from "./db/client.js";
@@ -107,6 +110,10 @@ export async function buildApp({
     }
   });
 
+  // Import the legacy SiliconFlow config once so existing deployments keep working.
+  seedLegacyLlmProvider(db, config);
+  const modelRuntime = new ModelRuntimeManager(config, db);
+
   registerAuthGuards(app, { signer, db });
   await app.register(healthRoutes, { db });
   await app.register(authRoutes, { config, db, signer });
@@ -114,7 +121,8 @@ export async function buildApp({
   await app.register(adminSkillRoutes, { db, agentDir: config.agentDir });
   await app.register(adminMcpRoutes, { db, config, mcpTestTimeoutMs });
   await app.register(adminAuditRoutes, { db });
-  await app.register(adminSettingsRoutes, { db, config });
+  await app.register(adminSettingsRoutes, { db, config, getRuntime: () => modelRuntime.get() });
+  await app.register(llmProviderRoutes, { db, config, manager: modelRuntime });
   const artifacts =
     injectedArtifacts ??
     new ArtifactStore(db, path.join(config.dataDir, "artifacts"));
@@ -122,15 +130,22 @@ export async function buildApp({
   const pools = injectedPools ?? new PoolRegistry();
   const agentRuntime =
     injectedAgentRuntime ??
-    new RuntimeManager({ config, db, pools, artifacts });
+    new RuntimeManager({
+      config,
+      db,
+      pools,
+      artifacts,
+      getModelRuntime: () => modelRuntime.get(),
+    });
   await app.register(datasourceRoutes, { config, db, pools });
   await app.register(datasourceSchemaRoutes, { config, db, pools });
-  await app.register(modelsRoutes, { config, db });
+  await app.register(modelsRoutes, { config, db, getRuntime: () => modelRuntime.get() });
   await app.register(conversationRoutes, {
     config,
     db,
     artifacts,
     runtime: agentRuntime,
+    getRuntime: () => modelRuntime.get(),
   });
   await app.register(artifactRoutes, { db, artifacts });
   await app.register(reportRoutes, { db, artifacts });

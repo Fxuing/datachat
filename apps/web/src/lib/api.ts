@@ -160,6 +160,9 @@ export interface DatasourceSchemaResponse {
 
 export interface ChatModelInfo {
   id: string;
+  modelId: string;
+  providerId: string;
+  providerName: string;
   name: string;
   contextWindow: number;
   maxTokens: number;
@@ -487,6 +490,82 @@ export function listAudit(filters: AuditListFilters = {}): Promise<AuditListResp
 
 export function listModels(): Promise<ModelsResponse> {
   return apiRequest("/api/models");
+}
+
+export type LlmProtocol = "openai-completions" | "anthropic-messages";
+
+export interface LlmProviderModel {
+  id: string;
+  name: string;
+  contextWindow: number;
+  maxTokens: number;
+}
+
+export interface LlmProvider {
+  id: string;
+  name: string;
+  protocol: LlmProtocol;
+  baseUrl: string;
+  enabled: boolean;
+  maskedKey: string;
+  models: LlmProviderModel[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface LlmProviderInput {
+  name: string;
+  protocol: LlmProtocol;
+  baseUrl: string;
+  apiKey?: string;
+  models: Array<Pick<LlmProviderModel, "id" | "name">>;
+  enabled?: boolean;
+}
+
+export function listLlmProviders(): Promise<{
+  providers: LlmProvider[];
+  defaultModelId: string | null;
+}> {
+  return apiRequest("/api/admin/llm-providers");
+}
+
+export function createLlmProvider(
+  input: LlmProviderInput & { apiKey: string },
+): Promise<{ provider: LlmProvider }> {
+  return apiRequest("/api/admin/llm-providers", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateLlmProvider(
+  id: string,
+  input: Partial<LlmProviderInput>,
+): Promise<{ provider: LlmProvider }> {
+  return apiRequest(`/api/admin/llm-providers/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteLlmProvider(id: string): Promise<void> {
+  return apiRequest(`/api/admin/llm-providers/${id}`, { method: "DELETE" });
+}
+
+export function testLlmProvider(input: {
+  protocol: LlmProtocol;
+  baseUrl: string;
+  apiKey?: string;
+  providerId?: string;
+}): Promise<{ models: LlmProviderModel[]; count: number }> {
+  return apiRequest("/api/admin/llm-providers/test", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function refreshLlmProvider(id: string): Promise<{ provider: LlmProvider }> {
+  return apiRequest(`/api/admin/llm-providers/${id}/refresh`, { method: "POST" });
 }
 
 export interface AdminSettings {

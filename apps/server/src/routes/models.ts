@@ -8,6 +8,9 @@ import {
 } from "../agent/model-runtime.js";
 import type { Db } from "../db/client.js";
 import { effectiveSettings } from "../services/app-settings.js";
+import { hasUsableProvider } from "../services/llm-catalog.js";
+import { enabledProviderIds } from "../services/llm-catalog.js";
+
 
 export interface ModelsRouteOptions {
   config: AppConfig;
@@ -38,12 +41,15 @@ export async function modelsRoutes(
       )));
 
   app.get("/api/models", { preHandler: app.authenticate }, async (): Promise<ModelsResponse> => {
-    // No key: report the missing configuration instead of failing the page with a 500.
-    if (!opts.config.siliconflowApiKey) {
+    // No usable provider yet: report it instead of failing the page with a 500.
+    if (!hasUsableProvider(opts.db, opts.config)) {
       return { configured: false, models: [], defaultId: null };
     }
     const runtime = await getRuntime();
-    const models = listChatModels(runtime);
+    const models = listChatModels(
+      runtime,
+      enabledProviderIds(opts.db),
+    );
     // An admin-selected default wins while it is still whitelisted; otherwise fall
     // back to the first model, matching resolveConversationModel().
     const storedDefault = effectiveSettings(opts.db, opts.config).defaultModelId;
