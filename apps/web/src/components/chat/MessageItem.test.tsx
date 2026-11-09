@@ -26,6 +26,34 @@ describe("MessageItem", () => {
     expect(screen.queryByText("本次回答失败，请重试。")).not.toBeInTheDocument();
   });
 
+  it("renders report-style artifact placeholders as inline result tables", () => {
+    const artifactId = "4e6398fc-7fe5-45dd-b689-44ef6fed928a";
+    render(
+      <MemoryRouter>
+        <MessageItem
+          message={message({
+            status: "ok",
+            assistant: { content: `汇总如下：
+
+[[artifact:${artifactId}]]` },
+            results: [
+              {
+                artifactId,
+                columns: [{ name: "total", type: "number" }],
+                rows: [[42]],
+                rowCount: 1,
+                truncated: false,
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText(/\[\[artifact:/)).not.toBeInTheDocument();
+    expect(screen.getByText("total")).toBeInTheDocument();
+    expect(screen.getByText("42")).toBeInTheDocument();
+  });
+
   it("turns a backticked report path into an internal link", () => {
     const id = "76bd34cc-a717-481e-9870-c03570875db2";
     render(

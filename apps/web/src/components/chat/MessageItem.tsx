@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import { getArtifact, type ChatArtifact, type ChatMessage } from "../../lib/api";
+import { getArtifact, type ChatArtifact, type ChatMessage, type ChatResult } from "../../lib/api";
+import { parseReportMarkdown } from "../../lib/report-markdown";
 import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard";
 import { ResultTable } from "./ResultTable";
 import { SqlCard } from "./SqlCard";
@@ -115,6 +116,32 @@ function HistoricalChart({ artifact }: { artifact: ChatArtifact }) {
   );
 }
 
+function InlineArtifact({
+  artifactId,
+  results,
+  charts,
+  onCreateReport,
+}: {
+  artifactId: string;
+  results: ChatResult[];
+  charts: ChatArtifact[];
+  onCreateReport?: (artifactId: string) => void;
+}) {
+  const result = results.find((item) => item.artifactId === artifactId);
+  if (result) {
+    return <ResultTable {...result} onCreateReport={onCreateReport} />;
+  }
+  const chart = charts.find((item) => item.id === artifactId);
+  if (chart) {
+    return <HistoricalChart artifact={chart} />;
+  }
+  return (
+    <p className="text-[11px] text-muted">
+      结果引用不可用：<code className="rounded bg-subtle px-1 py-0.5">{artifactId}</code>
+    </p>
+  );
+}
+
 export function MessageItem({
   message,
   artifacts = [],
@@ -128,6 +155,17 @@ export function MessageItem({
   const charts = artifacts.filter(
     (artifact) => artifact.kind === "chart" && artifact.runId === message.runId,
   );
+  // Models sometimes paste report-style placeholders into a normal reply. Render
+  // them in place instead of showing raw `[[artifact:<id>]]` text, and skip the
+  // duplicate card below when the text already references that artifact.
+  const segments = parseReportMarkdown(assistantText);
+  const referenced = new Set(
+    segments.filter((segment) => segment.type === "artifact").map((segment) => segment.artifactId),
+  );
+  const standaloneResults = message.results.filter(
+    (result) => !referenced.has(result.artifactId),
+  );
+  const standaloneCharts = charts.filter((chart) => !referenced.has(chart.id));
 
   return (
     <div className="flex flex-col gap-3">
@@ -161,9 +199,9 @@ export function MessageItem({
             ) : null
           }
         />
-        {message.results.length > 0 ? (
+        {standaloneResults.length > 0 ? (
           <div className="flex flex-col gap-1.5">
-            {message.results.map((result) => (
+            {standaloneResults.map((result) => (
               <ResultTable
                 key={result.artifactId}
                 {...result}
@@ -172,14 +210,30 @@ export function MessageItem({
             ))}
           </div>
         ) : null}
-        {charts.length > 0 ? (
+        {standaloneCharts.length > 0 ? (
           <div className="flex flex-col gap-1.5">
-            {charts.map((chart) => (
+            {standaloneCharts.map((chart) => (
               <HistoricalChart key={chart.id} artifact={chart} />
             ))}
           </div>
         ) : null}
-        {assistantText ? <MarkdownText content={assistantText} /> : null}
+        {assistantText
+          ? segments.map((segment, index) =>
+              segment.type === "markdown" ? (
+                segment.content.trim() ? (
+                  <MarkdownText key={`md-${index}`} content={segment.content} />
+                ) : null
+              ) : (
+                <InlineArtifact
+                  key={`artifact-${index}`}
+                  artifactId={segment.artifactId}
+                  results={message.results}
+                  charts={charts}
+                  onCreateReport={onCreateReport}
+                />
+              ),
+            )
+          : null}
         {message.status === "aborted" ? (
           <p className="text-xs text-muted">已停止生成</p>
         ) : null}
