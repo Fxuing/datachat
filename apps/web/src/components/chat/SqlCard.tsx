@@ -9,7 +9,7 @@ const STATUS_LABELS: Record<ChatSql["status"], string> = {
   error: "执行失败",
 };
 
-export function SqlCard({ sql }: { sql: ChatSql }) {
+export function SqlCard({ sql, flat = false }: { sql: ChatSql; flat?: boolean }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<number | null>(null);
 
@@ -32,7 +32,12 @@ export function SqlCard({ sql }: { sql: ChatSql }) {
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-white/10 bg-[#0b0e14] shadow-sm">
+    <div
+      className={cn(
+        "overflow-hidden bg-[#0b0e14]",
+        !flat && "rounded-lg border border-white/10 shadow-sm",
+      )}
+    >
       <div className="flex items-center gap-2 border-b border-white/10 px-3 py-1.5">
         <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/50">SQL</span>
         <span

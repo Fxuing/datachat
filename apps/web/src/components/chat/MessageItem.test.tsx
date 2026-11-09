@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { MarkdownText, MessageItem } from "./MessageItem";
 import type { ChatMessage } from "../../lib/api";
@@ -58,7 +59,7 @@ describe("MessageItem", () => {
     expect(screen.getByText("42")).toBeInTheDocument();
   });
 
-  it("labels standalone result tables and exposes the SQL behind them", () => {
+  it("keeps standalone results inside the collapsed process block", async () => {
     render(
       <MemoryRouter>
         <MessageItem
@@ -79,6 +80,10 @@ describe("MessageItem", () => {
         />
       </MemoryRouter>,
     );
+
+    const user = userEvent.setup();
+    expect(screen.queryByText("查询结果")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /执行过程/ }));
 
     expect(screen.getByText("查询结果")).toBeInTheDocument();
     expect(screen.getByText("1 行 · 1 列")).toBeInTheDocument();

@@ -8,8 +8,7 @@ import { getArtifact, type ChatArtifact, type ChatMessage, type ChatResult } fro
 import { parseReportMarkdown } from "../../lib/report-markdown";
 import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard";
 import { ResultCard } from "./ResultCard";
-import { ResultsPanel } from "./ResultsPanel";
-import { SqlCard } from "./SqlCard";
+import { QueryPairList } from "./QueryPairList";
 import { ToolCard } from "./ToolCard";
 import { ProcessBlock } from "./ProcessBlock";
 
@@ -173,6 +172,9 @@ export function MessageItem({
     (result) => !referenced.has(result.artifactId),
   );
   const standaloneCharts = charts.filter((chart) => !referenced.has(chart.id));
+  const detailTools = message.tools.filter(
+    (tool) => tool.name !== "db_query" && tool.name !== "db_explain",
+  );
   const hasStandaloneData = standaloneResults.length > 0 || standaloneCharts.length > 0;
 
   return (
@@ -188,24 +190,26 @@ export function MessageItem({
         <ProcessBlock
           toolCount={message.tools.length}
           sqlCount={message.sqls.length}
+          resultCount={standaloneResults.length}
+          queries={
+            standaloneResults.length > 0 || message.sqls.length > 0 ? (
+              <QueryPairList
+                sqls={message.sqls}
+                results={standaloneResults}
+                onCreateReport={onCreateReport}
+              />
+            ) : null
+          }
           tools={
-            message.tools.length > 0 ? (
+            detailTools.length > 0 ? (
               <div className="flex flex-col gap-1.5">
-                {message.tools.map((tool) => (
+                {detailTools.map((tool) => (
                   <ToolCard key={tool.toolCallId} tool={tool} />
                 ))}
               </div>
             ) : null
           }
-          sqls={
-            message.sqls.length > 0 ? (
-              <div className="flex flex-col gap-1.5">
-                {message.sqls.map((sql) => (
-                  <SqlCard key={sql.auditId} sql={sql} />
-                ))}
-              </div>
-            ) : null
-          }
+
         />
         {assistantText ? (
           <div className="flex flex-col gap-2">
@@ -226,9 +230,6 @@ export function MessageItem({
               ),
             )}
           </div>
-        ) : null}
-        {standaloneResults.length > 0 ? (
-          <ResultsPanel results={standaloneResults} onCreateReport={onCreateReport} />
         ) : null}
         {standaloneCharts.length > 0 ? (
           <div className="flex flex-col gap-2">

@@ -6,9 +6,8 @@ import { PageSpinner } from "../ui/spinner";
 import { BrandMark } from "../BrandMark";
 import { ChartCard, chartOptionFromSpec } from "./ChartCard";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
-import { ResultsPanel } from "./ResultsPanel";
+import { QueryPairList } from "./QueryPairList";
 import { RunStatus } from "./RunStatus";
-import { SqlCard } from "./SqlCard";
 import { ToolCard } from "./ToolCard";
 import { ProcessBlock } from "./ProcessBlock";
 
@@ -81,10 +80,24 @@ export function MessageList({
   artifacts = [],
   onCreateReport,
 }: MessageListProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
   const hasContent = messages.length > 0 || showStream;
 
   useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    const onScroll = () => {
+      stickToBottom.current =
+        element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+    };
+    element.addEventListener("scroll", onScroll, { passive: true });
+    return () => element.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!stickToBottom.current) return;
     bottomRef.current?.scrollIntoView?.({ block: "end" });
   }, [
     messages.length,
@@ -107,7 +120,9 @@ export function MessageList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgb(var(--brand)/0.06),transparent_70%)]">
+    <div
+      ref={containerRef}
+      className="flex-1 overflow-y-auto bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgb(var(--brand)/0.06),transparent_70%)]">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
         {!hasContent ? <EmptyChat /> : null}
 
@@ -134,31 +149,31 @@ export function MessageList({
                 thinking={stream.thinking}
                 toolCount={stream.tools.length}
                 sqlCount={stream.sqls.length}
+                resultCount={stream.results.length}
                 running={stream.status === "running"}
-                defaultOpen={stream.status === "running"}
+                queries={
+                  stream.sqls.length > 0 || stream.results.length > 0 ? (
+                    <QueryPairList
+                      sqls={stream.sqls}
+                      results={stream.results}
+                      onCreateReport={onCreateReport}
+                    />
+                  ) : null
+                }
                 tools={
-                  stream.tools.length > 0 ? (
+                  stream.tools.some((tool) => tool.name !== "db_query" && tool.name !== "db_explain") ? (
                     <div className="flex flex-col gap-1.5">
-                      {stream.tools.map((tool) => (
+                      {stream.tools
+                        .filter((tool) => tool.name !== "db_query" && tool.name !== "db_explain")
+                        .map((tool) => (
                         <ToolCard key={tool.toolCallId} tool={tool} />
                       ))}
                     </div>
                   ) : null
                 }
-                sqls={
-                  stream.sqls.length > 0 ? (
-                    <div className="flex flex-col gap-1.5">
-                      {stream.sqls.map((sql) => (
-                        <SqlCard key={sql.auditId} sql={sql} />
-                      ))}
-                    </div>
-                  ) : null
-                }
+
               />
               {stream.text ? <MarkdownText content={stream.text} /> : null}
-              {stream.results.length > 0 ? (
-                <ResultsPanel results={stream.results} onCreateReport={onCreateReport} />
-              ) : null}
               {stream.charts.length > 0 ? (
                 <div className="flex flex-col gap-2">
                   <div className="text-[11px] font-medium uppercase tracking-wider text-muted">

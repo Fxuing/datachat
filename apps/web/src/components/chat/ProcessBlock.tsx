@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronRight, Sparkles } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Spinner } from "../ui/spinner";
@@ -6,35 +6,31 @@ import { Spinner } from "../ui/spinner";
 export interface ProcessBlockProps {
   thinking?: string;
   tools?: ReactNode;
-  sqls?: ReactNode;
+  queries?: ReactNode;
   toolCount?: number;
   sqlCount?: number;
+  resultCount?: number;
   running?: boolean;
-  defaultOpen?: boolean;
 }
 
 /**
- * Collapsible container for the agent's intermediate work: reasoning, tool calls
- * and executed SQL. Results and charts stay outside so they remain visible.
+ * Collapsible container for the agent's intermediate work: reasoning, tool calls,
+ * executed SQL and the query results they produced. Collapsed by default — the
+ * transcript should lead with the answer, not the machinery.
  */
 export function ProcessBlock({
   thinking,
   tools,
-  sqls,
+  queries,
   toolCount = 0,
   sqlCount = 0,
+  resultCount = 0,
   running = false,
-  defaultOpen = false,
 }: ProcessBlockProps) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(false);
   const steps = toolCount + sqlCount;
 
-  // Open once when the run actually starts, but never fight a manual collapse.
-  useEffect(() => {
-    if (running) setOpen(true);
-  }, [running]);
-
-  if (!thinking && steps === 0) return null;
+  if (!thinking && steps === 0 && resultCount === 0) return null;
 
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-surface">
@@ -60,6 +56,9 @@ export function ProcessBlock({
         {steps > 0 ? (
           <span className="text-[10px] text-muted">{steps} 个步骤</span>
         ) : null}
+        {resultCount > 0 ? (
+          <span className="text-[10px] text-muted">{resultCount} 个结果</span>
+        ) : null}
         <span className="ml-auto inline-flex items-center gap-1.5 text-[10px] text-muted">
           {running ? <Spinner className="h-3 w-3" /> : null}
           {running ? "进行中" : "已完成"}
@@ -74,7 +73,7 @@ export function ProcessBlock({
             </div>
           ) : null}
           {tools}
-          {sqls}
+          {queries}
         </div>
       ) : null}
     </div>

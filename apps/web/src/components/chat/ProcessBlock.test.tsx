@@ -25,9 +25,9 @@ describe("ProcessBlock", () => {
     expect(screen.getByText("tool details")).toBeInTheDocument();
   });
 
-  it("is open while a run is in progress", () => {
+  it("stays collapsed while a run is in progress", () => {
     render(<ProcessBlock running thinking="正在思考" toolCount={0} />);
-    expect(screen.getByText("正在思考")).toBeInTheDocument();
+    expect(screen.queryByText("正在思考")).not.toBeInTheDocument();
     expect(screen.getByText("进行中")).toBeInTheDocument();
   });
 });
