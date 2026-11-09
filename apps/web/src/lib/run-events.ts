@@ -11,6 +11,7 @@ export interface RunToolState {
   status: "running" | "ok" | "error";
   durationMs?: number;
   summary?: string;
+  url?: string;
 }
 
 export interface RunSqlState {
@@ -167,6 +168,7 @@ export function runStreamReducer(
               status: event.payload.isError ? "error" : "ok",
               durationMs: event.payload.durationMs,
               summary: event.payload.summary,
+              url: event.payload.url,
             }),
           };
         }

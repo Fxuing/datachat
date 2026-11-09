@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { MessageItem } from "./MessageItem";
+import { MemoryRouter } from "react-router-dom";
+import { MarkdownText, MessageItem } from "./MessageItem";
 import type { ChatMessage } from "../../lib/api";
 
 function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
@@ -23,6 +24,16 @@ describe("MessageItem", () => {
     render(<MessageItem message={message({ error: "upstream exploded" })} />);
     expect(screen.getByText("upstream exploded")).toBeInTheDocument();
     expect(screen.queryByText("本次回答失败，请重试。")).not.toBeInTheDocument();
+  });
+
+  it("turns a backticked report path into an internal link", () => {
+    const id = "76bd34cc-a717-481e-9870-c03570875db2";
+    render(
+      <MemoryRouter>
+        <MarkdownText content={`完整报告：\`/reports/${id}\``} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link")).toHaveAttribute("href", `/reports/${id}`);
   });
 
   it("falls back when an old run has no persisted error", () => {

@@ -65,7 +65,13 @@ export function createReportTool(
 
       const url = `/reports/${result.report.id}`;
       return textResult(
-        safeJsonStringify({ reportId: result.report.id, title: result.report.title, url }),
+        `报告已生成：《${result.report.title}》
+
+[查看完整报告](${url})
+
+${safeJsonStringify(
+          { reportId: result.report.id, title: result.report.title, url },
+        )}`,
         { reportId: result.report.id, title: result.report.title, url },
       );
     },

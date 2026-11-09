@@ -18,6 +18,24 @@ export function MarkdownText({ content }: { content: string }) {
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
+          code({ className, children, node: _node, ...props }) {
+            const text = String(children).trim();
+            if (!className && /^\/reports\/[0-9a-fA-F-]{36}$/.test(text)) {
+              return (
+                <Link
+                  to={text}
+                  className="rounded bg-brandsoft px-1 py-0.5 font-mono text-[0.85em] text-brandtext hover:underline"
+                >
+                  {text}
+                </Link>
+              );
+            }
+            return (
+              <code className={className} {...props}>
+                {children}
+              </code>
+            );
+          },
           a({ href, children, node: _node, ...props }) {
             if (href?.startsWith("/") && !href.startsWith("//")) {
               return (

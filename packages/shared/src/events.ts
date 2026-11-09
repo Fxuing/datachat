@@ -60,6 +60,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
       isError: z.boolean(),
       durationMs: z.number().int().nonnegative(),
       summary: z.string(),
+      url: z.string().optional(),
     }),
   }),
   z.object({

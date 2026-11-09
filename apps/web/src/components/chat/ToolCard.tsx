@@ -1,4 +1,5 @@
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileText } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Spinner } from "../ui/spinner";
 import type { RunToolState } from "../../lib/run-events";
 import { cn, formatDuration } from "../../lib/utils";
@@ -58,6 +59,17 @@ export function ToolCard({ tool }: { tool: RunToolState }) {
         >
           {tool.summary}
         </p>
+      ) : null}
+      {tool.url && !failed ? (
+        <div className="border-t border-line px-3 py-2">
+          <Link
+            to={tool.url}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-brandtext hover:underline"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            查看报告
+          </Link>
+        </div>
       ) : null}
       {hasArgs(tool.args) ? (
         <details className="group border-t border-line">

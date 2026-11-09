@@ -241,7 +241,7 @@ export default function ReportPage() {
   const notFound =
     reportQuery.isError &&
     reportQuery.error instanceof ApiError &&
-    reportQuery.error.status === 404;
+    (reportQuery.error.status === 404 || reportQuery.error.status === 400);
 
   const handleDelete = () => {
     if (!report) return;

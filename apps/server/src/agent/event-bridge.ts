@@ -39,6 +39,7 @@ interface ToolDetails {
   points?: unknown;
   title?: unknown;
   spec?: unknown;
+  url?: unknown;
 }
 
 interface ToolResultLike {
@@ -181,6 +182,7 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
             isError: event.isError,
             durationMs,
             summary: summarizeToolResult(event.result),
+            ...(details && typeof details.url === "string" ? { url: details.url } : {}),
           },
         });
 
