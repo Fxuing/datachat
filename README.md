@@ -82,6 +82,27 @@ node scripts/smoke-server.mjs   # 需先 pnpm -r build；临时端口启动服�
 
 `smoke-server` 使用临时数据目录和随机 bootstrap 密码，只做进程内校验，不打印密码。
 
+## Docker Compose 部署
+
+单机部署：一个 `server` 容器（Node + Pi SDK + SQLite）加一个 `web` 容器（nginx 托管 SPA 并反代 `/api`）。
+
+```bash
+cp .env.example .env
+# 必填：APP_SECRET（>=32 字符）、ADMIN_PASSWORD（>=8 字符）、SILICONFLOW_API_KEY
+# 可选：ADMIN_USERNAME、APP_ORIGIN（浏览器访问的公开地址）
+docker compose up -d --build
+# 打开 http://localhost:8080
+```
+
+要点：
+
+- 数据（SQLite、artifact、skills、会话）保存在命名卷 `datachat-data`，挂载到容器 `/data`。
+- `web` 对外暴露 80，默认映射到主机 `8080`（`WEB_PORT` 可改）；`server` 不直接暴露，由 nginx 反代。
+- SSE 已在 `deploy/nginx.conf` 关闭缓冲并把读超时调到 3600s，长查询不会被 nginx 截断。
+- 生产环境务必把 `APP_ORIGIN` 设为实际访问地址（多个用逗号分隔），否则登录会被 CSRF 校验拒绝。
+- 镜像内保留完整 `node_modules`（含 devDependencies），优先保证 better-sqlite3 / argon2 原生模块可用；后续可用 `pnpm deploy` 裁剪体积。
+- 本仓库开发机没有 Docker，`docker compose config` 与镜像构建未实跑；文件按官方镜像与 compose 规范静态校验。
+
 ## 手动浏览器验收路径
 
 1. 配置 `.env`（`APP_SECRET`、`ADMIN_PASSWORD`、可选 `SILICONFLOW_API_KEY`）并启动 server + web。
