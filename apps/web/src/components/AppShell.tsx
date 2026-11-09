@@ -1,9 +1,18 @@
 import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { BookOpen, Database, LogOut, Plug, ScrollText, Settings } from "lucide-react";
+import {
+  BookOpen,
+  Database,
+  LogOut,
+  Plug,
+  ScrollText,
+  Settings,
+  type LucideIcon,
+} from "lucide-react";
 import { logout, type SessionUser } from "../lib/api";
 import { cn } from "../lib/utils";
+import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui/button";
 
 export interface AppShellProps {
@@ -12,6 +21,14 @@ export interface AppShellProps {
   topbar?: ReactNode;
   children: ReactNode;
 }
+
+const adminLinks: { to: string; label: string; icon: LucideIcon }[] = [
+  { to: "/admin/datasources", label: "数据源", icon: Database },
+  { to: "/admin/skills", label: "技能管理", icon: BookOpen },
+  { to: "/admin/mcp", label: "MCP 服务器", icon: Plug },
+  { to: "/admin/audit", label: "审计日志", icon: ScrollText },
+  { to: "/admin/settings", label: "设置", icon: Settings },
+];
 
 export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
   const navigate = useNavigate();
@@ -29,107 +46,68 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
   const initial = (user.displayName ?? user.username).slice(0, 1).toUpperCase();
 
   return (
-    <div className="flex h-full min-h-0 bg-neutral-50">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-200 bg-white print:hidden">
-        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-neutral-200 px-4">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-neutral-900 text-[10px] font-semibold text-white">
+    <div className="flex h-full min-h-0 bg-canvas">
+      <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-surface print:hidden">
+        <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-gradient-to-br from-indigo-500 to-violet-500 text-[11px] font-bold tracking-tight text-white shadow-sm ring-1 ring-inset ring-white/20">
             DC
           </span>
-          <span className="text-sm font-semibold tracking-tight text-neutral-900">DataChat</span>
+          <span className="min-w-0">
+            <span className="block text-[15px] font-semibold leading-tight tracking-tight text-ink">
+              DataChat
+            </span>
+            <span className="block text-[10px] font-medium uppercase tracking-[0.16em] text-muted">
+              数据工作台
+            </span>
+          </span>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">{sidebar}</div>
 
         {user.role === "admin" ? (
-          <div className="shrink-0 border-t border-neutral-200 p-2">
-            <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
-              管理
-            </p>
-            <Link
-              to="/admin/datasources"
-              aria-current={
-                location.pathname.startsWith("/admin/datasources") ? "page" : undefined
-              }
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
-                location.pathname.startsWith("/admin/datasources")
-                  ? "bg-neutral-100 font-medium text-neutral-900"
-                  : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900",
-              )}
-            >
-              <Database className="h-4 w-4" />
-              数据源
-            </Link>
-            <Link
-              to="/admin/skills"
-              aria-current={location.pathname.startsWith("/admin/skills") ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
-                location.pathname.startsWith("/admin/skills")
-                  ? "bg-neutral-100 font-medium text-neutral-900"
-                  : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900",
-              )}
-            >
-              <BookOpen className="h-4 w-4" />
-              技能管理
-            </Link>
-            <Link
-              to="/admin/mcp"
-              aria-current={location.pathname.startsWith("/admin/mcp") ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
-                location.pathname.startsWith("/admin/mcp")
-                  ? "bg-neutral-100 font-medium text-neutral-900"
-                  : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900",
-              )}
-            >
-              <Plug className="h-4 w-4" />
-              MCP 服务器
-            </Link>
-            <Link
-              to="/admin/audit"
-              aria-current={location.pathname.startsWith("/admin/audit") ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
-                location.pathname.startsWith("/admin/audit")
-                  ? "bg-neutral-100 font-medium text-neutral-900"
-                  : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900",
-              )}
-            >
-              <ScrollText className="h-4 w-4" />
-              审计日志
-            </Link>
-            <Link
-              to="/admin/settings"
-              aria-current={
-                location.pathname.startsWith("/admin/settings") ? "page" : undefined
-              }
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
-                location.pathname.startsWith("/admin/settings")
-                  ? "bg-neutral-100 font-medium text-neutral-900"
-                  : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900",
-              )}
-            >
-              <Settings className="h-4 w-4" />
-              设置
-            </Link>
-          </div>
+          <nav className="shrink-0 space-y-0.5 border-t border-line px-2 pb-2 pt-3">
+            <p className="section-label pb-1.5">管理</p>
+            {adminLinks.map(({ to, label, icon: Icon }) => {
+              const active = location.pathname.startsWith(to);
+              return (
+                <Link
+                  key={to}
+                  to={to}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "group flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] transition-colors",
+                    active
+                      ? "bg-brandsoft font-medium text-brandtext"
+                      : "text-inksoft hover:bg-subtle hover:text-ink",
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      active ? "text-brandtext" : "text-muted group-hover:text-inksoft",
+                    )}
+                  />
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
         ) : null}
 
-        <div className="shrink-0 border-t border-neutral-200 p-3">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-700">
+        <div className="shrink-0 border-t border-line p-2">
+          <div className="flex items-center gap-2 rounded-lg px-1.5 py-1.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brandsoft text-xs font-semibold text-brandtext ring-1 ring-inset ring-brand/10">
               {initial}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-neutral-900">
+              <p className="truncate text-[13px] font-medium leading-tight text-ink">
                 {user.displayName ?? user.username}
               </p>
-              <p className="truncate text-xs text-neutral-500">
-                {user.role === "admin" ? "管理员" : "成员"}
+              <p className="truncate text-[11px] text-muted">
+                @{user.username} · {user.role === "admin" ? "管理员" : "成员"}
               </p>
             </div>
+            <ThemeToggle />
             <Button
               variant="ghost"
               size="icon"
@@ -146,8 +124,15 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {topbar ? (
-          <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 print:hidden">
-            {topbar}
+          <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface/85 px-4 backdrop-blur print:hidden">
+            <div className="flex min-w-0 flex-1 items-center gap-3">{topbar}</div>
+            <div className="flex shrink-0 items-center gap-1">
+              <ThemeToggle className="md:hidden" />
+              <span className="hidden items-center gap-1.5 rounded-full border border-line bg-subtle/60 px-2.5 py-1 text-[11px] font-medium text-muted md:inline-flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                就绪
+              </span>
+            </div>
           </header>
         ) : null}
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</main>

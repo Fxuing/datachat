@@ -39,7 +39,7 @@ function initialForm(skill: AdminSkillDetail | null): FormState {
   };
 }
 
-const labelClass = "block text-xs font-medium text-neutral-600";
+const labelClass = "block text-xs font-medium text-muted";
 
 export function SkillEditor({
   skill,
@@ -118,7 +118,7 @@ export function SkillEditor({
   return (
     <>
       <div
-        className="fixed inset-0 z-40 flex justify-end bg-neutral-900/20"
+        className="fixed inset-0 z-40 flex justify-end bg-black/30"
         role="presentation"
         onMouseDown={close}
       >
@@ -126,11 +126,11 @@ export function SkillEditor({
           role="dialog"
           aria-modal="true"
           aria-label={title}
-          className="flex h-full w-full max-w-xl flex-col border-l border-neutral-200 bg-white shadow-xl"
+          className="flex h-full w-full max-w-xl flex-col border-l border-line bg-surface shadow-xl"
           onMouseDown={(event) => event.stopPropagation()}
         >
-          <div className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-4">
-            <h2 className="text-sm font-semibold text-neutral-900">{title}</h2>
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
+            <h2 className="text-sm font-semibold text-ink">{title}</h2>
             <Button variant="ghost" size="icon" aria-label="关闭" onClick={close}>
               <X className="h-4 w-4" />
             </Button>
@@ -145,7 +145,7 @@ export function SkillEditor({
           >
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
               {error ? (
-                <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+                <p role="alert" className="rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger">
                   {error}
                 </p>
               ) : null}
@@ -161,7 +161,7 @@ export function SkillEditor({
                   autoComplete="off"
                   onChange={(event) => update("name", event.target.value)}
                 />
-                <p className="text-[11px] text-neutral-400">
+                <p className="text-[11px] text-muted">
                   2-64 位小写字母、数字或短横线，且以字母或数字开头；同一范围内唯一。
                 </p>
               </div>
@@ -185,7 +185,7 @@ export function SkillEditor({
                   </label>
                   <select
                     id="skill-scope"
-                    className="h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:border-neutral-500 focus-visible:outline-none"
+                    className="h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-ink focus-visible:border-linestrong focus-visible:outline-none"
                     value={form.scope}
                     onChange={(event) => changeScope(event.target.value as SkillScope)}
                   >
@@ -200,7 +200,7 @@ export function SkillEditor({
                   </label>
                   <select
                     id="skill-datasource"
-                    className="h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 disabled:bg-neutral-100 disabled:text-neutral-400 focus-visible:border-neutral-500 focus-visible:outline-none"
+                    className="h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-ink disabled:bg-subtle disabled:text-muted focus-visible:border-linestrong focus-visible:outline-none"
                     value={form.datasourceId ?? ""}
                     disabled={form.scope !== "datasource"}
                     onChange={(event) => update("datasourceId", event.target.value || null)}
@@ -215,11 +215,11 @@ export function SkillEditor({
                 </div>
               </div>
 
-              <label className="flex w-fit items-center gap-2 text-sm text-neutral-700">
+              <label className="flex w-fit items-center gap-2 text-sm text-inksoft">
                 <input
                   id="skill-enabled"
                   type="checkbox"
-                  className="h-4 w-4 rounded border-neutral-300"
+                  className="h-4 w-4 rounded border-linestrong"
                   checked={form.enabled}
                   onChange={(event) => update("enabled", event.target.checked)}
                 />
@@ -242,7 +242,7 @@ export function SkillEditor({
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center justify-between gap-2 border-t border-neutral-200 p-3">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-t border-line p-3">
               <div>
                 {skill ? (
                   <Button variant="danger" size="sm" disabled={busy} onClick={() => setDeleteOpen(true)}>

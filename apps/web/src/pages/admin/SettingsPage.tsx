@@ -18,8 +18,8 @@ import { describeApiError } from "../../lib/errors";
 import { queryKeys } from "../../lib/query";
 
 const selectClass =
-  "h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 " +
-  "focus-visible:border-neutral-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-200";
+  "h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-ink " +
+  "focus-visible:border-linestrong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/15";
 
 type NumberKey = "queryMaxRows" | "queryPreviewRows" | "queryTimeoutMs" | "shareMaxDays";
 
@@ -166,7 +166,7 @@ export default function SettingsPage() {
   if (!user) return <PageSpinner />;
 
   const sidebar = (
-    <div className="border-t border-neutral-200 p-2">
+    <div className="border-t border-line p-2">
       <Button
         variant="ghost"
         size="sm"
@@ -207,14 +207,14 @@ export default function SettingsPage() {
     <AppShell user={user} sidebar={sidebar}>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-6 py-6">
-          <h1 className="text-lg font-semibold text-neutral-900">设置</h1>
-          <p className="mt-1 text-sm text-neutral-500">
+          <h1 className="text-xl font-semibold tracking-tight text-ink">设置</h1>
+          <p className="mt-1 text-sm text-muted">
             默认模型会影响模型列表与新会话，分享上限会限制新建分享链接的有效期；未保存的项沿用服务端配置。
           </p>
 
           {draft === null ? (
             settingsQuery.isError ? (
-              <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <div className="mt-4 rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger">
                 <p role="alert">{describeApiError(settingsQuery.error, "加载设置失败")}</p>
                 <Button
                   variant="outline"
@@ -233,7 +233,7 @@ export default function SettingsPage() {
           ) : (
             <form
               noValidate
-              className="mt-4 space-y-5 rounded-lg border border-neutral-200 bg-white p-6"
+              className="mt-4 space-y-5 rounded-xl border border-line bg-surface shadow-card p-6"
               onSubmit={(event) => {
                 event.preventDefault();
                 submit();
@@ -242,7 +242,7 @@ export default function SettingsPage() {
               {notice ? (
                 <p
                   role="status"
-                  className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700"
+                  className="rounded-md border border-success/20 bg-successsoft px-3 py-2 text-xs text-success"
                 >
                   {notice}
                 </p>
@@ -250,7 +250,7 @@ export default function SettingsPage() {
               {saveError ? (
                 <p
                   role="alert"
-                  className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+                  className="rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger"
                 >
                   {saveError}
                 </p>
@@ -259,7 +259,7 @@ export default function SettingsPage() {
               <div>
                 <label
                   htmlFor="default-model"
-                  className="text-sm font-medium text-neutral-800"
+                  className="text-sm font-medium text-inksoft"
                 >
                   默认模型
                 </label>
@@ -281,13 +281,13 @@ export default function SettingsPage() {
                     <option value={draft.defaultModelId}>{draft.defaultModelId}</option>
                   ) : null}
                 </select>
-                <p className="mt-1.5 text-xs text-neutral-500">
+                <p className="mt-1.5 text-xs text-muted">
                   {modelConfigured
                     ? "新会话会使用该模型；未设置时使用第一个可用模型。"
                     : "尚未配置模型服务，暂时只能使用自动选择。"}
                 </p>
                 {modelsQuery.isError ? (
-                  <p role="alert" className="mt-1 text-xs text-red-600">
+                  <p role="alert" className="mt-1 text-xs text-danger">
                     {describeApiError(modelsQuery.error, "模型列表加载失败")}
                   </p>
                 ) : null}
@@ -301,7 +301,7 @@ export default function SettingsPage() {
                     <div key={field.key}>
                       <label
                         htmlFor={field.key}
-                        className="text-sm font-medium text-neutral-800"
+                        className="text-sm font-medium text-inksoft"
                       >
                         {field.label}
                       </label>
@@ -321,18 +321,18 @@ export default function SettingsPage() {
                         onChange={(event) => updateDraft({ [field.key]: event.target.value })}
                       />
                       {error ? (
-                        <p id={describedBy} role="alert" className="mt-1 text-xs text-red-600">
+                        <p id={describedBy} role="alert" className="mt-1 text-xs text-danger">
                           {error}
                         </p>
                       ) : (
-                        <p className="mt-1 text-xs text-neutral-500">{field.hint}</p>
+                        <p className="mt-1 text-xs text-muted">{field.hint}</p>
                       )}
                     </div>
                   );
                 })}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-4">
+              <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
                 <Button type="submit" size="sm" className="gap-1.5" disabled={busy}>
                   <Save className="h-3.5 w-3.5" />
                   {saveMutation.isPending ? "保存中…" : "保存设置"}

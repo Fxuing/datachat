@@ -6,11 +6,11 @@ export type ButtonSize = "sm" | "md" | "icon";
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-neutral-900 text-white hover:bg-neutral-800 disabled:bg-neutral-300 disabled:text-neutral-500",
-  secondary: "bg-neutral-100 text-neutral-900 hover:bg-neutral-200",
-  outline: "border border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-50",
-  ghost: "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900",
-  danger: "bg-red-600 text-white hover:bg-red-500",
+    "bg-brand text-brandink shadow-sm hover:bg-brandhover disabled:bg-brand/40 disabled:text-brandink/70",
+  secondary: "bg-subtle text-ink hover:bg-line/70",
+  outline: "border border-line bg-surface text-inksoft hover:border-linestrong hover:bg-subtle",
+  ghost: "text-muted hover:bg-subtle hover:text-ink",
+  danger: "bg-danger text-white hover:bg-danger/90",
 };
 
 const sizes: Record<ButtonSize, string> = {
@@ -33,8 +33,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={type}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-1",
+        "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg font-medium transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-1 focus-visible:ring-offset-canvas",
         "disabled:cursor-not-allowed disabled:opacity-60",
         variants[variant],
         sizes[size],

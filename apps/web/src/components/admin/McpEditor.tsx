@@ -97,8 +97,8 @@ function parseArgsText(text: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-const labelClass = "block text-xs font-medium text-neutral-600";
-const fieldHintClass = "text-[11px] text-neutral-400";
+const labelClass = "block text-xs font-medium text-muted";
+const fieldHintClass = "text-[11px] text-muted";
 
 function SecretRowsEditor({
   label,
@@ -257,7 +257,7 @@ export function McpEditor({
   return (
     <>
       <div
-        className="fixed inset-0 z-40 flex justify-end bg-neutral-900/20"
+        className="fixed inset-0 z-40 flex justify-end bg-black/30"
         role="presentation"
         onMouseDown={close}
       >
@@ -265,11 +265,11 @@ export function McpEditor({
           role="dialog"
           aria-modal="true"
           aria-label={title}
-          className="flex h-full w-full max-w-xl flex-col border-l border-neutral-200 bg-white shadow-xl"
+          className="flex h-full w-full max-w-xl flex-col border-l border-line bg-surface shadow-xl"
           onMouseDown={(event) => event.stopPropagation()}
         >
-          <div className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-4">
-            <h2 className="text-sm font-semibold text-neutral-900">{title}</h2>
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
+            <h2 className="text-sm font-semibold text-ink">{title}</h2>
             <Button variant="ghost" size="icon" aria-label="关闭" onClick={close}>
               <X className="h-4 w-4" />
             </Button>
@@ -286,7 +286,7 @@ export function McpEditor({
               {error ? (
                 <p
                   role="alert"
-                  className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"
+                  className="rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger"
                 >
                   {error}
                 </p>
@@ -404,7 +404,7 @@ export function McpEditor({
                   </label>
                   <select
                     id="mcp-datasource"
-                    className="h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus-visible:border-neutral-500 focus-visible:outline-none"
+                    className="h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-ink focus-visible:border-linestrong focus-visible:outline-none"
                     value={form.datasourceId ?? ""}
                     onChange={(event) => update("datasourceId", event.target.value || null)}
                   >
@@ -417,11 +417,11 @@ export function McpEditor({
                   </select>
                 </div>
 
-                <label className="mt-6 flex w-fit items-center gap-2 text-sm text-neutral-700">
+                <label className="mt-6 flex w-fit items-center gap-2 text-sm text-inksoft">
                   <input
                     id="mcp-enabled"
                     type="checkbox"
-                    className="h-4 w-4 rounded border-neutral-300"
+                    className="h-4 w-4 rounded border-linestrong"
                     checked={form.enabled}
                     onChange={(event) => update("enabled", event.target.checked)}
                   />
@@ -429,9 +429,9 @@ export function McpEditor({
                 </label>
               </div>
 
-              <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+              <div className="space-y-2 rounded-md border border-line bg-subtle p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-neutral-600">连接测试</span>
+                  <span className="text-xs font-medium text-muted">连接测试</span>
                   <Button
                     type="button"
                     variant="outline"
@@ -449,20 +449,20 @@ export function McpEditor({
                 ) : null}
 
                 {testing ? (
-                  <p role="status" className="text-xs text-neutral-500">
+                  <p role="status" className="text-xs text-muted">
                     正在调用 tools/list 获取工具列表…
                   </p>
                 ) : null}
 
                 {testError ? (
-                  <p role="alert" className="text-xs text-red-600">
+                  <p role="alert" className="text-xs text-danger">
                     {testError}
                   </p>
                 ) : null}
 
                 {testResult ? (
                   testResult.ok ? (
-                    <div className="space-y-1 text-xs text-neutral-600">
+                    <div className="space-y-1 text-xs text-muted">
                       <p role="status">
                         连接成功，发现 {testResult.tools.length} 个工具
                         {testResult.serverInfo
@@ -474,11 +474,11 @@ export function McpEditor({
                         <ul className="space-y-0.5">
                           {testResult.tools.slice(0, 5).map((tool) => (
                             <li key={tool.name} className="truncate">
-                              <span className="font-mono text-[11px] text-neutral-700">
+                              <span className="font-mono text-[11px] text-inksoft">
                                 {tool.name}
                               </span>
                               {tool.description ? (
-                                <span className="ml-1 text-[11px] text-neutral-400">
+                                <span className="ml-1 text-[11px] text-muted">
                                   — {tool.description}
                                 </span>
                               ) : null}
@@ -493,7 +493,7 @@ export function McpEditor({
                       ) : null}
                     </div>
                   ) : (
-                    <p role="alert" className="text-xs text-red-600">
+                    <p role="alert" className="text-xs text-danger">
                       连接失败：{testResult.error ?? "未知错误"}
                     </p>
                   )
@@ -501,7 +501,7 @@ export function McpEditor({
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center justify-between gap-2 border-t border-neutral-200 p-3">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-t border-line p-3">
               <div>
                 {server ? (
                   <Button

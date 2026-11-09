@@ -42,9 +42,9 @@ export function MarkdownText({ content }: { content: string }) {
 export function UserBubble({ content, pending = false }: { content: string; pending?: boolean }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-900 px-4 py-2.5 text-sm text-neutral-50">
+      <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-sm text-canvas shadow-sm">
         {content}
-        {pending ? <span className="ml-2 text-[10px] text-neutral-400">发送中…</span> : null}
+        {pending ? <span className="ml-2 text-[10px] text-muted">发送中…</span> : null}
       </div>
     </div>
   );
@@ -82,10 +82,10 @@ function HistoricalChart({ artifact }: { artifact: ChatArtifact }) {
   }, [artifact.id, artifact.spec]);
 
   if (status === "failed") {
-    return <p className="text-[11px] text-neutral-400">图表加载失败</p>;
+    return <p className="text-[11px] text-muted">图表加载失败</p>;
   }
   if (status === "loading") {
-    return <p className="text-[11px] text-neutral-400">图表加载中…</p>;
+    return <p className="text-[11px] text-muted">图表加载中…</p>;
   }
   return (
     <ChartCard
@@ -114,8 +114,8 @@ export function MessageItem({
     <div className="flex flex-col gap-3">
       <UserBubble content={message.user.content} />
       <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2 text-[11px] font-medium text-neutral-400">
-          <span className="flex h-5 w-5 items-center justify-center rounded bg-neutral-200 text-neutral-600">
+        <div className="flex items-center gap-2 text-[11px] font-medium text-muted">
+          <span className="flex h-5 w-5 items-center justify-center rounded bg-line text-muted">
             <Bot className="h-3.5 w-3.5" />
           </span>
           DataChat
@@ -154,10 +154,10 @@ export function MessageItem({
         ) : null}
         {assistantText ? <MarkdownText content={assistantText} /> : null}
         {message.status === "aborted" ? (
-          <p className="text-xs text-neutral-500">已停止生成</p>
+          <p className="text-xs text-muted">已停止生成</p>
         ) : null}
         {message.status === "error" && !assistantText ? (
-          <p className="text-xs text-red-600">
+          <p className="text-xs text-danger">
             {message.error ?? "本次回答失败，请重试。"}
           </p>
         ) : null}

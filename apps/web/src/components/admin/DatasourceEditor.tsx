@@ -46,9 +46,9 @@ function initialForm(datasource: DatasourceSummary | null): FormState {
   };
 }
 
-const labelClass = "block text-xs font-medium text-neutral-600";
+const labelClass = "block text-xs font-medium text-muted";
 const selectClass =
-  "h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 disabled:bg-neutral-100 disabled:text-neutral-400 focus-visible:border-neutral-500 focus-visible:outline-none";
+  "h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-ink disabled:bg-subtle disabled:text-muted focus-visible:border-linestrong focus-visible:outline-none";
 
 export function DatasourceEditor({
   datasource,
@@ -123,7 +123,7 @@ export function DatasourceEditor({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex justify-end bg-neutral-900/20"
+      className="fixed inset-0 z-40 flex justify-end bg-black/30"
       role="presentation"
       onMouseDown={() => {
         if (!saving) onClose();
@@ -133,11 +133,11 @@ export function DatasourceEditor({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="flex h-full w-full max-w-lg flex-col border-l border-neutral-200 bg-white shadow-xl"
+        className="flex h-full w-full max-w-lg flex-col border-l border-line bg-surface shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-4">
-          <h2 className="text-sm font-semibold text-neutral-900">{title}</h2>
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
+          <h2 className="text-sm font-semibold text-ink">{title}</h2>
           <Button variant="ghost" size="icon" aria-label="关闭" disabled={saving} onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
@@ -152,12 +152,12 @@ export function DatasourceEditor({
         >
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             {error ? (
-              <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+              <p role="alert" className="rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger">
                 {error}
               </p>
             ) : null}
             {validationError ? (
-              <p role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              <p role="alert" className="rounded-md border border-warning/25 bg-warningsoft px-3 py-2 text-xs text-warning">
                 {validationError}
               </p>
             ) : null}
@@ -191,7 +191,7 @@ export function DatasourceEditor({
                   <option value="postgres">PostgreSQL</option>
                 </select>
                 {editing ? (
-                  <p className="text-[11px] text-neutral-400">数据源类型创建后不可修改。</p>
+                  <p className="text-[11px] text-muted">数据源类型创建后不可修改。</p>
                 ) : null}
               </div>
 
@@ -286,19 +286,19 @@ export function DatasourceEditor({
             </div>
 
             {editing ? (
-              <p className="text-[11px] text-neutral-400">
+              <p className="text-[11px] text-muted">
                 修改主机或端口时必须重新输入密码。
               </p>
             ) : null}
 
             {form.sslMode === "no-verify" ? (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              <p className="rounded-md border border-warning/25 bg-warningsoft px-3 py-2 text-xs text-warning">
                 警告：no-verify 将跳过服务器证书校验，仅建议在可信网络中临时使用。
               </p>
             ) : null}
           </div>
 
-          <div className="flex shrink-0 justify-end gap-2 border-t border-neutral-200 p-3">
+          <div className="flex shrink-0 justify-end gap-2 border-t border-line p-3">
             <Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
               取消
             </Button>

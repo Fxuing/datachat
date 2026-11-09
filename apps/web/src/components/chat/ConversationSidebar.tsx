@@ -44,7 +44,7 @@ function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-neutral-900/30 p-4"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
       onMouseDown={onClose}
       role="presentation"
     >
@@ -52,10 +52,10 @@ function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-sm rounded-lg border border-neutral-200 bg-white shadow-xl"
+        className="w-full max-w-sm rounded-lg border border-line bg-surface shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-neutral-200 px-4 py-3 text-sm font-semibold text-neutral-900">
+        <div className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">
           {title}
         </div>
         <div className="p-4">{children}</div>
@@ -171,9 +171,9 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {conversationsQuery.isPending ? (
-          <p className="px-2 py-3 text-xs text-neutral-400">加载中…</p>
+          <p className="px-2 py-3 text-xs text-muted">加载中…</p>
         ) : conversationsQuery.isError ? (
-          <div className="px-2 py-3 text-xs text-red-600">
+          <div className="px-2 py-3 text-xs text-danger">
             <p>会话列表加载失败</p>
             <button
               type="button"
@@ -184,7 +184,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
             </button>
           </div>
         ) : conversations.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-neutral-400">还没有会话，点击上方新建对话开始。</p>
+          <p className="px-2 py-3 text-xs text-muted">还没有会话，点击上方新建对话开始。</p>
         ) : (
           <ul className="flex flex-col gap-0.5">
             {conversations.map((conversation) => {
@@ -194,8 +194,8 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
                 <li
                   key={conversation.id}
                   className={cn(
-                    "group flex items-center gap-1 rounded-md px-2 py-1.5",
-                    active ? "bg-neutral-100" : "hover:bg-neutral-50",
+                    "group flex items-center gap-1 rounded-lg px-2.5 py-2",
+                    active ? "bg-brandsoft" : "hover:bg-subtle",
                   )}
                 >
                   {renamingId === conversation.id ? (
@@ -220,7 +220,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
                       <button
                         type="submit"
                         aria-label="保存名称"
-                        className="rounded p-1 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900"
+                        className="rounded p-1 text-muted hover:bg-line hover:text-ink"
                       >
                         <Check className="h-3.5 w-3.5" />
                       </button>
@@ -228,7 +228,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
                         type="button"
                         aria-label="取消重命名"
                         onClick={() => setRenamingId(null)}
-                        className="rounded p-1 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900"
+                        className="rounded p-1 text-muted hover:bg-line hover:text-ink"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -244,13 +244,13 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
                         <span
                           className={cn(
                             "block truncate text-sm",
-                            active ? "font-medium text-neutral-900" : "text-neutral-700",
+                            active ? "font-medium text-brandtext" : "text-inksoft",
                           )}
                         >
                           {title}
                         </span>
                       </button>
-                      <span className="shrink-0 text-[10px] text-neutral-400 group-hover:hidden group-focus-within:hidden">
+                      <span className="shrink-0 text-[10px] text-muted group-hover:hidden group-focus-within:hidden">
                         {formatClock(conversation.lastMessageAt ?? conversation.updatedAt)}
                       </span>
                       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -259,7 +259,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
                           aria-label="重命名会话"
                           title="重命名"
                           onClick={() => startRename(conversation)}
-                          className="rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700"
+                          className="rounded p-1 text-muted hover:bg-line hover:text-inksoft"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -268,7 +268,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
                           aria-label="删除会话"
                           title="删除"
                           onClick={() => setDeleting(conversation)}
-                          className="rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-red-600"
+                          className="rounded p-1 text-muted hover:bg-line hover:text-danger"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -283,7 +283,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
       </div>
 
       {renameMutation.error ? (
-        <p className="px-3 pb-2 text-xs text-red-600">
+        <p className="px-3 pb-2 text-xs text-danger">
           重命名失败：{errorMessage(renameMutation.error)}
         </p>
       ) : null}
@@ -300,16 +300,16 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
             <div>
               <label
                 htmlFor="new-chat-datasource"
-                className="mb-1 block text-xs font-medium text-neutral-600"
+                className="mb-1 block text-xs font-medium text-muted"
               >
                 选择数据源
               </label>
               {datasourcesQuery.isPending ? (
-                <p className="text-sm text-neutral-500">正在加载数据源…</p>
+                <p className="text-sm text-muted">正在加载数据源…</p>
               ) : datasourcesQuery.isError ? (
-                <p className="text-sm text-red-600">数据源加载失败，请稍后重试。</p>
+                <p className="text-sm text-danger">数据源加载失败，请稍后重试。</p>
               ) : datasources.length === 0 ? (
-                <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                <p className="rounded-md bg-warningsoft px-3 py-2 text-sm text-warning">
                   还没有可用的数据源，请联系管理员授权。
                 </p>
               ) : (
@@ -317,7 +317,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
                   id="new-chat-datasource"
                   value={datasourceId}
                   onChange={(event) => setDatasourceId(event.target.value)}
-                  className="h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-800 focus:border-neutral-500 focus:outline-none"
+                  className="h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-inksoft focus:border-linestrong focus:outline-none"
                 >
                   <option value="">请选择数据源</option>
                   {datasources.map((datasource) => (
@@ -330,7 +330,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
               )}
             </div>
             {createMutation.error ? (
-              <p className="text-xs text-red-600">{errorMessage(createMutation.error)}</p>
+              <p className="text-xs text-danger">{errorMessage(createMutation.error)}</p>
             ) : null}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={closeDialog}>
@@ -350,11 +350,11 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
 
       {deleting ? (
         <Modal title="删除会话" onClose={() => setDeleting(null)}>
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-muted">
             确定删除「{deleting.title || "未命名会话"}」吗？消息与查询结果将一并删除，且无法恢复。
           </p>
           {deleteMutation.error ? (
-            <p className="mt-2 text-xs text-red-600">{errorMessage(deleteMutation.error)}</p>
+            <p className="mt-2 text-xs text-danger">{errorMessage(deleteMutation.error)}</p>
           ) : null}
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setDeleting(null)}>

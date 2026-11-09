@@ -24,7 +24,7 @@ function isNumeric(column: Column): boolean {
 function renderValue(value: unknown) {
   if (value === null || value === undefined) {
     return (
-      <span className="text-neutral-400" aria-label="空值">
+      <span className="text-muted" aria-label="空值">
         ∅
       </span>
     );
@@ -54,17 +54,17 @@ export function ResultTable({
   const hiddenRows = Math.max(rowCount - displayRows.length, 0);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+    <div className="overflow-hidden rounded-lg border border-line bg-surface">
       <div className="max-h-80 overflow-auto">
         <table className="w-full border-collapse text-xs">
-          <thead className="sticky top-0 z-10 bg-neutral-50">
+          <thead className="sticky top-0 z-10 bg-subtle/80">
             <tr>
               {columns.map((column, index) => (
                 <th
                   key={`${column.name}-${index}`}
                   scope="col"
                   className={cn(
-                    "border-b border-neutral-200 px-3 py-2 font-medium text-neutral-600",
+                    "border-b border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted",
                     isNumeric(column) ? "text-right" : "text-left",
                   )}
                 >
@@ -75,13 +75,13 @@ export function ResultTable({
           </thead>
           <tbody>
             {displayRows.map((row, rowIndex) => (
-              <tr key={rowIndex} className="odd:bg-white even:bg-neutral-50/60">
+              <tr key={rowIndex} className="odd:bg-surface even:bg-subtle/50">
                 {columns.map((column, columnIndex) => (
                   <td
                     key={`${column.name}-${columnIndex}`}
                     data-type={column.type}
                     className={cn(
-                      "border-b border-neutral-100 px-3 py-1.5 text-neutral-800",
+                      "border-b border-line px-3 py-1.5 text-inksoft",
                       isNumeric(column) ? "text-right tabular-nums" : "text-left",
                     )}
                   >
@@ -94,7 +94,7 @@ export function ResultTable({
               <tr>
                 <td
                   colSpan={Math.max(columns.length, 1)}
-                  className="px-3 py-4 text-center text-neutral-400"
+                  className="px-3 py-4 text-center text-muted"
                 >
                   查询结果为空
                 </td>
@@ -103,7 +103,7 @@ export function ResultTable({
           </tbody>
         </table>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-subtle px-3 py-2 text-xs text-muted">
         <div className="flex flex-wrap items-center gap-2">
           <span>
             显示 {displayRows.length} / {formatCount(rowCount)} 行

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { init, use, type EChartsType } from "echarts/core";
 import { BarChart, LineChart, PieChart, ScatterChart } from "echarts/charts";
 import {
@@ -8,6 +8,7 @@ import {
   TooltipComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
+import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
 
 // Only the chart types and components the server-side engine emits are bundled.
@@ -37,13 +38,61 @@ function isEmptyOption(option: ChartOption | null | undefined): boolean {
   return !option || Object.keys(option).length === 0;
 }
 
+type AxisLike = Record<string, unknown>;
+
+/**
+ * The option is produced server-side without any theme. Paint it with the
+ * current app tokens so axes/legend stay readable on both backgrounds.
+ */
+function withChartTheme(option: ChartOption, theme: Theme): ChartOption {
+  const dark = theme === "dark";
+  const ink = dark ? "#d4d4d8" : "#3f3f46";
+  const line = dark ? "#2a2a32" : "#e4e4e7";
+  const tooltipBg = dark ? "#121216" : "#ffffff";
+
+  const styleAxis = (axis: unknown): unknown => {
+    if (Array.isArray(axis)) return axis.map(styleAxis);
+    if (!axis || typeof axis !== "object") return axis;
+    const value = axis as AxisLike;
+    return {
+      ...value,
+      axisLabel: { color: ink, ...(value.axisLabel as object | undefined) },
+      axisLine: { lineStyle: { color: line }, ...(value.axisLine as object | undefined) },
+      splitLine: { lineStyle: { color: line }, ...(value.splitLine as object | undefined) },
+    };
+  };
+
+  return {
+    ...option,
+    backgroundColor: "transparent",
+    textStyle: { color: ink, ...(option.textStyle as object | undefined) },
+    legend: {
+      ...(option.legend as object | undefined),
+      textStyle: { color: ink, ...((option.legend as AxisLike | undefined)?.textStyle as object | undefined) },
+    },
+    tooltip: {
+      backgroundColor: tooltipBg,
+      borderColor: line,
+      textStyle: { color: dark ? "#f5f5f6" : "#18181b" },
+      ...(option.tooltip as object | undefined),
+    },
+    xAxis: styleAxis(option.xAxis),
+    yAxis: styleAxis(option.yAxis),
+  };
+}
+
 export function EChart({ option, className, ariaLabel = "图表", onReady }: EChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<EChartsType | null>(null);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
+  const { theme } = useTheme();
   const empty = isEmptyOption(option);
+  const themedOption = useMemo(
+    () => (option ? withChartTheme(option, theme) : option),
+    [option, theme],
+  );
   const [failed, setFailed] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const lastOptionRef = useRef(option);
@@ -91,14 +140,14 @@ export function EChart({ option, className, ariaLabel = "图表", onReady }: ECh
 
   useEffect(() => {
     if (empty) return;
-    chartRef.current?.setOption(option as ChartOption, { notMerge: true });
-  }, [empty, option]);
+    chartRef.current?.setOption(themedOption as ChartOption, { notMerge: true });
+  }, [empty, themedOption]);
 
   if (empty || failed) {
     return (
       <div
         className={cn(
-          "flex h-full min-h-40 w-full items-center justify-center rounded-md border border-dashed border-neutral-200 bg-neutral-50 text-xs text-neutral-400",
+          "flex h-full min-h-40 w-full items-center justify-center rounded-md border border-dashed border-line bg-subtle text-xs text-muted",
           className,
         )}
       >

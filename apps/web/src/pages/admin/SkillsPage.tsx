@@ -47,7 +47,7 @@ function describeError(error: unknown, fallback: string): string {
 }
 
 const selectClass =
-  "h-8 rounded-md border border-neutral-300 bg-white px-2 text-xs text-neutral-700 focus:border-neutral-500 focus:outline-none";
+  "h-8 rounded-md border border-linestrong bg-surface px-2 text-xs text-inksoft focus:border-linestrong focus:outline-none";
 
 export default function SkillsPage() {
   const navigate = useNavigate();
@@ -160,8 +160,8 @@ export default function SkillsPage() {
         <div className="mx-auto w-full max-w-5xl px-6 py-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-lg font-semibold text-neutral-900">技能管理</h1>
-              <p className="mt-1 text-sm text-neutral-500">
+              <h1 className="text-xl font-semibold tracking-tight text-ink">技能管理</h1>
+              <p className="mt-1 text-sm text-muted">
                 技能会注入到 Agent 系统提示中；数据源技能可覆盖同名的全局技能。
               </p>
             </div>
@@ -189,7 +189,7 @@ export default function SkillsPage() {
           {seedResult ? (
             <p
               role="status"
-              className="mt-4 rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600"
+              className="mt-4 rounded-md border border-line bg-surface px-3 py-2 text-xs text-muted"
             >
               {seedResult}
             </p>
@@ -216,35 +216,35 @@ export default function SkillsPage() {
               <option value="enabled">已启用</option>
               <option value="disabled">已停用</option>
             </select>
-            <span className="text-xs text-neutral-400">共 {filtered.length} 个技能</span>
+            <span className="text-xs text-muted">共 {filtered.length} 个技能</span>
           </div>
 
-          <div className="mt-3 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+          <div className="mt-3 overflow-hidden rounded-xl border border-line bg-surface shadow-card">
             {skillsQuery.isPending ? (
-              <div className="px-4 py-10 text-center text-sm text-neutral-400">加载中…</div>
+              <div className="px-4 py-10 text-center text-sm text-muted">加载中…</div>
             ) : listForbidden ? (
-              <div className="flex flex-col items-center gap-3 px-4 py-10 text-sm text-neutral-500">
+              <div className="flex flex-col items-center gap-3 px-4 py-10 text-sm text-muted">
                 <p>没有管理员权限，无法查看技能。</p>
                 <Button variant="outline" size="sm" onClick={() => navigate("/chat")}>
                   返回对话
                 </Button>
               </div>
             ) : skillsQuery.isError ? (
-              <div className="flex flex-col items-center gap-3 px-4 py-10 text-sm text-neutral-500">
+              <div className="flex flex-col items-center gap-3 px-4 py-10 text-sm text-muted">
                 <p>{describeError(skillsQuery.error, "技能列表加载失败，请稍后重试。")}</p>
                 <Button variant="outline" size="sm" onClick={() => void skillsQuery.refetch()}>
                   重试
                 </Button>
               </div>
             ) : filtered.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-neutral-400">
+              <div className="px-4 py-10 text-center text-sm text-muted">
                 {skills.length === 0
                   ? "还没有技能，点击右上角新建，或恢复内置技能。"
                   : "没有符合筛选条件的技能。"}
               </div>
             ) : (
               <table className="w-full text-left text-sm">
-                <thead className="bg-neutral-50 text-xs text-neutral-500">
+                <thead className="bg-subtle text-xs text-muted">
                   <tr>
                     <th className="px-4 py-2 font-medium">名称</th>
                     <th className="px-4 py-2 font-medium">范围</th>
@@ -256,31 +256,31 @@ export default function SkillsPage() {
                 </thead>
                 <tbody>
                   {filtered.map((skill) => (
-                    <tr key={skill.id} className="border-t border-neutral-100">
+                    <tr key={skill.id} className="border-t border-line">
                       <td className="max-w-[20rem] px-4 py-2.5">
-                        <p className="truncate font-medium text-neutral-900">{skill.name}</p>
-                        <p className="truncate text-xs text-neutral-400">{skill.description}</p>
+                        <p className="truncate font-medium text-ink">{skill.name}</p>
+                        <p className="truncate text-xs text-muted">{skill.description}</p>
                       </td>
                       <td className="px-4 py-2.5">
                         <span
                           className={
                             skill.scope === "global"
-                              ? "rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-600"
-                              : "rounded bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-600"
+                              ? "rounded bg-subtle px-1.5 py-0.5 text-[11px] text-muted"
+                              : "rounded bg-brandsoft px-1.5 py-0.5 text-[11px] text-brandtext"
                           }
                         >
                           {skill.scope === "global" ? "全局" : "数据源"}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-neutral-500">
+                      <td className="px-4 py-2.5 text-xs text-muted">
                         {skill.scope === "global" ? "—" : datasourceName(skill.datasourceId)}
                       </td>
                       <td className="px-4 py-2.5">
-                        <span className={skill.enabled ? "text-xs text-emerald-600" : "text-xs text-neutral-400"}>
+                        <span className={skill.enabled ? "text-xs text-success" : "text-xs text-muted"}>
                           {skill.enabled ? "启用" : "停用"}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-neutral-500">
+                      <td className="px-4 py-2.5 text-xs text-muted">
                         {formatClock(skill.updatedAt)}
                       </td>
                       <td className="px-4 py-2.5">
@@ -316,25 +316,25 @@ export default function SkillsPage() {
 
       {editingId ? (
         detailQuery.isPending ? (
-          <div className="fixed inset-0 z-40 flex justify-end bg-neutral-900/20">
+          <div className="fixed inset-0 z-40 flex justify-end bg-black/30">
             <div
               role="dialog"
               aria-modal="true"
               aria-label="编辑技能"
-              className="flex h-full w-full max-w-xl items-center justify-center border-l border-neutral-200 bg-white shadow-xl"
+              className="flex h-full w-full max-w-xl items-center justify-center border-l border-line bg-surface shadow-xl"
             >
               <PageSpinner label="加载技能…" />
             </div>
           </div>
         ) : detailQuery.isError || !detailQuery.data ? (
-          <div className="fixed inset-0 z-40 flex justify-end bg-neutral-900/20">
+          <div className="fixed inset-0 z-40 flex justify-end bg-black/30">
             <div
               role="dialog"
               aria-modal="true"
               aria-label="编辑技能"
-              className="flex h-full w-full max-w-xl flex-col items-center justify-center gap-3 border-l border-neutral-200 bg-white px-6 shadow-xl"
+              className="flex h-full w-full max-w-xl flex-col items-center justify-center gap-3 border-l border-line bg-surface px-6 shadow-xl"
             >
-              <p className="text-sm text-neutral-500">
+              <p className="text-sm text-muted">
                 {describeError(detailQuery.error, "技能加载失败，请稍后重试。")}
               </p>
               <Button variant="outline" size="sm" onClick={closeEditor}>

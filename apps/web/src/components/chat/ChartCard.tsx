@@ -11,7 +11,7 @@ const LazyEChart = lazy(() =>
 
 function ChartLoading() {
   return (
-    <div className="flex h-full min-h-40 w-full items-center justify-center rounded-md border border-dashed border-neutral-200 bg-neutral-50 text-xs text-neutral-400">
+    <div className="flex h-full min-h-40 w-full items-center justify-center rounded-md border border-dashed border-line bg-subtle text-xs text-muted">
       图表加载中…
     </div>
   );
@@ -97,13 +97,13 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
 
   return (
     <div
-      className={`overflow-hidden rounded-lg border border-neutral-200 bg-white ${className ?? ""}`}
+      className={`overflow-hidden rounded-lg border border-line bg-surface ${className ?? ""}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-50 px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-subtle px-3 py-2">
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className="truncate text-xs font-medium text-neutral-700">{title}</span>
+          <span className="truncate text-xs font-medium text-inksoft">{title}</span>
           {points !== undefined ? (
-            <span className="shrink-0 text-[11px] text-neutral-400">{points} 个数据点</span>
+            <span className="shrink-0 text-[11px] text-muted">{points} 个数据点</span>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -137,14 +137,14 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
         </Suspense>
       </div>
       {downloadError ? (
-        <p role="alert" className="border-t border-neutral-100 px-3 py-1.5 text-[11px] text-red-600">
+        <p role="alert" className="border-t border-line px-3 py-1.5 text-[11px] text-danger">
           {downloadError}
         </p>
       ) : null}
 
       {fullscreen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/60 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="presentation"
           onClick={() => closeFullscreen()}
         >
@@ -152,11 +152,11 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className="flex h-[80vh] w-full max-w-5xl flex-col rounded-lg bg-white shadow-xl"
+            className="flex h-[80vh] w-full max-w-5xl flex-col rounded-lg bg-surface shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2.5">
-              <span className="truncate text-sm font-medium text-neutral-800">{title}</span>
+            <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
+              <span className="truncate text-sm font-medium text-inksoft">{title}</span>
               <Button
                 variant="ghost"
                 size="icon"

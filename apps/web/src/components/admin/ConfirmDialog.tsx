@@ -35,7 +35,7 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/30 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       role="presentation"
       onMouseDown={() => {
         if (!pending) onCancel();
@@ -45,16 +45,16 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-sm rounded-lg border border-neutral-200 bg-white shadow-xl"
+        className="w-full max-w-sm rounded-lg border border-line bg-surface shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-neutral-200 px-4 py-3 text-sm font-semibold text-neutral-900">
+        <div className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">
           {title}
         </div>
         <div className="space-y-3 p-4">
-          {description ? <div className="text-sm text-neutral-600">{description}</div> : null}
+          {description ? <div className="text-sm text-muted">{description}</div> : null}
           {error ? (
-            <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-600">
+            <p role="alert" className="rounded-md bg-dangersoft px-3 py-2 text-xs text-danger">
               {error}
             </p>
           ) : null}

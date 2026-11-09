@@ -60,7 +60,7 @@ function ReportMarkdown({ content }: { content: string }) {
 function renderValue(value: unknown): ReactNode {
   if (value === null || value === undefined) {
     return (
-      <span className="text-neutral-400" aria-label="空值">
+      <span className="text-muted" aria-label="空值">
         ∅
       </span>
     );
@@ -80,17 +80,17 @@ function ReportTable({
   rowCount: number;
 }) {
   return (
-    <div className="report-artifact overflow-hidden rounded-lg border border-neutral-200 bg-white">
+    <div className="report-artifact overflow-hidden rounded-xl border border-line bg-surface shadow-card">
       <div className="report-table-scroll max-h-96 overflow-auto">
         <table className="w-full border-collapse text-xs">
-          <thead className="sticky top-0 z-10 bg-neutral-50">
+          <thead className="sticky top-0 z-10 bg-subtle">
             <tr>
               {columns.map((column, index) => (
                 <th
                   key={`${column.name}-${index}`}
                   scope="col"
                   className={cn(
-                    "border-b border-neutral-200 px-3 py-2 font-medium text-neutral-600",
+                    "border-b border-line px-3 py-2 font-medium text-muted",
                     column.type === "number" ? "text-right" : "text-left",
                   )}
                 >
@@ -101,12 +101,12 @@ function ReportTable({
           </thead>
           <tbody>
             {rows.map((row, rowIndex) => (
-              <tr key={rowIndex} className="odd:bg-white even:bg-neutral-50/60">
+              <tr key={rowIndex} className="odd:bg-surface even:bg-subtle/50">
                 {columns.map((column, columnIndex) => (
                   <td
                     key={`${column.name}-${columnIndex}`}
                     className={cn(
-                      "border-b border-neutral-100 px-3 py-1.5 text-neutral-800",
+                      "border-b border-line px-3 py-1.5 text-inksoft",
                       column.type === "number" ? "text-right tabular-nums" : "text-left",
                     )}
                   >
@@ -119,7 +119,7 @@ function ReportTable({
               <tr>
                 <td
                   colSpan={Math.max(columns.length, 1)}
-                  className="px-3 py-4 text-center text-neutral-400"
+                  className="px-3 py-4 text-center text-muted"
                 >
                   查询结果为空
                 </td>
@@ -128,7 +128,7 @@ function ReportTable({
           </tbody>
         </table>
       </div>
-      <div className="report-table-footer border-t border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
+      <div className="report-table-footer border-t border-line bg-subtle px-3 py-2 text-xs text-muted">
         显示 {rows.length} / {formatCount(rowCount)} 行
         {rowCount > rows.length ? "（仅展示前 100 行）" : ""}
       </div>
@@ -169,7 +169,7 @@ function ReportChart({ spec, rowCount }: { spec: unknown; rowCount: number }) {
 
 function ArtifactLoading({ label }: { label: string }) {
   return (
-    <div className="report-artifact flex min-h-24 items-center justify-center rounded-lg border border-dashed border-neutral-200 bg-neutral-50 text-xs text-neutral-400">
+    <div className="report-artifact flex min-h-24 items-center justify-center rounded-lg border border-dashed border-line bg-subtle text-xs text-muted">
       {label}
     </div>
   );
@@ -177,10 +177,10 @@ function ArtifactLoading({ label }: { label: string }) {
 
 function MissingArtifact({ artifactId, message }: { artifactId: string; message?: string }) {
   return (
-    <div className="report-artifact flex min-h-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-4 text-center text-xs text-neutral-500">
-      <FileWarning className="h-5 w-5 text-neutral-400" />
+    <div className="report-artifact flex min-h-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-linestrong bg-subtle px-3 py-4 text-center text-xs text-muted">
+      <FileWarning className="h-5 w-5 text-muted" />
       <p>{message ?? "结果不可用，可能已被删除。"}</p>
-      <p className="font-mono text-[11px] text-neutral-400">artifact: {artifactId}</p>
+      <p className="font-mono text-[11px] text-muted">artifact: {artifactId}</p>
     </div>
   );
 }
@@ -256,7 +256,7 @@ export default function ReportPage() {
           <ArrowLeft className="h-3.5 w-3.5" />
           返回
         </Button>
-        <span className="truncate text-sm font-medium text-neutral-900">
+        <span className="truncate text-sm font-medium text-ink">
           {report?.title ?? "报告"}
         </span>
       </div>
@@ -282,7 +282,7 @@ export default function ReportPage() {
         <Button
           variant="outline"
           size="sm"
-          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+          className="text-danger hover:bg-dangersoft hover:text-danger"
           onClick={handleDelete}
           disabled={!report || deleteMutation.isPending}
         >
@@ -300,7 +300,7 @@ export default function ReportPage() {
     content = <PageSpinner label="加载报告…" />;
   } else if (reportQuery.isError) {
     content = (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-neutral-500">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted">
         <p>{notFound ? "报告不存在或已被删除。" : "报告加载失败，请稍后重试。"}</p>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => navigate("/chat")}>
@@ -317,11 +317,11 @@ export default function ReportPage() {
   } else if (report) {
     const segments = parseReportMarkdown(report.markdown);
     content = (
-      <div className="report-page min-h-0 flex-1 overflow-y-auto bg-white">
+      <div className="report-page min-h-0 flex-1 overflow-y-auto bg-surface">
         <article className="mx-auto w-full max-w-3xl px-6 py-8 print:max-w-none print:px-0 print:py-0">
-          <header className="mb-6 border-b border-neutral-200 pb-4">
-            <h1 className="text-xl font-semibold text-neutral-900">{report.title}</h1>
-            <p className="mt-1 text-xs text-neutral-500">
+          <header className="mb-6 border-b border-line pb-4">
+            <h1 className="text-xl font-semibold text-ink">{report.title}</h1>
+            <p className="mt-1 text-xs text-muted">
               生成时间：{formatReportTime(report.createdAt)}
             </p>
           </header>
@@ -351,7 +351,7 @@ export default function ReportPage() {
     <AppShell user={user} sidebar={<ConversationSidebar />} topbar={topbar}>
       {deleteMutation.isError ? (
         <div className="mx-auto w-full max-w-3xl px-4 pt-3">
-          <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+          <p role="alert" className="rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger">
             {deleteMutation.error instanceof ApiError
               ? deleteMutation.error.message
               : "删除失败，请稍后重试。"}

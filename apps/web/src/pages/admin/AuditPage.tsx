@@ -31,9 +31,9 @@ const ACTION_VALUES = Object.keys(AUDIT_ACTION_LABELS) as AuditActionValue[];
 const STATUS_VALUES = Object.keys(AUDIT_STATUS_LABELS) as AuditStatusValue[];
 
 const STATUS_BADGE_CLASSES: Record<AuditStatusValue, string> = {
-  ok: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  rejected: "bg-amber-50 text-amber-700 ring-amber-200",
-  error: "bg-red-50 text-red-700 ring-red-200",
+  ok: "bg-successsoft text-success ring-emerald-200",
+  rejected: "bg-warningsoft text-warning ring-amber-200",
+  error: "bg-dangersoft text-danger ring-red-200",
   timeout: "bg-orange-50 text-orange-700 ring-orange-200",
 };
 
@@ -56,7 +56,7 @@ const EMPTY_FILTERS: FilterState = {
 };
 
 const SELECT_CLASS =
-  "h-9 rounded-md border border-neutral-200 bg-white px-2 text-sm text-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400";
+  "h-9 rounded-md border border-line bg-surface px-2 text-sm text-inksoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30";
 
 function startOfDay(value: string): number | undefined {
   if (!value) return undefined;
@@ -143,8 +143,8 @@ export default function AuditPage() {
         <div className="mx-auto w-full max-w-6xl px-6 py-6">
           <header className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="text-lg font-semibold text-neutral-900">审计日志</h1>
-              <p className="mt-1 text-sm text-neutral-500">
+              <h1 className="text-xl font-semibold tracking-tight text-ink">审计日志</h1>
+              <p className="mt-1 text-sm text-muted">
                 查询、导出与账号变更的操作记录，错误信息已脱敏。
               </p>
             </div>
@@ -170,7 +170,7 @@ export default function AuditPage() {
           </header>
 
           <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-            <label className="flex flex-col gap-1 text-[11px] text-neutral-500">
+            <label className="flex flex-col gap-1 text-[11px] text-muted">
               用户
               <select
                 aria-label="用户"
@@ -186,7 +186,7 @@ export default function AuditPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-[11px] text-neutral-500">
+            <label className="flex flex-col gap-1 text-[11px] text-muted">
               数据源
               <select
                 aria-label="数据源"
@@ -202,7 +202,7 @@ export default function AuditPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-[11px] text-neutral-500">
+            <label className="flex flex-col gap-1 text-[11px] text-muted">
               动作
               <select
                 aria-label="动作"
@@ -218,7 +218,7 @@ export default function AuditPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-[11px] text-neutral-500">
+            <label className="flex flex-col gap-1 text-[11px] text-muted">
               状态
               <select
                 aria-label="状态"
@@ -234,7 +234,7 @@ export default function AuditPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-[11px] text-neutral-500">
+            <label className="flex flex-col gap-1 text-[11px] text-muted">
               开始日期
               <Input
                 type="date"
@@ -243,7 +243,7 @@ export default function AuditPage() {
                 onChange={(event) => updateFilter("from", event.target.value)}
               />
             </label>
-            <label className="flex flex-col gap-1 text-[11px] text-neutral-500">
+            <label className="flex flex-col gap-1 text-[11px] text-muted">
               结束日期
               <Input
                 type="date"
@@ -257,7 +257,7 @@ export default function AuditPage() {
           {errorMessage ? (
             <div
               role="alert"
-              className="mt-4 flex items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              className="mt-4 flex items-center justify-between gap-3 rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-sm text-danger"
             >
               <span>{errorMessage}</span>
               <Button variant="outline" size="sm" onClick={() => void auditQuery.refetch()}>
@@ -266,9 +266,9 @@ export default function AuditPage() {
             </div>
           ) : null}
 
-          <div className="mt-4 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+          <div className="mt-4 overflow-hidden rounded-xl border border-line bg-surface shadow-card">
             <table className="w-full border-collapse text-sm">
-              <thead className="bg-neutral-50 text-xs text-neutral-500">
+              <thead className="bg-subtle text-xs text-muted">
                 <tr>
                   <th className="px-3 py-2 text-left font-medium">时间</th>
                   <th className="px-3 py-2 text-left font-medium">用户</th>
@@ -283,13 +283,13 @@ export default function AuditPage() {
               <tbody>
                 {auditQuery.isPending ? (
                   <tr>
-                    <td className="px-3 py-6 text-center text-sm text-neutral-400" colSpan={8}>
+                    <td className="px-3 py-6 text-center text-sm text-muted" colSpan={8}>
                       加载中…
                     </td>
                   </tr>
                 ) : items.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-6 text-center text-sm text-neutral-400" colSpan={8}>
+                    <td className="px-3 py-6 text-center text-sm text-muted" colSpan={8}>
                       {hasFilters ? "没有符合筛选条件的审计记录。" : "暂无审计记录。"}
                     </td>
                   </tr>
@@ -302,7 +302,7 @@ export default function AuditPage() {
                         key={entry.id}
                         tabIndex={0}
                         aria-label={`查看审计记录 ${entry.id}`}
-                        className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus:bg-neutral-50 focus:outline-none"
+                        className="cursor-pointer border-t border-line hover:bg-subtle focus:bg-subtle focus:outline-none"
                         onClick={() => setSelected(entry)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -311,18 +311,18 @@ export default function AuditPage() {
                           }
                         }}
                       >
-                        <td className="whitespace-nowrap px-3 py-2 text-xs text-neutral-600">
+                        <td className="whitespace-nowrap px-3 py-2 text-xs text-muted">
                           {formatDateTime(entry.createdAt)}
                         </td>
-                        <td className="px-3 py-2 text-neutral-800">
+                        <td className="px-3 py-2 text-inksoft">
                           {entry.userId
                             ? (userNames.get(entry.userId) ?? entry.userId)
                             : "—"}
                         </td>
-                        <td className="px-3 py-2 text-neutral-700">
+                        <td className="px-3 py-2 text-inksoft">
                           {AUDIT_ACTION_LABELS[entry.action]}
                         </td>
-                        <td className="px-3 py-2 text-neutral-700">
+                        <td className="px-3 py-2 text-inksoft">
                           {entry.datasourceId
                             ? (datasourceNames.get(entry.datasourceId) ?? entry.datasourceId)
                             : "—"}
@@ -337,13 +337,13 @@ export default function AuditPage() {
                             {AUDIT_STATUS_LABELS[entry.status]}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-right text-xs text-neutral-600">
+                        <td className="px-3 py-2 text-right text-xs text-muted">
                           {entry.durationMs === null ? "—" : `${entry.durationMs} ms`}
                         </td>
-                        <td className="px-3 py-2 text-right text-xs text-neutral-600">
+                        <td className="px-3 py-2 text-right text-xs text-muted">
                           {entry.rowCount === null ? "—" : entry.rowCount}
                         </td>
-                        <td className="px-3 py-2 text-xs text-neutral-500">{ip ?? "—"}</td>
+                        <td className="px-3 py-2 text-xs text-muted">{ip ?? "—"}</td>
                       </tr>
                     );
                   })
@@ -352,7 +352,7 @@ export default function AuditPage() {
             </table>
           </div>
 
-          <div className="mt-3 flex items-center justify-between text-xs text-neutral-500">
+          <div className="mt-3 flex items-center justify-between text-xs text-muted">
             <span>
               共 {total} 条 · 第 {currentPage + 1} / {pageCount} 页
             </span>

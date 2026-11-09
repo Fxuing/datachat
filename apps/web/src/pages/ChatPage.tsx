@@ -43,7 +43,7 @@ function ModelSelector({
   return (
     <select
       aria-label="选择模型"
-      className="h-8 max-w-[12rem] rounded-md border border-neutral-300 bg-white px-2 text-xs text-neutral-700 focus:border-neutral-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+      className="h-8 max-w-[12rem] rounded-lg border border-line bg-surface px-2 text-xs text-inksoft shadow-sm transition-colors hover:border-linestrong focus:border-brand/50 focus:outline-none focus:ring-2 focus:ring-brand/10 disabled:cursor-not-allowed disabled:opacity-60"
       value={currentId}
       disabled={disabled || models.length === 0}
       onChange={(event) => onChange(event.target.value)}
@@ -187,11 +187,11 @@ export default function ChatPage() {
   const topbar = (
     <>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-sm font-medium text-neutral-900">
+        <span className="truncate text-sm font-medium text-ink">
           {conversation?.title ?? (conversationId ? "未命名会话" : "新对话")}
         </span>
         {datasource ? (
-          <span className="hidden shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-500 sm:inline">
+          <span className="hidden shrink-0 rounded bg-subtle px-1.5 py-0.5 text-[11px] text-muted sm:inline">
             {datasource.name} · {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}
           </span>
         ) : null}
@@ -199,7 +199,7 @@ export default function ChatPage() {
       <div className="flex shrink-0 items-center gap-2">
         {models?.configured === false ? (
           <span
-            className="text-xs text-neutral-400"
+            className="text-xs text-muted"
             title="服务端未配置 SILICONFLOW_API_KEY"
           >
             未配置模型
@@ -246,7 +246,7 @@ export default function ChatPage() {
   } else if (conversationQuery.isError) {
     const notFound = conversationQuery.error instanceof ApiError && conversationQuery.error.status === 404;
     content = (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-neutral-500">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted">
         <p>{notFound ? "会话不存在或已被删除。" : "会话加载失败，请稍后重试。"}</p>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => navigate("/chat")}>
@@ -281,7 +281,7 @@ export default function ChatPage() {
           <div className="mx-auto w-full max-w-3xl px-4 pb-2">
             <p
               role="alert"
-              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"
+              className="rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger"
             >
               {sendError}
             </p>

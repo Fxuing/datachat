@@ -41,15 +41,15 @@ function statusLabel(status: string): string {
 }
 
 function statusClass(status: string): string {
-  if (status === "ok") return "text-emerald-600";
-  if (status === "error") return "text-red-600";
-  return "text-neutral-400";
+  if (status === "ok") return "text-success";
+  if (status === "error") return "text-danger";
+  return "text-muted";
 }
 
 function statusDotClass(status: string): string {
-  if (status === "ok") return "bg-emerald-500";
-  if (status === "error") return "bg-red-500";
-  return "bg-neutral-300";
+  if (status === "ok") return "bg-successsoft0";
+  if (status === "error") return "bg-dangersoft0";
+  return "bg-linestrong";
 }
 
 function statusHint(status: string): string {
@@ -208,8 +208,8 @@ export default function DatasourcesPage() {
         <div className="mx-auto w-full max-w-6xl px-6 py-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-lg font-semibold text-neutral-900">数据源</h1>
-              <p className="mt-1 text-sm text-neutral-500">
+              <h1 className="text-xl font-semibold tracking-tight text-ink">数据源</h1>
+              <p className="mt-1 text-sm text-muted">
                 管理只读数据库连接；密码仅提交给服务端，不会回显。
               </p>
             </div>
@@ -228,31 +228,31 @@ export default function DatasourcesPage() {
               role={banner.tone === "error" ? "alert" : "status"}
               className={
                 banner.tone === "error"
-                  ? "mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"
-                  : "mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700"
+                  ? "mt-4 rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger"
+                  : "mt-4 rounded-md border border-success/20 bg-successsoft px-3 py-2 text-xs text-success"
               }
             >
               {banner.text}
             </p>
           ) : null}
 
-          <div className="mt-4 overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+          <div className="mt-4 overflow-x-auto rounded-xl border border-line bg-surface shadow-card">
             {datasourcesQuery.isPending ? (
-              <div className="px-4 py-10 text-center text-sm text-neutral-400">加载中…</div>
+              <div className="px-4 py-10 text-center text-sm text-muted">加载中…</div>
             ) : datasourcesQuery.isError ? (
-              <div className="flex flex-col items-center gap-3 px-4 py-10 text-sm text-neutral-500">
+              <div className="flex flex-col items-center gap-3 px-4 py-10 text-sm text-muted">
                 <p>{describeApiError(datasourcesQuery.error, "数据源列表加载失败，请稍后重试。")}</p>
                 <Button variant="outline" size="sm" onClick={() => void datasourcesQuery.refetch()}>
                   重试
                 </Button>
               </div>
             ) : datasources.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-neutral-400">
+              <div className="px-4 py-10 text-center text-sm text-muted">
                 还没有数据源，点击右上角新建。
               </div>
             ) : (
               <table className="w-full min-w-[960px] text-left text-sm">
-                <thead className="bg-neutral-50 text-xs text-neutral-500">
+                <thead className="bg-subtle text-xs text-muted">
                   <tr>
                     <th className="px-4 py-2 font-medium">名称</th>
                     <th className="px-4 py-2 font-medium">类型</th>
@@ -271,10 +271,10 @@ export default function DatasourcesPage() {
                       refreshSchemaMutation.isPending &&
                       refreshSchemaMutation.variables?.id === datasource.id;
                     return (
-                      <tr key={datasource.id} className="border-t border-neutral-100">
+                      <tr key={datasource.id} className="border-t border-line">
                         <td className="max-w-[14rem] px-4 py-2.5">
-                          <p className="truncate font-medium text-neutral-900">{datasource.name}</p>
-                          <p className="truncate text-xs text-neutral-400">
+                          <p className="truncate font-medium text-ink">{datasource.name}</p>
+                          <p className="truncate text-xs text-muted">
                             {datasource.username}
                           </p>
                         </td>
@@ -283,13 +283,13 @@ export default function DatasourcesPage() {
                             className={
                               datasource.type === "mysql"
                                 ? "rounded bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-700"
-                                : "rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-700"
+                                : "rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] text-brandtext"
                             }
                           >
                             {typeLabel(datasource.type)}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-xs text-neutral-600">
+                        <td className="px-4 py-2.5 font-mono text-xs text-muted">
                           {datasource.host}:{datasource.port}/{datasource.database}
                         </td>
                         <td className="px-4 py-2.5">
@@ -307,19 +307,19 @@ export default function DatasourcesPage() {
                         <td className="px-4 py-2.5">
                           {datasource.readOnlyVerified ? (
                             <span
-                              className="inline-flex items-center gap-1 text-xs text-emerald-600"
+                              className="inline-flex items-center gap-1 text-xs text-success"
                               title="最近一次检测确认该账号只有只读权限。"
                             >
                               <CheckCircle2 className="h-3.5 w-3.5" />
                               只读已验证
                             </span>
                           ) : (
-                            <span className="text-xs text-neutral-400" title="尚未验证只读权限。">
+                            <span className="text-xs text-muted" title="尚未验证只读权限。">
                               未验证
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 text-xs text-neutral-500">
+                        <td className="px-4 py-2.5 text-xs text-muted">
                           {formatClock(datasource.lastCheckedAt) || "—"}
                         </td>
                         <td className="px-4 py-2.5">
@@ -366,7 +366,7 @@ export default function DatasourcesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                              className="text-danger hover:bg-dangersoft hover:text-danger"
                               onClick={() => openDelete(datasource)}
                             >
                               删除

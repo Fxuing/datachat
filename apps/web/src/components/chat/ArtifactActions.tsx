@@ -66,7 +66,7 @@ export function ArtifactActions({
       <a
         href={artifactDownloadUrl(artifactId, "csv")}
         download
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-800 transition-colors hover:bg-neutral-50"
+        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-linestrong bg-surface px-3 text-xs font-medium text-inksoft transition-colors hover:bg-subtle"
       >
         <Download className="h-3.5 w-3.5" />
         下载 CSV
@@ -74,7 +74,7 @@ export function ArtifactActions({
       <a
         href={artifactDownloadUrl(artifactId, "xlsx")}
         download
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-800 transition-colors hover:bg-neutral-50"
+        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-linestrong bg-surface px-3 text-xs font-medium text-inksoft transition-colors hover:bg-subtle"
       >
         <Download className="h-3.5 w-3.5" />
         下载 Excel
@@ -85,7 +85,7 @@ export function ArtifactActions({
         </Button>
       ) : null}
       {error ? (
-        <span role="alert" className="text-[11px] text-red-600">
+        <span role="alert" className="text-[11px] text-danger">
           {error}
         </span>
       ) : null}

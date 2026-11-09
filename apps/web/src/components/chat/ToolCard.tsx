@@ -27,8 +27,8 @@ export function ToolCard({ tool }: { tool: RunToolState }) {
   return (
     <div
       className={cn(
-        "rounded-lg border bg-white",
-        failed ? "border-red-200" : "border-neutral-200",
+        "rounded-lg border bg-surface",
+        failed ? "border-danger/20" : "border-line",
       )}
     >
       <div className="flex items-center gap-2 px-3 py-2">
@@ -36,16 +36,16 @@ export function ToolCard({ tool }: { tool: RunToolState }) {
           {tool.status === "running" ? (
             <Spinner className="h-3.5 w-3.5" />
           ) : failed ? (
-            <AlertCircle className="h-4 w-4 text-red-500" aria-label="工具执行失败" />
+            <AlertCircle className="h-4 w-4 text-danger" aria-label="工具执行失败" />
           ) : (
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-label="工具执行完成" />
+            <CheckCircle2 className="h-4 w-4 text-success" aria-label="工具执行完成" />
           )}
         </span>
-        <span className={cn("text-xs font-medium", failed ? "text-red-700" : "text-neutral-800")}>
+        <span className={cn("text-xs font-medium", failed ? "text-danger" : "text-inksoft")}>
           {toolLabel(tool.name)}
         </span>
-        <span className="truncate font-mono text-[10px] text-neutral-400">{tool.name}</span>
-        <span className="ml-auto shrink-0 text-[10px] text-neutral-400">
+        <span className="truncate font-mono text-[10px] text-muted">{tool.name}</span>
+        <span className="ml-auto shrink-0 text-[10px] text-muted">
           {typeof tool.durationMs === "number" ? formatDuration(tool.durationMs) : null}
         </span>
       </div>
@@ -53,18 +53,18 @@ export function ToolCard({ tool }: { tool: RunToolState }) {
         <p
           className={cn(
             "border-t px-3 py-2 text-xs",
-            failed ? "border-red-100 text-red-700" : "border-neutral-100 text-neutral-500",
+            failed ? "border-danger/15 text-danger" : "border-line text-muted",
           )}
         >
           {tool.summary}
         </p>
       ) : null}
       {hasArgs(tool.args) ? (
-        <details className="group border-t border-neutral-100">
-          <summary className="cursor-pointer select-none px-3 py-1.5 text-[11px] text-neutral-500 hover:text-neutral-700">
+        <details className="group border-t border-line">
+          <summary className="cursor-pointer select-none px-3 py-1.5 text-[11px] text-muted hover:text-inksoft">
             参数
           </summary>
-          <pre className="max-h-48 overflow-auto border-t border-neutral-100 bg-neutral-50 px-3 py-2 text-[11px] leading-relaxed text-neutral-600">
+          <pre className="max-h-48 overflow-auto border-t border-line bg-subtle px-3 py-2 text-[11px] leading-relaxed text-muted">
             {JSON.stringify(tool.args, null, 2)}
           </pre>
         </details>

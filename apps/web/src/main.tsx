@@ -2,7 +2,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "highlight.js/styles/github-dark.css";
 import "./index.css";
+import { initTheme } from "./lib/theme";
 import App from "./App";
+
+initTheme();
 
 const container = document.getElementById("root");
 if (!container) {

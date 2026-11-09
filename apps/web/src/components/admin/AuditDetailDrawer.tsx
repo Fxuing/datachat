@@ -43,8 +43,8 @@ function detailValue(value: unknown): string {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[11px] uppercase tracking-wide text-neutral-400">{label}</dt>
-      <dd className="truncate text-sm text-neutral-800">{children}</dd>
+      <dt className="text-[11px] uppercase tracking-wide text-muted">{label}</dt>
+      <dd className="truncate text-sm text-inksoft">{children}</dd>
     </div>
   );
 }
@@ -67,7 +67,7 @@ export function AuditDetailDrawer({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex justify-end bg-neutral-900/20"
+      className="fixed inset-0 z-40 flex justify-end bg-black/30"
       role="presentation"
       onMouseDown={onClose}
     >
@@ -75,13 +75,13 @@ export function AuditDetailDrawer({
         role="dialog"
         aria-modal="true"
         aria-label="审计详情"
-        className="flex h-full w-full max-w-2xl flex-col border-l border-neutral-200 bg-white shadow-xl"
+        className="flex h-full w-full max-w-2xl flex-col border-l border-line bg-surface shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-4">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-neutral-900">审计详情</h2>
-            <p className="truncate text-[11px] text-neutral-400">
+            <h2 className="truncate text-sm font-semibold text-ink">审计详情</h2>
+            <p className="truncate text-[11px] text-muted">
               {formatDateTime(entry.createdAt)} · {entry.id}
             </p>
           </div>
@@ -105,24 +105,24 @@ export function AuditDetailDrawer({
           </dl>
 
           <section className="mt-6">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-400">SQL</h3>
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted">SQL</h3>
             {entry.sqlText ? (
-              <pre className="mt-2 overflow-x-auto rounded-md border border-neutral-200 bg-neutral-50 p-3 text-xs leading-relaxed text-neutral-800">
+              <pre className="mt-2 overflow-x-auto rounded-md border border-line bg-subtle p-3 text-xs leading-relaxed text-inksoft">
                 {entry.sqlText}
               </pre>
             ) : (
-              <p className="mt-2 text-sm text-neutral-400">无 SQL</p>
+              <p className="mt-2 text-sm text-muted">无 SQL</p>
             )}
           </section>
 
           {entry.errorMessage ? (
             <section className="mt-6">
-              <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted">
                 错误信息
               </h3>
               <p
                 role="alert"
-                className="mt-2 whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700"
+                className="mt-2 whitespace-pre-wrap rounded-md border border-danger/20 bg-dangersoft p-3 text-xs text-danger"
               >
                 {entry.errorMessage}
               </p>
@@ -130,20 +130,20 @@ export function AuditDetailDrawer({
           ) : null}
 
           <section className="mt-6">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted">
               附加信息
             </h3>
             {entry.detailJson ? (
-              <dl className="mt-2 grid grid-cols-2 gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+              <dl className="mt-2 grid grid-cols-2 gap-3 rounded-md border border-line bg-subtle p-3">
                 {Object.entries(entry.detailJson).map(([key, value]) => (
                   <div key={key} className="min-w-0">
-                    <dt className="truncate text-[11px] text-neutral-400">{key}</dt>
-                    <dd className="break-words text-xs text-neutral-700">{detailValue(value)}</dd>
+                    <dt className="truncate text-[11px] text-muted">{key}</dt>
+                    <dd className="break-words text-xs text-inksoft">{detailValue(value)}</dd>
                   </div>
                 ))}
               </dl>
             ) : (
-              <p className="mt-2 text-sm text-neutral-400">无附加信息</p>
+              <p className="mt-2 text-sm text-muted">无附加信息</p>
             )}
           </section>
         </div>

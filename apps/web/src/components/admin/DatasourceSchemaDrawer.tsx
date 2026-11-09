@@ -92,7 +92,7 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
 
   return (
     <div
-      className="fixed inset-0 z-40 flex justify-end bg-neutral-900/20"
+      className="fixed inset-0 z-40 flex justify-end bg-black/30"
       role="presentation"
       onMouseDown={onClose}
     >
@@ -100,15 +100,15 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
         role="dialog"
         aria-modal="true"
         aria-label={`${datasource.name} 的表结构`}
-        className="flex h-full w-full max-w-2xl flex-col border-l border-neutral-200 bg-white shadow-xl"
+        className="flex h-full w-full max-w-2xl flex-col border-l border-line bg-surface shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-4">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-neutral-900">
+            <h2 className="truncate text-sm font-semibold text-ink">
               {datasource.name} 的表结构
             </h2>
-            <p className="truncate text-[11px] text-neutral-400">
+            <p className="truncate text-[11px] text-muted">
               {schemaQuery.data
                 ? `共 ${total} 张表 · 刷新于 ${formatClock(schemaQuery.data.refreshedAt)}`
                 : `${datasource.host}:${datasource.port}/${datasource.database}`}
@@ -130,7 +130,7 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
           </div>
         </div>
 
-        <div className="shrink-0 border-b border-neutral-100 p-3">
+        <div className="shrink-0 border-b border-line p-3">
           <Input
             value={search}
             placeholder="搜索表名…"
@@ -141,29 +141,29 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {refreshError ? (
-            <p role="alert" className="m-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+            <p role="alert" className="m-3 rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger">
               {refreshError}
             </p>
           ) : null}
           {schemaQuery.isPending ? (
-            <p className="p-4 text-xs text-neutral-400">正在加载表结构…</p>
+            <p className="p-4 text-xs text-muted">正在加载表结构…</p>
           ) : schemaQuery.isError ? (
-            <p role="alert" className="m-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+            <p role="alert" className="m-3 rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger">
               {describeApiError(schemaQuery.error, "加载表结构失败，请稍后重试。")}
             </p>
           ) : tables.length === 0 ? (
-            <p className="p-4 text-xs text-neutral-400">
+            <p className="p-4 text-xs text-muted">
               {debouncedSearch ? "没有匹配的表。" : "尚未缓存表结构，请先刷新 schema。"}
             </p>
           ) : (
             <>
               {schemaQuery.data?.error ? (
-                <p className="m-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                <p className="m-3 rounded-md border border-warning/25 bg-warningsoft px-3 py-2 text-xs text-warning">
                   {schemaQuery.data.error}
                 </p>
               ) : null}
               <table className="w-full border-collapse text-left text-xs">
-                <thead className="bg-neutral-50 text-neutral-500">
+                <thead className="bg-subtle text-muted">
                   <tr>
                     <th className="w-8 px-2 py-2" aria-label="展开" />
                     <th className="px-2 py-2 font-medium">表名</th>
@@ -182,13 +182,13 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
                     );
                     return (
                       <Fragment key={key}>
-                        <tr className="border-t border-neutral-100">
+                        <tr className="border-t border-line">
                           <td className="px-2 py-2 align-top">
                             <button
                               type="button"
                               aria-label={`${isOpen ? "收起" : "展开"}表 ${key}`}
                               aria-expanded={isOpen}
-                              className="rounded p-0.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                              className="rounded p-0.5 text-muted hover:bg-subtle hover:text-inksoft"
                               onClick={() => toggle(key)}
                             >
                               {isOpen ? (
@@ -198,20 +198,20 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
                               )}
                             </button>
                           </td>
-                          <td className="px-2 py-2 font-mono text-neutral-800">{key}</td>
-                          <td className="px-2 py-2 text-neutral-500">{table.columns.length}</td>
-                          <td className="px-2 py-2 text-neutral-500">
+                          <td className="px-2 py-2 font-mono text-inksoft">{key}</td>
+                          <td className="px-2 py-2 text-muted">{table.columns.length}</td>
+                          <td className="px-2 py-2 text-muted">
                             {table.rowEstimate ?? "—"}
                           </td>
-                          <td className="max-w-[12rem] truncate px-2 py-2 text-neutral-400">
+                          <td className="max-w-[12rem] truncate px-2 py-2 text-muted">
                             {table.comment ?? "—"}
                           </td>
                         </tr>
                         {isOpen ? (
-                          <tr key={`${key}:columns`} className="border-t border-neutral-100 bg-neutral-50/60">
+                          <tr key={`${key}:columns`} className="border-t border-line bg-subtle/60">
                             <td colSpan={5} className="px-3 py-3">
                               <table className="w-full border-collapse text-left text-[11px]">
-                                <thead className="text-neutral-500">
+                                <thead className="text-muted">
                                   <tr>
                                     <th className="px-2 py-1 font-medium">列名</th>
                                     <th className="px-2 py-1 font-medium">类型</th>
@@ -223,21 +223,21 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
                                 </thead>
                                 <tbody>
                                   {table.columns.map((column) => (
-                                    <tr key={column.name} className="border-t border-neutral-200/70">
-                                      <td className="px-2 py-1 font-mono text-neutral-800">
+                                    <tr key={column.name} className="border-t border-line/70">
+                                      <td className="px-2 py-1 font-mono text-inksoft">
                                         {column.name}
                                       </td>
-                                      <td className="px-2 py-1 text-neutral-500">{column.type}</td>
-                                      <td className="px-2 py-1 text-neutral-500">
+                                      <td className="px-2 py-1 text-muted">{column.type}</td>
+                                      <td className="px-2 py-1 text-muted">
                                         {column.nullable ? "是" : "否"}
                                       </td>
-                                      <td className="px-2 py-1 text-neutral-500">
+                                      <td className="px-2 py-1 text-muted">
                                         {primaryKey.has(column.name) ? "是" : ""}
                                       </td>
-                                      <td className="px-2 py-1 text-neutral-500">
+                                      <td className="px-2 py-1 text-muted">
                                         {foreignKeyColumns.has(column.name) ? "是" : ""}
                                       </td>
-                                      <td className="px-2 py-1 text-neutral-400">
+                                      <td className="px-2 py-1 text-muted">
                                         {column.comment ?? "—"}
                                       </td>
                                     </tr>
@@ -253,7 +253,7 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
                 </tbody>
               </table>
               {total > tables.length ? (
-                <p className="px-3 py-2 text-[11px] text-neutral-400">
+                <p className="px-3 py-2 text-[11px] text-muted">
                   服务端仅返回前 {tables.length} 张匹配表，请使用搜索缩小范围。
                 </p>
               ) : null}
@@ -262,7 +262,7 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
         </div>
 
         {tables.length > PAGE_SIZE ? (
-          <div className="flex shrink-0 items-center justify-between border-t border-neutral-200 px-3 py-2 text-xs text-neutral-500">
+          <div className="flex shrink-0 items-center justify-between border-t border-line px-3 py-2 text-xs text-muted">
             <span>
               第 {currentPage + 1} / {pageCount} 页
             </span>
