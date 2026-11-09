@@ -61,6 +61,21 @@ function createMysqlPool(rows: Row[] | "hang") {
   };
 }
 
+/** Mimics `mysql2/promise`: query() resolves, streaming lives on `.connection`. */
+function createWrappedMysqlPool(rows: Row[]) {
+  const fake = createMysqlPool(rows);
+  const connection = {
+    query: async () => [{}, []],
+    connection: fake.connection,
+    destroy: fake.connection.destroy,
+    release: fake.connection.release,
+  };
+  return {
+    pool: { getConnection: vi.fn(async () => connection) } as unknown as MysqlPool,
+    connection,
+  };
+}
+
 describe("executeReadOnly MySQL", () => {
   it("refuses a guard-rejected statement without touching the pool", async () => {
     const fake = createMysqlPool([]);
@@ -293,6 +308,34 @@ describe("executeReadOnly MySQL", () => {
     expect(fake.pool.getConnection).not.toHaveBeenCalled();
   });
 });
+
+  it("streams through the raw connection of a mysql2/promise pool", async () => {
+    const fake = createWrappedMysqlPool([
+      [1, "a"],
+      [2, "b"],
+    ]);
+    const seen: Row[] = [];
+
+    const result = await executeReadOnly(
+      {
+        dialect: "mysql",
+        pool: fake.pool,
+        sql: "SELECT id, name FROM t",
+        maxRows: 100,
+        previewRows: 10,
+        timeoutMs: 1000,
+      },
+      async (row) => {
+        seen.push(row);
+      },
+    );
+
+    expect(result.columns.map((column) => column.name)).toEqual(["id", "name"]);
+    expect(seen).toEqual([
+      [1, "a"],
+      [2, "b"],
+    ]);
+  });
 
 describe("executeReadOnly PostgreSQL", () => {
   it("refuses a guard-rejected statement without connecting", async () => {

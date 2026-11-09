@@ -48,6 +48,12 @@ app.addHook("onClose", () => {
   handle.sqlite.close();
 });
 
+// A stray rejected promise (for example from a driver adapter) must not take the
+// whole server and every in-flight SSE stream down. Log it and keep serving.
+process.on("unhandledRejection", (reason) => {
+  app.log.error({ err: reason }, "unhandled promise rejection");
+});
+
 let closing = false;
 const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
   if (closing) return;

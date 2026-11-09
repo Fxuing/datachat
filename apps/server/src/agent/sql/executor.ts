@@ -207,7 +207,16 @@ async function streamMysql(
       `SET SESSION MAX_EXECUTION_TIME = ${Math.max(1, Math.floor(input.timeoutMs))}`,
     );
 
-    const query = (connection as MysqlConnection).query({
+    // `mysql2/promise` connections wrap the callback-style connection: their
+    // `query()` resolves to a result and has no `.on`/`.stream`. Streaming must go
+    // through the underlying connection (still the same session and pool slot).
+    const rawConnection = (
+      connection as unknown as { connection?: { query: (options: unknown) => unknown } }
+    ).connection;
+    const querySource = (rawConnection ?? connection) as unknown as {
+      query: (options: { sql: string; rowsAsArray: boolean }) => unknown;
+    };
+    const query = querySource.query({
       sql,
       rowsAsArray: true,
     }) as unknown as {
