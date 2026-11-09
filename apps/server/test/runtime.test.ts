@@ -15,6 +15,7 @@ import {
 import { listRunEventsAfter } from "../src/db/repositories/run-events.js";
 import { createRun, findRun } from "../src/db/repositories/runs.js";
 import { conversations as conversationsTable } from "../src/db/schema.js";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { PoolRegistry } from "../src/agent/datasource/pool.js";
 import type { ArtifactStore } from "../src/services/artifacts.js";
 import { testConfig } from "./helpers/config.js";
@@ -240,6 +241,26 @@ describe("ConversationRuntime", () => {
 });
 
 describe("RuntimeManager", () => {
+  it("re-resolves the model runtime for each session so provider edits apply", async () => {
+    let calls = 0;
+    const manager = new RuntimeManager({
+      db,
+      config: testConfig,
+      pools: {} as PoolRegistry,
+      artifacts: {} as ArtifactStore,
+      getModelRuntime: async () => {
+        calls += 1;
+        return {} as ModelRuntime;
+      },
+      sweepIntervalMs: 0,
+    });
+
+    await manager.getModelRuntime();
+    await manager.getModelRuntime();
+
+    expect(calls).toBe(2);
+  });
+
   it("keeps at most maxRuntimes conversations and disposes the least recently used", async () => {
     const sessions: FakeAgentSession[] = [];
     const createSession = vi.fn<ConversationSessionFactory>(async () => {

@@ -553,14 +553,18 @@ export class RuntimeManager {
     }
   }
 
-  private getModelRuntime(): Promise<ModelRuntime> {
+  /** Resolves the catalog for a new session; never cached across provider edits. */
+  getModelRuntime(): Promise<ModelRuntime> {
+    // A provider edit must take effect on the next run, so always delegate to the
+    // injected factory (ModelRuntimeManager already caches by catalog version).
+    if (this.modelRuntimeFactory) return this.modelRuntimeFactory();
     if (!this.modelRuntimePromise) {
-      const factory =
-        this.modelRuntimeFactory ?? (() => createAgentModelRuntime(this.config, this.db));
-      this.modelRuntimePromise = factory().catch((error: unknown) => {
-        this.modelRuntimePromise = undefined;
-        throw error;
-      });
+      this.modelRuntimePromise = createAgentModelRuntime(this.config, this.db).catch(
+        (error: unknown) => {
+          this.modelRuntimePromise = undefined;
+          throw error;
+        },
+      );
     }
     return this.modelRuntimePromise;
   }
