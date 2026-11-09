@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { AppShell } from "../components/AppShell";
+import { ConfirmDialog } from "../components/admin/ConfirmDialog";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { ShareDialog } from "../components/ShareDialog";
 import { PageSpinner } from "../components/ui/spinner";
@@ -19,6 +20,7 @@ import {
   getArtifactRows,
   getReport,
 } from "../lib/api";
+import { describeApiError } from "../lib/errors";
 import { queryKeys } from "../lib/query";
 import { parseReportMarkdown } from "../lib/report-markdown";
 import { cn, formatCount } from "../lib/utils";
@@ -215,6 +217,7 @@ export default function ReportPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [shareOpen, setShareOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const reportQuery = useQuery({
@@ -245,8 +248,7 @@ export default function ReportPage() {
 
   const handleDelete = () => {
     if (!report) return;
-    if (!window.confirm(`确定删除报告“${report.title}”吗？删除后不可恢复。`)) return;
-    deleteMutation.mutate();
+    setDeleteOpen(true);
   };
 
   const topbar = (
@@ -359,6 +361,22 @@ export default function ReportPage() {
         </div>
       ) : null}
       {content}
+      {deleteOpen && report ? (
+        <ConfirmDialog
+          title="删除报告"
+          description={`确定删除报告“${report.title}”吗？删除后不可恢复。`}
+          confirmLabel={deleteMutation.isPending ? "删除中…" : "删除"}
+          variant="danger"
+          pending={deleteMutation.isPending}
+          error={
+            deleteMutation.isError
+              ? describeApiError(deleteMutation.error, "删除失败，请稍后重试。")
+              : null
+          }
+          onConfirm={() => deleteMutation.mutate()}
+          onCancel={() => setDeleteOpen(false)}
+        />
+      ) : null}
       {shareOpen && report ? (
         <ShareDialog
           target={{ reportId: report.id, label: report.title }}

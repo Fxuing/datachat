@@ -10,6 +10,7 @@ import type {
 } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -402,19 +403,25 @@ export function McpEditor({
                   <label className={labelClass} htmlFor="mcp-datasource">
                     数据源
                   </label>
-                  <select
-                    id="mcp-datasource"
-                    className="h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-ink focus-visible:border-linestrong focus-visible:outline-none"
-                    value={form.datasourceId ?? ""}
-                    onChange={(event) => update("datasourceId", event.target.value || null)}
+                  <Select
+                    value={form.datasourceId ?? "__global__"}
+                    onValueChange={(value) =>
+                      update("datasourceId", value === "__global__" ? null : value)
+                    }
                   >
-                    <option value="">全局（所有数据源）</option>
-                    {datasources.map((datasource) => (
-                      <option key={datasource.id} value={datasource.id}>
-                        {datasource.name}（{datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}）
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="mcp-datasource">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__global__">全局（所有数据源）</SelectItem>
+                      {datasources.map((datasource) => (
+                        <SelectItem key={datasource.id} value={datasource.id}>
+                          {datasource.name}（
+                          {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}）
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <label className="mt-6 flex w-fit items-center gap-2 text-sm text-inksoft">

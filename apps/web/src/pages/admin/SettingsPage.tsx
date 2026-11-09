@@ -8,6 +8,15 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { PageSpinner } from "../../components/ui/spinner";
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
+import {
   fetchMe,
   getAdminSettings,
   listModels,
@@ -388,31 +397,38 @@ export default function SettingsPage() {
                         <label htmlFor="default-model" className="text-sm font-medium text-inksoft">
                           默认模型
                         </label>
-                        <select
-                          id="default-model"
-                          aria-label="默认模型"
-                          className={`${selectClass} mt-1.5`}
-                          value={draft.defaultModelId}
-                          disabled={busy}
-                          onChange={(event) =>
-                            updateDraft({ defaultModelId: event.target.value })
+                        <Select
+                          value={draft.defaultModelId || "__none__"}
+                          onValueChange={(value) =>
+                            updateDraft({ defaultModelId: value === "__none__" ? "" : value })
                           }
+                          disabled={busy}
                         >
-                          <option value="">未设置（自动使用第一个可用模型）</option>
-                          {groupModels(models).map(([providerName, providerModels]) => (
-                            <optgroup key={providerName} label={providerName}>
-                              {providerModels.map((model) => (
-                                <option key={model.id} value={model.id}>
-                                  {model.name}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ))}
-                          {draft.defaultModelId &&
-                          !models.some((model) => model.id === draft.defaultModelId) ? (
-                            <option value={draft.defaultModelId}>{draft.defaultModelId}</option>
-                          ) : null}
-                        </select>
+                          <SelectTrigger id="default-model" aria-label="默认模型" className="mt-1.5">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">
+                              未设置（自动使用第一个可用模型）
+                            </SelectItem>
+                            {groupModels(models).map(([providerName, providerModels]) => (
+                              <SelectGroup key={providerName}>
+                                <SelectLabel>{providerName}</SelectLabel>
+                                {providerModels.map((model) => (
+                                  <SelectItem key={model.id} value={model.id}>
+                                    {model.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            ))}
+                            {draft.defaultModelId &&
+                            !models.some((model) => model.id === draft.defaultModelId) ? (
+                              <SelectItem value={draft.defaultModelId}>
+                                {draft.defaultModelId}
+                              </SelectItem>
+                            ) : null}
+                          </SelectContent>
+                        </Select>
                         <p className="mt-1.5 text-xs text-muted">
                           {modelConfigured
                             ? "新会话会使用该模型；未设置时使用第一个可用模型。"

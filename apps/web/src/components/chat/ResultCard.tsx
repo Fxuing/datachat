@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { ChevronDown, Eye, Table2, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ChevronDown, Eye, Table2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { ResultTable, type ResultTableProps } from "./ResultTable";
 
 export interface ResultCardProps extends ResultTableProps {
@@ -90,39 +90,13 @@ function ResultDetailDialog({
   onClose: () => void;
   children: ReactNode;
 }) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-      role="presentation"
-      onMouseDown={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${title}详情`}
-        className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-pop"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+  return (
+    <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent className="flex max-h-[90vh] max-w-5xl flex-col gap-0 p-0">
+        <DialogHeader className="flex-row items-center gap-2 pr-10">
           <Table2 className="h-4 w-4 text-muted" aria-hidden />
-          <span className="text-sm font-medium text-ink">{title}</span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="关闭"
-            className="ml-auto rounded p-1 text-muted transition-colors hover:bg-subtle hover:text-ink"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </button>
-        </div>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
         <div className="min-h-0 flex-1 overflow-auto p-3">{children}</div>
         {sql ? (
           <details className="border-t border-line px-3 py-2 text-[11px] text-muted">
@@ -132,8 +106,7 @@ function ResultDetailDialog({
             </pre>
           </details>
         ) : null}
-      </div>
-    </div>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   );
 }

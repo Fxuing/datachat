@@ -4,6 +4,7 @@ import { Bot, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { PageSpinner } from "../ui/spinner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import {
   createLlmProvider,
   deleteLlmProvider,
@@ -396,17 +397,20 @@ function ProviderEditor({
 
           <div>
             <label htmlFor="llm-protocol" className="text-sm font-medium text-inksoft">协议</label>
-            <select
-              id="llm-protocol"
-              className={`${selectClass} mt-1.5`}
+            <Select
               value={draft.protocol}
-              onChange={(event) =>
-                setDraft({ ...draft, protocol: event.target.value as LlmProtocol })
-              }
+              onValueChange={(value) => setDraft({ ...draft, protocol: value as LlmProtocol })}
             >
-              <option value="openai-completions">OpenAI 兼容（/v1/chat/completions）</option>
-              <option value="anthropic-messages">Anthropic（/v1/messages）</option>
-            </select>
+              <SelectTrigger id="llm-protocol" className="mt-1.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="openai-completions">
+                  OpenAI 兼容（/v1/chat/completions）
+                </SelectItem>
+                <SelectItem value="anthropic-messages">Anthropic（/v1/messages）</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div>

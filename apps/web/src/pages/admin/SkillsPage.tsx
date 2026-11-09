@@ -7,6 +7,7 @@ import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { SkillEditor } from "../../components/admin/SkillEditor";
 import { Button } from "../../components/ui/button";
 import { PageSpinner } from "../../components/ui/spinner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import {
   ApiError,
   createSkill,
@@ -196,26 +197,32 @@ export default function SkillsPage() {
           ) : null}
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <select
-              aria-label="按范围筛选"
-              className={selectClass}
+            <Select
               value={scopeFilter}
-              onChange={(event) => setScopeFilter(event.target.value as ScopeFilter)}
+              onValueChange={(value) => setScopeFilter(value as ScopeFilter)}
             >
-              <option value="all">全部范围</option>
-              <option value="global">全局</option>
-              <option value="datasource">数据源</option>
-            </select>
-            <select
-              aria-label="按状态筛选"
-              className={selectClass}
+              <SelectTrigger aria-label="按范围筛选" className="h-8 w-[8.5rem] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部范围</SelectItem>
+                <SelectItem value="global">全局</SelectItem>
+                <SelectItem value="datasource">数据源</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
               value={enabledFilter}
-              onChange={(event) => setEnabledFilter(event.target.value as EnabledFilter)}
+              onValueChange={(value) => setEnabledFilter(value as EnabledFilter)}
             >
-              <option value="all">全部状态</option>
-              <option value="enabled">已启用</option>
-              <option value="disabled">已停用</option>
-            </select>
+              <SelectTrigger aria-label="按状态筛选" className="h-8 w-[8.5rem] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部状态</SelectItem>
+                <SelectItem value="enabled">已启用</SelectItem>
+                <SelectItem value="disabled">已停用</SelectItem>
+              </SelectContent>
+            </Select>
             <span className="text-xs text-muted">共 {filtered.length} 个技能</span>
           </div>
 

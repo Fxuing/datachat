@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import DatasourcesPage from "./DatasourcesPage";
+import { pickSelectOption } from "../../test/select";
 import type { DatasourceSchemaResponse, DatasourceSummary, SessionUser } from "../../lib/api";
 
 const admin: SessionUser = {
@@ -216,14 +217,14 @@ describe("DatasourcesPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "新建数据源" });
 
     expect(within(dialog).getByLabelText("端口")).toHaveValue(3306);
-    await browser.selectOptions(within(dialog).getByLabelText("类型"), "postgres");
+    await pickSelectOption(browser, within(dialog).getByLabelText("类型"), "PostgreSQL");
     expect(within(dialog).getByLabelText("端口")).toHaveValue(5432);
 
     await browser.clear(within(dialog).getByLabelText("端口"));
     await browser.type(within(dialog).getByLabelText("端口"), "6600");
-    await browser.selectOptions(within(dialog).getByLabelText("类型"), "mysql");
+    await pickSelectOption(browser, within(dialog).getByLabelText("类型"), "MySQL");
     expect(within(dialog).getByLabelText("端口")).toHaveValue(6600);
-    await browser.selectOptions(within(dialog).getByLabelText("类型"), "postgres");
+    await pickSelectOption(browser, within(dialog).getByLabelText("类型"), "PostgreSQL");
     expect(within(dialog).getByLabelText("端口")).toHaveValue(6600);
 
     await browser.type(within(dialog).getByLabelText("名称"), "events");

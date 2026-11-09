@@ -1,5 +1,12 @@
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 export interface ConfirmDialogProps {
   title: string;
@@ -25,32 +32,12 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending) onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel, pending]);
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="presentation"
-      onMouseDown={() => {
-        if (!pending) onCancel();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="w-full max-w-sm rounded-lg border border-line bg-surface shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">
-          {title}
-        </div>
+    <Dialog open onOpenChange={(open) => (!open && !pending ? onCancel() : undefined)}>
+      <DialogContent className="max-w-sm gap-0 p-0" hideClose>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3 p-4">
           {description ? <div className="text-sm text-muted">{description}</div> : null}
           {error ? (
@@ -58,16 +45,21 @@ export function ConfirmDialog({
               {error}
             </p>
           ) : null}
-          <div className="flex justify-end gap-2">
+          <DialogFooter className="border-0 p-0">
             <Button variant="outline" size="sm" disabled={pending} onClick={onCancel}>
               {cancelLabel}
             </Button>
-            <Button variant={variant === "danger" ? "danger" : "primary"} size="sm" disabled={pending} onClick={onConfirm}>
+            <Button
+              variant={variant === "danger" ? "danger" : "primary"}
+              size="sm"
+              disabled={pending}
+              onClick={onConfirm}
+            >
               {confirmLabel}
             </Button>
-          </div>
+          </DialogFooter>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

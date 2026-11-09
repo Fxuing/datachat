@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from "react";
 import { SendHorizontal, Square } from "lucide-react";
 import { Button } from "../ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 
 const MAX_LENGTH = 8_000;
@@ -83,20 +84,26 @@ export function Composer({
             onKeyDown={onKeyDown}
             className="min-h-[52px] resize-none border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:border-0 focus-visible:ring-0"
           />
-          <select
-            aria-label="思考等级"
-            title="模型思考等级（对下一次提问生效）"
+          <Select
             value={thinkingLevel}
+            onValueChange={onThinkingChange}
             disabled={!conversationReady}
-            onChange={(event) => onThinkingChange(event.target.value)}
-            className="h-8 max-w-[7.5rem] shrink-0 rounded-lg border border-line bg-surface px-1.5 text-[11px] text-inksoft transition-colors hover:border-linestrong focus:border-brand/50 focus:outline-none focus:ring-2 focus:ring-brand/10 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {THINKING_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              aria-label="思考等级"
+              title="模型思考等级（对下一次提问生效）"
+              className="h-8 w-[7.5rem] shrink-0 gap-1 px-2 text-[11px] text-inksoft"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end" className="w-[8.5rem]">
+              {THINKING_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value} className="text-xs">
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {active && canStop ? (
             <Button variant="outline" className="gap-2" onClick={onStop}>
               <Square className="h-3.5 w-3.5 fill-current" />

@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Check, Copy, Link2, X } from "lucide-react";
+import { Check, Copy, Link2 } from "lucide-react";
 import { createShare, revokeShare, type CreatedShare } from "../lib/api";
 import { describeApiError } from "../lib/errors";
 import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 export interface ShareTarget {
   conversationId?: string;
@@ -51,14 +53,6 @@ export function ShareDialog({ target, onClose }: ShareDialogProps) {
     mutationFn: (id: string) => revokeShare(id),
   });
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !createMutation.isPending) onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, createMutation.isPending]);
-
   const shareUrl = created ? absoluteUrl(created.url) : null;
   const revoked = revokeMutation.isSuccess;
   const createError = createMutation.isError
@@ -79,48 +73,37 @@ export function ShareDialog({ target, onClose }: ShareDialogProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="presentation"
-      onMouseDown={() => {
-        if (!createMutation.isPending) onClose();
-      }}
-    >
-      <div
-        className="w-full max-w-md rounded-xl border border-line bg-surface p-5 shadow-xl"
-        role="dialog"
-        aria-modal="true"
-        aria-label="分享"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3">
+    <Dialog open onOpenChange={(open) => (!open && !createMutation.isPending ? onClose() : undefined)}>
+      <DialogContent className="max-w-md p-5">
+        <div className="flex items-start gap-3 pr-8">
           <div>
-            <h2 className="text-sm font-semibold text-ink">分享</h2>
-            <p className="mt-1 text-xs text-muted">
+            <DialogTitle>分享</DialogTitle>
+            <DialogDescription className="mt-1">
               {target.label ? `分享“${target.label}”` : "生成只读的公开链接"}
-            </p>
+            </DialogDescription>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="关闭">
-            <X className="h-4 w-4" />
-          </Button>
         </div>
 
         {created === null ? (
           <div className="mt-4 space-y-4">
             <label className="block text-xs font-medium text-inksoft">
               有效期
-              <select
-                className="mt-1.5 h-9 w-full rounded-md border border-linestrong bg-surface px-2 text-sm text-ink"
-                value={expiresInDays}
-                onChange={(event) => setExpiresInDays(Number(event.target.value))}
+              <Select
+                value={String(expiresInDays)}
+                onValueChange={(value) => setExpiresInDays(Number(value))}
                 disabled={createMutation.isPending}
               >
-                {EXPIRY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="mt-1.5 h-9 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {EXPIRY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             {createError ? (
               <p role="alert" className="text-xs text-danger">
@@ -180,7 +163,7 @@ export function ShareDialog({ target, onClose }: ShareDialogProps) {
             ) : null}
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import McpPage from "./McpPage";
 import type { AdminMcpServer, DatasourceSummary, SessionUser } from "../../lib/api";
+import { pickSelectOption } from "../../test/select";
 
 const admin: SessionUser = {
   id: "u-admin",
@@ -170,7 +171,11 @@ describe("McpPage", () => {
     await browser.type(within(dialog).getByLabelText("参数（每行一个）"), "server.mjs{enter}--verbose");
     await browser.type(within(dialog).getByLabelText("环境变量键 1"), "API_TOKEN");
     await browser.type(within(dialog).getByLabelText("环境变量值 1"), "s3cret");
-    await browser.selectOptions(within(dialog).getByLabelText("数据源"), datasource.id);
+    await pickSelectOption(
+      browser,
+      within(dialog).getByLabelText("数据源"),
+      "demo（MySQL）",
+    );
     await browser.click(within(dialog).getByLabelText("启用"));
 
     await browser.click(within(dialog).getByRole("button", { name: "保存" }));

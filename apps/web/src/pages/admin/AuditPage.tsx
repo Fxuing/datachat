@@ -11,6 +11,7 @@ import {
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { PageSpinner } from "../../components/ui/spinner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import {
   fetchMe,
   listAdminUsers,
@@ -170,70 +171,84 @@ export default function AuditPage() {
           </header>
 
           <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-            <label className="flex flex-col gap-1 text-[11px] text-muted">
+            <div className="flex flex-col gap-1 text-[11px] text-muted">
               用户
-              <select
-                aria-label="用户"
-                className={SELECT_CLASS}
-                value={filters.userId}
-                onChange={(event) => updateFilter("userId", event.target.value)}
+              <Select
+                value={filters.userId || "all"}
+                onValueChange={(value) => updateFilter("userId", value === "all" ? "" : value)}
               >
-                <option value="">全部用户</option>
-                {users.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.displayName ?? item.username}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-[11px] text-muted">
+                <SelectTrigger aria-label="用户" className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部用户</SelectItem>
+                  {users.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.displayName ?? item.username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1 text-[11px] text-muted">
               数据源
-              <select
-                aria-label="数据源"
-                className={SELECT_CLASS}
-                value={filters.datasourceId}
-                onChange={(event) => updateFilter("datasourceId", event.target.value)}
+              <Select
+                value={filters.datasourceId || "all"}
+                onValueChange={(value) =>
+                  updateFilter("datasourceId", value === "all" ? "" : value)
+                }
               >
-                <option value="">全部数据源</option>
-                {datasources.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-[11px] text-muted">
+                <SelectTrigger aria-label="数据源" className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部数据源</SelectItem>
+                  {datasources.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1 text-[11px] text-muted">
               动作
-              <select
-                aria-label="动作"
-                className={SELECT_CLASS}
-                value={filters.action}
-                onChange={(event) => updateFilter("action", event.target.value)}
+              <Select
+                value={filters.action || "all"}
+                onValueChange={(value) => updateFilter("action", value === "all" ? "" : value)}
               >
-                <option value="">全部动作</option>
-                {ACTION_VALUES.map((value) => (
-                  <option key={value} value={value}>
-                    {AUDIT_ACTION_LABELS[value]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-[11px] text-muted">
+                <SelectTrigger aria-label="动作" className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部动作</SelectItem>
+                  {ACTION_VALUES.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {AUDIT_ACTION_LABELS[value]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1 text-[11px] text-muted">
               状态
-              <select
-                aria-label="状态"
-                className={SELECT_CLASS}
-                value={filters.status}
-                onChange={(event) => updateFilter("status", event.target.value)}
+              <Select
+                value={filters.status || "all"}
+                onValueChange={(value) => updateFilter("status", value === "all" ? "" : value)}
               >
-                <option value="">全部状态</option>
-                {STATUS_VALUES.map((value) => (
-                  <option key={value} value={value}>
-                    {AUDIT_STATUS_LABELS[value]}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <SelectTrigger aria-label="状态" className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部状态</SelectItem>
+                  {STATUS_VALUES.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {AUDIT_STATUS_LABELS[value]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <label className="flex flex-col gap-1 text-[11px] text-muted">
               开始日期
               <Input

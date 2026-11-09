@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AuditPage from "./AuditPage";
 import type { AuditEntry, DatasourceSummary, SessionUser } from "../../lib/api";
+import { pickSelectOption } from "../../test/select";
 
 const admin: SessionUser = {
   id: "u-admin",
@@ -140,8 +141,8 @@ describe("AuditPage", () => {
 
     const table = await screen.findByRole("table");
     await within(table).findByText("爱丽丝");
-    await user.selectOptions(screen.getByLabelText("动作"), "query");
-    await user.selectOptions(screen.getByLabelText("状态"), "error");
+    await pickSelectOption(user, screen.getByLabelText("动作"), "查询");
+    await pickSelectOption(user, screen.getByLabelText("状态"), "失败");
 
     await waitFor(() => {
       expect(auditUrls.at(-1)).toBe(

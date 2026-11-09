@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import SettingsPage from "./SettingsPage";
 import type { AdminSettings, SessionUser } from "../../lib/api";
+import { pickSelectOption } from "../../test/select";
 
 const admin: SessionUser = {
   id: "u-admin",
@@ -97,13 +98,15 @@ describe("SettingsPage", () => {
     stubApi();
     renderPage();
 
-    const modelSelect = (await screen.findByRole("combobox", {
-      name: "默认模型",
-    })) as HTMLSelectElement;
-    expect(modelSelect.value).toBe("siliconflow::zai-org/GLM-5.3");
-    expect(screen.getByRole("option", { name: /Qwen3.8 27B/ })).toBeDefined();
+    const user = userEvent.setup();
+    const modelSelect = await screen.findByRole("combobox", { name: "默认模型" });
+    expect(modelSelect).toHaveTextContent("GLM 5.3");
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "查询限制" }));
+    await user.click(modelSelect);
+    expect(await screen.findByRole("option", { name: /Qwen3.8 27B/ })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "查询限制" }));
     expect(
       (screen.getByRole("spinbutton", { name: "查询最大行数" }) as HTMLInputElement).value,
     ).toBe("1000");
@@ -135,9 +138,10 @@ describe("SettingsPage", () => {
     await user.type(shareDays, "14");
 
     await user.click(screen.getByRole("button", { name: "通用" }));
-    await user.selectOptions(
+    await pickSelectOption(
+      user,
       screen.getByRole("combobox", { name: "默认模型" }),
-      "siliconflow::Qwen/Qwen3.8-27B",
+      "Qwen3.8 27B",
     );
     await user.click(screen.getByRole("button", { name: "保存设置" }));
 

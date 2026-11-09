@@ -4,6 +4,7 @@ import type { DatasourceInput } from "@datachat/shared";
 import type { DatasourceSummary } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
 export interface DatasourceEditorProps {
   /** null creates a new datasource; password is only sent when non-empty. */
@@ -183,16 +184,19 @@ export function DatasourceEditor({
                 <label className={labelClass} htmlFor="datasource-type">
                   类型
                 </label>
-                <select
-                  id="datasource-type"
-                  className={selectClass}
+                <Select
                   value={form.type}
+                  onValueChange={(value) => changeType(value as DatasourceType)}
                   disabled={editing}
-                  onChange={(event) => changeType(event.target.value as DatasourceType)}
                 >
-                  <option value="mysql">MySQL</option>
-                  <option value="postgres">PostgreSQL</option>
-                </select>
+                  <SelectTrigger id="datasource-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mysql">MySQL</SelectItem>
+                    <SelectItem value="postgres">PostgreSQL</SelectItem>
+                  </SelectContent>
+                </Select>
                 {editing ? (
                   <p className="text-[11px] text-muted">数据源类型创建后不可修改。</p>
                 ) : null}
@@ -202,16 +206,19 @@ export function DatasourceEditor({
                 <label className={labelClass} htmlFor="datasource-ssl">
                   SSL 模式
                 </label>
-                <select
-                  id="datasource-ssl"
-                  className={selectClass}
+                <Select
                   value={form.sslMode}
-                  onChange={(event) => update("sslMode", event.target.value as SslMode)}
+                  onValueChange={(value) => update("sslMode", value as SslMode)}
                 >
-                  <option value="disable">disable</option>
-                  <option value="require">require</option>
-                  <option value="no-verify">no-verify</option>
-                </select>
+                  <SelectTrigger id="datasource-ssl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="disable">disable</SelectItem>
+                    <SelectItem value="require">require</SelectItem>
+                    <SelectItem value="no-verify">no-verify</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

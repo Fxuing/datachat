@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import type { AdminSkillDetail, DatasourceSummary, SkillInput, SkillScope } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -183,35 +184,46 @@ export function SkillEditor({
                   <label className={labelClass} htmlFor="skill-scope">
                     范围
                   </label>
-                  <select
-                    id="skill-scope"
-                    className="h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-ink focus-visible:border-linestrong focus-visible:outline-none"
+                  <Select
                     value={form.scope}
-                    onChange={(event) => changeScope(event.target.value as SkillScope)}
+                    onValueChange={(value) => changeScope(value as SkillScope)}
                   >
-                    <option value="global">全局</option>
-                    <option value="datasource">数据源</option>
-                  </select>
+                    <SelectTrigger id="skill-scope">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="global">全局</SelectItem>
+                      <SelectItem value="datasource">数据源</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1.5">
                   <label className={labelClass} htmlFor="skill-datasource">
                     数据源
                   </label>
-                  <select
-                    id="skill-datasource"
-                    className="h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-ink disabled:bg-subtle disabled:text-muted focus-visible:border-linestrong focus-visible:outline-none"
-                    value={form.datasourceId ?? ""}
+                  <Select
+                    value={form.datasourceId ?? "__none__"}
                     disabled={form.scope !== "datasource"}
-                    onChange={(event) => update("datasourceId", event.target.value || null)}
+                    onValueChange={(value) => update("datasourceId", value === "__none__" ? null : value)}
                   >
-                    <option value="">{form.scope === "datasource" ? "请选择数据源" : "全局技能"}</option>
-                    {datasources.map((datasource) => (
-                      <option key={datasource.id} value={datasource.id}>
-                        {datasource.name}（{datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}）
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="skill-datasource">
+                      <SelectValue
+                        placeholder={form.scope === "datasource" ? "请选择数据源" : "全局技能"}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">
+                        {form.scope === "datasource" ? "请选择数据源" : "全局技能"}
+                      </SelectItem>
+                      {datasources.map((datasource) => (
+                        <SelectItem key={datasource.id} value={datasource.id}>
+                          {datasource.name}（
+                          {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}）
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

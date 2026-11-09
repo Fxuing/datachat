@@ -10,6 +10,7 @@ import type {
   DatasourceSummary,
   SessionUser,
 } from "../../lib/api";
+import { pickSelectOption } from "../../test/select";
 
 const admin: SessionUser = {
   id: "u-admin",
@@ -131,12 +132,12 @@ describe("SkillsPage", () => {
     expect(screen.getByText("启用")).toBeInTheDocument();
     expect(screen.getByText("停用")).toBeInTheDocument();
 
-    await browser.selectOptions(screen.getByLabelText("按范围筛选"), "datasource");
+    await pickSelectOption(browser, screen.getByLabelText("按范围筛选"), "数据源");
     expect(screen.getByText("mysql-notes")).toBeInTheDocument();
     expect(screen.queryByText("sales-rules")).not.toBeInTheDocument();
     expect(screen.getByText("共 1 个技能")).toBeInTheDocument();
 
-    await browser.selectOptions(screen.getByLabelText("按范围筛选"), "global");
+    await pickSelectOption(browser, screen.getByLabelText("按范围筛选"), "全局");
     expect(screen.getByText("sales-rules")).toBeInTheDocument();
     expect(screen.queryByText("mysql-notes")).not.toBeInTheDocument();
   });
@@ -189,12 +190,16 @@ describe("SkillsPage", () => {
     await browser.type(within(dialog).getByLabelText("名称"), "team-rules");
     await browser.type(within(dialog).getByLabelText("描述"), "团队口径");
     await browser.type(within(dialog).getByLabelText("内容（SKILL.md）"), "按周统计");
-    await browser.selectOptions(within(dialog).getByLabelText("范围"), "datasource");
-    await browser.selectOptions(within(dialog).getByLabelText("数据源"), datasource.id);
-    expect(within(dialog).getByLabelText("数据源")).toHaveValue(datasource.id);
+    await pickSelectOption(browser, within(dialog).getByLabelText("范围"), "数据源");
+    await pickSelectOption(
+      browser,
+      within(dialog).getByLabelText("数据源"),
+      "demo（MySQL）",
+    );
+    expect(within(dialog).getByLabelText("数据源")).toHaveTextContent("demo");
 
-    await browser.selectOptions(within(dialog).getByLabelText("范围"), "global");
-    expect(within(dialog).getByLabelText("数据源")).toHaveValue("");
+    await pickSelectOption(browser, within(dialog).getByLabelText("范围"), "全局");
+    expect(within(dialog).getByLabelText("数据源")).toHaveTextContent("全局技能");
 
     await browser.click(within(dialog).getByRole("button", { name: "保存" }));
     await waitFor(() => {

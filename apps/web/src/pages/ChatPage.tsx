@@ -9,6 +9,15 @@ import { MessageList } from "../components/chat/MessageList";
 import { ShareDialog } from "../components/ShareDialog";
 import { PageSpinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { useRunStream } from "../hooks/useRunStream";
 import {
   ApiError,
@@ -50,29 +59,35 @@ function ModelSelector({
   disabled: boolean;
   onChange: (modelId: string) => void;
 }) {
+  const selected =
+    models.find((model) => model.id === currentId) ??
+    models.find((model) => model.modelId === currentId);
+
   return (
-    <select
-      aria-label="选择模型"
-      className="h-8 max-w-[12rem] rounded-lg border border-line bg-surface px-2 text-xs text-inksoft shadow-sm transition-colors hover:border-linestrong focus:border-brand/50 focus:outline-none focus:ring-2 focus:ring-brand/10 disabled:cursor-not-allowed disabled:opacity-60"
-      value={currentId}
+    <Select
+      value={selected?.id}
+      onValueChange={onChange}
       disabled={disabled || models.length === 0}
-      onChange={(event) => onChange(event.target.value)}
     >
-      {currentId ? null : (
-        <option value="" disabled>
-          默认模型
-        </option>
-      )}
-      {groupModelsByProvider(models).map(([providerName, providerModels]) => (
-        <optgroup key={providerName} label={providerName}>
-          {providerModels.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.name}
-            </option>
-          ))}
-        </optgroup>
-      ))}
-    </select>
+      <SelectTrigger
+        aria-label="选择模型"
+        className="h-8 w-auto max-w-[12rem] shrink-0 gap-1 px-2 text-xs text-inksoft"
+      >
+        <SelectValue placeholder="默认模型" />
+      </SelectTrigger>
+      <SelectContent align="start" className="w-[13rem]">
+        {groupModelsByProvider(models).map(([providerName, providerModels]) => (
+          <SelectGroup key={providerName}>
+            <SelectLabel>{providerName}</SelectLabel>
+            {providerModels.map((model) => (
+              <SelectItem key={model.id} value={model.id} className="text-xs">
+                {model.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

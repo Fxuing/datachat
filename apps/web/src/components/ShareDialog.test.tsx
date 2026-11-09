@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ShareDialog } from "./ShareDialog";
+import { pickSelectOption } from "../test/select";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -80,7 +81,7 @@ describe("ShareDialog", () => {
     const browser = userEvent.setup();
     renderDialog();
 
-    await browser.selectOptions(screen.getByLabelText("有效期"), "30");
+    await pickSelectOption(browser, screen.getByLabelText("有效期"), "30 天");
     await browser.click(screen.getByRole("button", { name: "创建分享链接" }));
 
     await screen.findByDisplayValue(`${window.location.origin}/s/tok-abc`);

@@ -14,6 +14,7 @@ import {
 import { queryKeys } from "../../lib/query";
 import { cn, formatClock } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Input } from "../ui/input";
 
 export interface ConversationSidebarProps {
@@ -313,20 +314,24 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
                   还没有可用的数据源，请联系管理员授权。
                 </p>
               ) : (
-                <select
-                  id="new-chat-datasource"
-                  value={datasourceId}
-                  onChange={(event) => setDatasourceId(event.target.value)}
-                  className="h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-inksoft focus:border-linestrong focus:outline-none"
+                <Select
+                  value={datasourceId || "__none__"}
+                  onValueChange={(value) => setDatasourceId(value === "__none__" ? "" : value)}
                 >
-                  <option value="">请选择数据源</option>
-                  {datasources.map((datasource) => (
-                    <option key={datasource.id} value={datasource.id}>
-                      {datasource.name}（{datasource.type === "mysql" ? "MySQL" : "PostgreSQL"} ·{" "}
-                      {datasource.database}）
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="new-chat-datasource">
+                    <SelectValue placeholder="请选择数据源" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">请选择数据源</SelectItem>
+                    {datasources.map((datasource) => (
+                      <SelectItem key={datasource.id} value={datasource.id}>
+                        {datasource.name}（
+                        {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"} ·{" "}
+                        {datasource.database}）
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
             {createMutation.error ? (
