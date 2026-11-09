@@ -9,6 +9,7 @@ import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard"
 import { ResultTable } from "./ResultTable";
 import { SqlCard } from "./SqlCard";
 import { ToolCard } from "./ToolCard";
+import { ProcessBlock } from "./ProcessBlock";
 
 export function MarkdownText({ content }: { content: string }) {
   return (
@@ -120,20 +121,28 @@ export function MessageItem({
           </span>
           DataChat
         </div>
-        {message.tools.length > 0 ? (
-          <div className="flex flex-col gap-1.5">
-            {message.tools.map((tool) => (
-              <ToolCard key={tool.toolCallId} tool={tool} />
-            ))}
-          </div>
-        ) : null}
-        {message.sqls.length > 0 ? (
-          <div className="flex flex-col gap-1.5">
-            {message.sqls.map((sql) => (
-              <SqlCard key={sql.auditId} sql={sql} />
-            ))}
-          </div>
-        ) : null}
+        <ProcessBlock
+          toolCount={message.tools.length}
+          sqlCount={message.sqls.length}
+          tools={
+            message.tools.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {message.tools.map((tool) => (
+                  <ToolCard key={tool.toolCallId} tool={tool} />
+                ))}
+              </div>
+            ) : null
+          }
+          sqls={
+            message.sqls.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {message.sqls.map((sql) => (
+                  <SqlCard key={sql.auditId} sql={sql} />
+                ))}
+              </div>
+            ) : null
+          }
+        />
         {message.results.length > 0 ? (
           <div className="flex flex-col gap-1.5">
             {message.results.map((result) => (

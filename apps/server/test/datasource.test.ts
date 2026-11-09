@@ -207,6 +207,72 @@ describe("datasource routes", () => {
     await a.close();
   });
 
+  it("keeps a write-capable account when the admin opts in", async () => {
+    const a = await app();
+    const writeProbe = {
+      ok: true,
+      serverVersion: "8.0.36",
+      readOnly: false,
+      warnings: ["当前账号具有写权限，建议改用只读账号"],
+    };
+    probeMock.probeDatasource.mockResolvedValueOnce(writeProbe);
+
+    const created = await a.inject({
+      method: "POST",
+      url: "/api/datasources",
+      cookies: { dc_session: adminCookie },
+      payload: {
+        ...connectionPayload,
+        name: "root-db",
+        username: "root",
+        allowWriteAccount: true,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      readOnly: false,
+      allowWriteAccount: true,
+      warnings: [],
+    });
+    const id = created.json().id as string;
+
+    const listed = await a.inject({
+      method: "GET",
+      url: "/api/datasources",
+      cookies: { dc_session: adminCookie },
+    });
+    expect(listed.json().datasources[0]).toMatchObject({
+      allowWriteAccount: true,
+      readOnlyVerified: false,
+    });
+
+    const tested = await a.inject({
+      method: "POST",
+      url: `/api/datasources/${id}/test`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(tested.json().warnings).toEqual([]);
+
+    // Turning the opt-in off restores the strict advice.
+    const patched = await a.inject({
+      method: "PATCH",
+      url: `/api/datasources/${id}`,
+      cookies: { dc_session: adminCookie },
+      payload: { allowWriteAccount: false },
+    });
+    expect(patched.statusCode).toBe(200);
+
+    probeMock.probeDatasource.mockResolvedValueOnce(writeProbe);
+    const strict = await a.inject({
+      method: "POST",
+      url: `/api/datasources/${id}/test`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(strict.json().warnings).toHaveLength(1);
+
+    await a.close();
+  });
+
   it("deletes datasource-scoped MCP servers and skills with the datasource", async () => {
     const a = await app();
     const created = await a.inject({
@@ -460,6 +526,7 @@ describe("datasource routes", () => {
       passwordCipher: encryptSecret("secret", deriveSecretKey(config.appSecret)),
       sslMode: "disable",
       readOnlyVerified: 0,
+      allowWriteAccount: 0,
       status: "unknown",
       lastCheckedAt: null,
       createdBy: adminId,

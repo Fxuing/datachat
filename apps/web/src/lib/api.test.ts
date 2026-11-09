@@ -134,6 +134,7 @@ describe("datasource helpers", () => {
       username: "writer",
       password: "s3cret",
       sslMode: "disable",
+      allowWriteAccount: false,
     });
     await updateDatasource("ds-1", { name: "events-renamed" });
     await replaceDatasourceGrants("ds-1", ["u-1", "u-2"]);

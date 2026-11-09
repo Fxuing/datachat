@@ -235,13 +235,14 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(5);
-    expect(migrateDb(handle.db)).toBe(5);
+    expect(migrateDb(handle.db)).toBe(6);
+    expect(migrateDb(handle.db)).toBe(6);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");
     assertIntegrityIndexes(handle.sqlite);
     expect(columnNames(handle.sqlite, "datasources")).toContain("options_json");
+    expect(columnNames(handle.sqlite, "datasources")).toContain("allow_write_account");
     expect(() =>
       insertRawUser(handle.sqlite, { id: "bad", username: "bad", role: "superadmin" }),
     ).toThrow(/CHECK constraint failed/);

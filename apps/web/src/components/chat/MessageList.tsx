@@ -9,6 +9,7 @@ import { ResultTable } from "./ResultTable";
 import { RunStatus } from "./RunStatus";
 import { SqlCard } from "./SqlCard";
 import { ToolCard } from "./ToolCard";
+import { ProcessBlock } from "./ProcessBlock";
 
 export interface MessageListProps {
   messages: ChatMessage[];
@@ -30,19 +31,6 @@ function AssistantHeader() {
       </span>
       DataChat
     </div>
-  );
-}
-
-function ThinkingBlock({ text }: { text: string }) {
-  return (
-    <details className="rounded-lg border border-line bg-surface">
-      <summary className="cursor-pointer select-none px-3 py-2 text-xs text-muted hover:text-inksoft">
-        思考过程
-      </summary>
-      <div className="max-h-64 overflow-auto whitespace-pre-wrap border-t border-line px-3 py-2 text-xs leading-relaxed text-muted">
-        {text}
-      </div>
-    </details>
   );
 }
 
@@ -143,21 +131,31 @@ export function MessageList({
             ) : null}
             <div className="flex flex-col gap-2">
               <AssistantHeader />
-              {stream.thinking ? <ThinkingBlock text={stream.thinking} /> : null}
-              {stream.tools.length > 0 ? (
-                <div className="flex flex-col gap-1.5">
-                  {stream.tools.map((tool) => (
-                    <ToolCard key={tool.toolCallId} tool={tool} />
-                  ))}
-                </div>
-              ) : null}
-              {stream.sqls.length > 0 ? (
-                <div className="flex flex-col gap-1.5">
-                  {stream.sqls.map((sql) => (
-                    <SqlCard key={sql.auditId} sql={sql} />
-                  ))}
-                </div>
-              ) : null}
+              <ProcessBlock
+                thinking={stream.thinking}
+                toolCount={stream.tools.length}
+                sqlCount={stream.sqls.length}
+                running={stream.status === "running"}
+                defaultOpen={stream.status === "running"}
+                tools={
+                  stream.tools.length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {stream.tools.map((tool) => (
+                        <ToolCard key={tool.toolCallId} tool={tool} />
+                      ))}
+                    </div>
+                  ) : null
+                }
+                sqls={
+                  stream.sqls.length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {stream.sqls.map((sql) => (
+                        <SqlCard key={sql.auditId} sql={sql} />
+                      ))}
+                    </div>
+                  ) : null
+                }
+              />
               {stream.results.length > 0 ? (
                 <div className="flex flex-col gap-1.5">
                   {stream.results.map((result) => (

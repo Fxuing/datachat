@@ -107,6 +107,7 @@ export interface DatasourceSummary {
   sslMode: DatasourceRow["sslMode"];
   status: string;
   readOnlyVerified: boolean;
+  allowWriteAccount: boolean;
   lastCheckedAt: number | null;
 }
 
@@ -122,6 +123,7 @@ export function toDatasourceSummary(row: DatasourceRow): DatasourceSummary {
     sslMode: row.sslMode,
     status: row.status,
     readOnlyVerified: Boolean(row.readOnlyVerified),
+    allowWriteAccount: Boolean(row.allowWriteAccount),
     lastCheckedAt: row.lastCheckedAt,
   };
 }

@@ -25,6 +25,7 @@ const healthy: DatasourceSummary = {
   sslMode: "disable",
   status: "ok",
   readOnlyVerified: true,
+  allowWriteAccount: false,
   lastCheckedAt: 1_760_000_000_000,
 };
 
@@ -36,6 +37,7 @@ const broken: DatasourceSummary = {
   port: 5432,
   status: "error",
   readOnlyVerified: false,
+  allowWriteAccount: false,
   lastCheckedAt: null,
 };
 
@@ -241,6 +243,7 @@ describe("DatasourcesPage", () => {
         username: "writer",
         password: "s3cret",
         sslMode: "disable",
+        allowWriteAccount: false,
       });
     });
   });

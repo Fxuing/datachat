@@ -26,6 +26,7 @@ interface FormState {
   username: string;
   password: string;
   sslMode: SslMode;
+  allowWriteAccount: boolean;
 }
 
 const DEFAULT_PORTS: Record<DatasourceType, number> = {
@@ -43,6 +44,7 @@ function initialForm(datasource: DatasourceSummary | null): FormState {
     username: datasource?.username ?? "",
     password: "",
     sslMode: datasource?.sslMode ?? "disable",
+    allowWriteAccount: datasource?.allowWriteAccount ?? false,
   };
 }
 
@@ -116,6 +118,7 @@ export function DatasourceEditor({
       database,
       username,
       sslMode: form.sslMode,
+      allowWriteAccount: form.allowWriteAccount,
       // Editing with a blank password keeps the stored secret.
       ...(form.password ? { password: form.password } : {}),
     });
@@ -290,6 +293,21 @@ export function DatasourceEditor({
                 修改主机或端口时必须重新输入密码。
               </p>
             ) : null}
+
+            <label className="flex items-start gap-2.5 rounded-md border border-line bg-subtle/50 px-3 py-2.5">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-[rgb(var(--brand))]"
+                checked={form.allowWriteAccount}
+                onChange={(event) => update("allowWriteAccount", event.target.checked)}
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-medium text-ink">允许使用有写权限的账号</span>
+                <span className="mt-0.5 block text-[11px] leading-relaxed text-muted">
+                  例如 root。查询仍被 SQL 守卫和连接层强制只读，只是不再提示改用只读账号。
+                </span>
+              </span>
+            </label>
 
             {form.sslMode === "no-verify" ? (
               <p className="rounded-md border border-warning/25 bg-warningsoft px-3 py-2 text-xs text-warning">

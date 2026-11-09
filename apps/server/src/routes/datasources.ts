@@ -121,6 +121,7 @@ export async function datasourceRoutes(
         passwordCipher: encryptSecret(parsed.data.password, key),
         sslMode: parsed.data.sslMode,
         readOnlyVerified: probe.readOnly ? 1 : 0,
+        allowWriteAccount: parsed.data.allowWriteAccount ? 1 : 0,
         status: "ok",
         lastCheckedAt: now,
         createdBy: request.user!.sub,
@@ -133,8 +134,18 @@ export async function datasourceRoutes(
       }
       throw error;
     }
-    audit(request, "datasource_create", { id, name: parsed.data.name, type: parsed.data.type });
-    return reply.code(201).send({ id, warnings: probe.warnings, readOnly: probe.readOnly });
+    audit(request, "datasource_create", {
+      id,
+      name: parsed.data.name,
+      type: parsed.data.type,
+      allowWriteAccount: parsed.data.allowWriteAccount,
+    });
+    return reply.code(201).send({
+      id,
+      warnings: parsed.data.allowWriteAccount ? [] : probe.warnings,
+      readOnly: probe.readOnly,
+      allowWriteAccount: parsed.data.allowWriteAccount,
+    });
   });
 
   app.patch("/api/datasources/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
@@ -179,6 +190,9 @@ export async function datasourceRoutes(
     if (body.data.username !== undefined) patch.username = body.data.username;
     if (body.data.sslMode !== undefined) patch.sslMode = body.data.sslMode;
     if (body.data.password) patch.passwordCipher = encryptSecret(body.data.password, key);
+    if (body.data.allowWriteAccount !== undefined) {
+      patch.allowWriteAccount = body.data.allowWriteAccount ? 1 : 0;
+    }
     if (connectionChanged) {
       patch.status = "unknown";
       patch.readOnlyVerified = 0;
@@ -255,6 +269,7 @@ export async function datasourceRoutes(
       lastCheckedAt: Date.now(),
       readOnlyVerified: probe.readOnly ? 1 : 0,
     });
-    return probe;
+    // Suppress the "use a read-only account" advice when the admin opted in.
+    return { ...probe, warnings: ds.allowWriteAccount ? [] : probe.warnings };
   });
 }

@@ -101,6 +101,7 @@ export interface DatasourceSummary {
   sslMode: "disable" | "require" | "no-verify";
   status: string;
   readOnlyVerified: boolean;
+  allowWriteAccount: boolean;
   lastCheckedAt: number | null;
 }
 

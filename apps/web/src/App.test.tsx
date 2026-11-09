@@ -23,6 +23,7 @@ const datasource: DatasourceSummary = {
   sslMode: "disable",
   status: "ok",
   readOnlyVerified: true,
+  allowWriteAccount: false,
   lastCheckedAt: null,
 };
 

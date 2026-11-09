@@ -35,6 +35,8 @@ export const datasourceInputSchema = z.object({
   username: z.string().trim().min(1).max(128),
   password: z.string().min(1).max(500).optional(),
   sslMode: z.enum(["disable", "require", "no-verify"]).default("disable"),
+  /** Allow saving an account that has write grants; queries stay read-only. */
+  allowWriteAccount: z.boolean().default(false),
 });
 export type DatasourceInput = z.infer<typeof datasourceInputSchema>;
 

@@ -36,6 +36,8 @@ export const datasources = sqliteTable("datasources", {
   /** Connection options (charset, TLS extras) as JSON; spec §6 requires the column. */
   optionsJson: text("options_json"),
   readOnlyVerified: integer("read_only_verified").notNull().default(0),
+  /** Admin opted in to a write-capable account; the query guard is unaffected. */
+  allowWriteAccount: integer("allow_write_account").notNull().default(0),
   status: text("status").notNull().default("unknown"),
   lastCheckedAt: integer("last_checked_at"),
   createdBy: text("created_by").notNull(),

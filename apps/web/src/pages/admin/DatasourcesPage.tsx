@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { DatasourceInput } from "@datachat/shared";
-import { ArrowLeft, CheckCircle2, Plus, RefreshCw } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Plus, RefreshCw, ShieldAlert } from "lucide-react";
 import { AppShell } from "../../components/AppShell";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { DatasourceEditor } from "../../components/admin/DatasourceEditor";
@@ -47,8 +47,8 @@ function statusClass(status: string): string {
 }
 
 function statusDotClass(status: string): string {
-  if (status === "ok") return "bg-successsoft0";
-  if (status === "error") return "bg-dangersoft0";
+  if (status === "ok") return "bg-success";
+  if (status === "error") return "bg-danger";
   return "bg-linestrong";
 }
 
@@ -114,7 +114,11 @@ export default function DatasourcesPage() {
           ? [
               `${datasource.name} 连接正常`,
               result.serverVersion ? `版本 ${result.serverVersion}` : null,
-              result.readOnly ? "只读" : "非只读",
+              result.readOnly
+                ? "只读"
+                : datasource.allowWriteAccount
+                  ? "账号可写 · 应用只读"
+                  : "非只读",
             ]
               .filter(Boolean)
               .join(" · ")
@@ -259,7 +263,7 @@ export default function DatasourcesPage() {
                     <th className="px-4 py-2 font-medium">地址</th>
                     <th className="px-4 py-2 font-medium">状态</th>
                     <th className="px-4 py-2 font-medium">只读</th>
-                    <th className="px-4 py-2 font-medium">最近检测</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">最近检测</th>
                     <th className="px-4 py-2 font-medium">操作</th>
                   </tr>
                 </thead>
@@ -294,7 +298,7 @@ export default function DatasourcesPage() {
                         </td>
                         <td className="px-4 py-2.5">
                           <span
-                            className={`inline-flex items-center gap-1.5 text-xs ${statusClass(datasource.status)}`}
+                            className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs ${statusClass(datasource.status)}`}
                             title={statusHint(datasource.status)}
                           >
                             <span
@@ -307,11 +311,19 @@ export default function DatasourcesPage() {
                         <td className="px-4 py-2.5">
                           {datasource.readOnlyVerified ? (
                             <span
-                              className="inline-flex items-center gap-1 text-xs text-success"
+                              className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-success"
                               title="最近一次检测确认该账号只有只读权限。"
                             >
                               <CheckCircle2 className="h-3.5 w-3.5" />
                               只读已验证
+                            </span>
+                          ) : datasource.allowWriteAccount ? (
+                            <span
+                              className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-warning"
+                              title="该账号具有写权限；DataChat 仍通过 SQL 守卫和连接层强制只读。"
+                            >
+                              <ShieldAlert className="h-3.5 w-3.5" />
+                              账号可写 · 应用只读
                             </span>
                           ) : (
                             <span className="text-xs text-muted" title="尚未验证只读权限。">

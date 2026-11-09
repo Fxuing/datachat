@@ -69,6 +69,7 @@ describe.skipIf(!run)("runGuardedQuery", () => {
       ),
       sslMode: "disable",
       readOnlyVerified: 1,
+    allowWriteAccount: 0,
       status: "ok",
       lastCheckedAt: now,
       createdBy: "u1",

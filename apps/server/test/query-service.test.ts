@@ -31,6 +31,7 @@ function datasourceRow(overrides: Partial<DatasourceRow> = {}): DatasourceRow {
     sslMode: "disable",
     optionsJson: null,
     readOnlyVerified: 1,
+    allowWriteAccount: 0,
     status: "ok",
     lastCheckedAt: null,
     createdBy: "u1",
