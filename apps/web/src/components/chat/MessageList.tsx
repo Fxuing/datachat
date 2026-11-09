@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { Bot } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown, Bot } from "lucide-react";
 import type { ChatArtifact, ChatMessage } from "../../lib/api";
 import type { RunStreamState } from "../../lib/run-events";
 import { PageSpinner } from "../ui/spinner";
@@ -83,14 +83,17 @@ export function MessageList({
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  const [showJump, setShowJump] = useState(false);
   const hasContent = messages.length > 0 || showStream;
 
   useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
     const onScroll = () => {
-      stickToBottom.current =
+      const nearBottom =
         element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+      stickToBottom.current = nearBottom;
+      setShowJump((visible) => (visible === !nearBottom ? visible : !nearBottom));
     };
     element.addEventListener("scroll", onScroll, { passive: true });
     return () => element.removeEventListener("scroll", onScroll);
@@ -99,6 +102,7 @@ export function MessageList({
   useEffect(() => {
     if (!stickToBottom.current) return;
     bottomRef.current?.scrollIntoView?.({ block: "end" });
+    setShowJump(false);
   }, [
     messages.length,
     optimisticText,
@@ -120,10 +124,11 @@ export function MessageList({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="flex-1 overflow-y-auto bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgb(var(--brand)/0.06),transparent_70%)]">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={containerRef}
+        className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgb(var(--brand)/0.06),transparent_70%)]">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
         {!hasContent ? <EmptyChat /> : null}
 
         {messages.map((message) => (
@@ -203,7 +208,23 @@ export function MessageList({
         ) : null}
 
         <div ref={bottomRef} />
+        </div>
       </div>
+      {showJump ? (
+        <button
+          type="button"
+          aria-label="回到底部"
+          onClick={() => {
+            const el = containerRef.current;
+            if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+            stickToBottom.current = true;
+            setShowJump(false);
+          }}
+          className="absolute bottom-4 left-1/2 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-line bg-surface text-inksoft shadow-pop transition-colors hover:bg-subtle"
+        >
+          <ArrowDown className="h-4 w-4" />
+        </button>
+      ) : null}
     </div>
   );
 }
