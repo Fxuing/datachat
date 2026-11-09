@@ -97,7 +97,7 @@ export async function runGuardedQuery(
     return { ok: false, code: "FORBIDDEN", reason: denied, auditId };
   }
 
-  if (input.datasource.readOnlyVerified !== 1) {
+  if (input.datasource.readOnlyVerified !== 1 && input.datasource.allowWriteAccount !== 1) {
     const reason = "数据源尚未通过只读校验，已拒绝执行";
     const auditId = recordAudit(db, {
       runId: input.runId,

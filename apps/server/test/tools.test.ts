@@ -261,6 +261,23 @@ describe("db_explain", () => {
     expect(Buffer.byteLength(text, "utf8")).toBeLessThanOrEqual(MAX_EXPLAIN_BYTES);
   });
 
+  it("blocks explain when the account is not verified and not opted in", async () => {
+    handle.sqlite
+      .prepare("UPDATE datasources SET read_only_verified = 0, allow_write_account = 0")
+      .run();
+    const result = await run(tool(context(), "db_explain"), { sql: "SELECT id FROM t" });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("只读校验");
+  });
+
+  it("allows explain for an opted-in write-capable account", async () => {
+    handle.sqlite
+      .prepare("UPDATE datasources SET read_only_verified = 0, allow_write_account = 1")
+      .run();
+    const result = await run(tool(context(), "db_explain"), { sql: "SELECT id FROM t" });
+    expect(result.isError).toBeFalsy();
+  });
+
   it("rejects unsafe explain SQL before connecting", async () => {
     const { registry, calls } = fakeMysqlPool();
     const result = await run(tool(context({ pools: registry }), "db_explain"), {

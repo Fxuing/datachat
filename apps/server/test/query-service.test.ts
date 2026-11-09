@@ -205,6 +205,31 @@ describe("runGuardedQuery", () => {
     expect(audit.map((row) => row.status)).toEqual(["rejected"]);
   });
 
+  it("lets an opted-in write-capable account pass the read-only gate", async () => {
+    const db = setup();
+    insertUser(db, {
+      id: "u1",
+      username: "alice",
+      passwordHash: "not-used",
+      role: "admin",
+      createdAt: Date.now(),
+    });
+    const { deps, calls } = rejectionDeps(db);
+
+    const result = await runGuardedQuery(deps, {
+      datasource: datasourceRow({ readOnlyVerified: 0, allowWriteAccount: 1 }),
+      userId: "u1",
+      conversationId: null,
+      runId: null,
+      sql: "DELETE FROM users",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).not.toBe("数据源尚未通过只读校验，已拒绝执行");
+    expect(calls).toEqual({ poolGets: 0, artifactOpens: 0 });
+    expect(db.select().from(queryAudit).all().map((row) => row.status)).toEqual(["rejected"]);
+  });
+
   it("allows an admin to reach the guard for an ungranted datasource", async () => {
     const db = setup();
     insertUser(db, {

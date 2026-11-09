@@ -100,7 +100,7 @@ export function createDbExplainTool(
           return failed("DATASOURCE_FORBIDDEN", denied);
         }
 
-        if (datasource.readOnlyVerified !== 1) {
+        if (datasource.readOnlyVerified !== 1 && datasource.allowWriteAccount !== 1) {
           audit("rejected", Date.now() - started, {
             errorMessage: "数据源尚未通过只读校验，已拒绝执行",
           });
