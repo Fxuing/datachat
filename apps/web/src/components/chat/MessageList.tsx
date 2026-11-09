@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
-import { Bot, MessageSquare } from "lucide-react";
+import { Bot } from "lucide-react";
 import type { ChatArtifact, ChatMessage } from "../../lib/api";
 import type { RunStreamState } from "../../lib/run-events";
 import { PageSpinner } from "../ui/spinner";
+import { BrandMark } from "../BrandMark";
 import { ChartCard, chartOptionFromSpec } from "./ChartCard";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
 import { ResultCard } from "./ResultCard";
@@ -45,9 +46,7 @@ function EmptyChat() {
     <div className="flex flex-col items-center justify-center gap-8 py-20 text-center">
       <div className="relative">
         <span className="absolute inset-0 -z-10 rounded-full bg-brand/20 blur-2xl" />
-        <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-line bg-surface text-brandtext shadow-card">
-          <MessageSquare className="h-6 w-6" />
-        </span>
+        <BrandMark size={60} className="rounded-[14px] shadow-card" />
       </div>
       <div>
         <p className="text-lg font-semibold tracking-tight text-ink">开始新的对话</p>

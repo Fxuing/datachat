@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, BarChart3, Database, Sparkles } from "lucide-react";
 import { ApiError, fetchMe, login } from "../lib/api";
 import { queryKeys } from "../lib/query";
+import { BrandMark } from "../components/BrandMark";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -72,9 +73,7 @@ export default function LoginPage() {
         />
 
         <div className="relative flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-gradient-to-br from-indigo-400 to-violet-500 text-[11px] font-bold text-white ring-1 ring-inset ring-white/25">
-            DC
-          </span>
+          <BrandMark size={38} />
           <span className="text-[15px] font-semibold tracking-tight text-white">DataChat</span>
         </div>
 

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { logout, type SessionUser } from "../lib/api";
 import { cn } from "../lib/utils";
+import { BrandMark } from "./BrandMark";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui/button";
 
@@ -49,9 +50,7 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
     <div className="flex h-full min-h-0 bg-canvas">
       <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-surface print:hidden">
         <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
-          <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-gradient-to-br from-indigo-500 to-violet-500 text-[11px] font-bold tracking-tight text-white shadow-sm ring-1 ring-inset ring-white/20">
-            DC
-          </span>
+          <BrandMark size={34} />
           <span className="min-w-0">
             <span className="block text-[15px] font-semibold leading-tight tracking-tight text-ink">
               DataChat
