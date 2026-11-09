@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { MarkdownText, MessageItem } from "./MessageItem";
-import type { ChatMessage } from "../../lib/api";
+import type { ChatArtifact, ChatMessage } from "../../lib/api";
 
 function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -89,6 +89,38 @@ describe("MessageItem", () => {
     expect(screen.getByText("1 行 · 1 列")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /查看 SQL/ }));
     expect(screen.getByText("SELECT COUNT(*) AS total FROM users")).toBeInTheDocument();
+  });
+
+  it("renders a chart placeholder inline and hides the duplicate card", () => {
+    const runId = "run-chart";
+    const chart: ChatArtifact = {
+      id: "chart-1",
+      runId,
+      kind: "chart",
+      columns: [],
+      rowCount: 6,
+      truncated: false,
+      spec: {
+        chart: { title: "月度趋势" },
+        option: { series: [{ type: "line", data: [1, 2] }] },
+      },
+      createdAt: 1,
+    };
+    render(
+      <MemoryRouter>
+        <MessageItem
+          artifacts={[chart]}
+          message={message({
+            runId,
+            status: "ok",
+            assistant: { content: "趋势如下。\n\n[[chart:chart-1]]\n\n结论。" },
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("月度趋势")).toHaveLength(1);
+    expect(screen.queryByText(/\[\[chart:/)).not.toBeInTheDocument();
   });
 
   it("turns a backticked report path into an internal link", () => {

@@ -13,6 +13,14 @@ describe("parseReportMarkdown", () => {
     ]);
   });
 
+  it("recognises chart placeholders used by chat replies", () => {
+    expect(parseReportMarkdown("趋势如下：\n\n[[chart:chart-1]]\n\n结论。")).toEqual([
+      { type: "markdown", content: "趋势如下：\n\n" },
+      { type: "chart", artifactId: "chart-1" },
+      { type: "markdown", content: "\n\n结论。" },
+    ]);
+  });
+
   it("keeps malformed placeholders as markdown", () => {
     expect(parseReportMarkdown("[[artifact:]]")).toEqual([
       { type: "markdown", content: "[[artifact:]]" },

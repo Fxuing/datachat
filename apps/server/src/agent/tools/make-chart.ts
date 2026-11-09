@@ -162,6 +162,7 @@ export function createMakeChartTool(
           type: chart.type,
           points,
           title,
+          hint: `要在回答中就地展示该图表，请单独一行写 [[chart:${meta.id}]]；未写则界面会在回答末尾展示`,
           ...(skipped > 0 ? { skipped } : {}),
           ...(notices.length > 0 ? { notice: notices.join("；") } : {}),
         }),

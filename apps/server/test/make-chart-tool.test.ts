@@ -125,12 +125,13 @@ describe("make_chart", () => {
     expect((await artifacts.read(details.chartArtifactId))?.rows).toEqual([]);
 
     const compact = JSON.parse(textOf(result)) as Record<string, unknown>;
-    expect(compact).toEqual({
+    expect(compact).toMatchObject({
       chartArtifactId: details.chartArtifactId,
       type: "bar",
       points: 2,
       title: "月度金额",
     });
+    expect(compact.hint).toContain(`[[chart:${details.chartArtifactId}]]`);
   });
 
   it("defaults the title to the y column", async () => {

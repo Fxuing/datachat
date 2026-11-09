@@ -1,12 +1,13 @@
 export type ReportSegment =
   | { type: "markdown"; content: string }
-  | { type: "artifact"; artifactId: string };
+  | { type: "artifact"; artifactId: string }
+  | { type: "chart"; artifactId: string };
 
-const ARTIFACT_PLACEHOLDER = /\[\[artifact:([^\]\s]+)\]\]/g;
+const ARTIFACT_PLACEHOLDER = /\[\[(artifact|chart):([^\]\s]+)\]\]/g;
 
 /**
- * Split report markdown into prose and artifact placeholders so the page can
- * render each `[[artifact:<id>]]` as a chart/table card instead of literal text.
+ * Split markdown into prose and artifact placeholders so the page can render
+ * each `[[artifact:<id>]]` / `[[chart:<id>]]` as a card instead of literal text.
  */
 export function parseReportMarkdown(markdown: string): ReportSegment[] {
   const segments: ReportSegment[] = [];
@@ -16,9 +17,10 @@ export function parseReportMarkdown(markdown: string): ReportSegment[] {
     if (index > cursor) {
       segments.push({ type: "markdown", content: markdown.slice(cursor, index) });
     }
-    const artifactId = match[1]?.trim();
+    const kind = match[1];
+    const artifactId = match[2]?.trim();
     if (artifactId) {
-      segments.push({ type: "artifact", artifactId });
+      segments.push({ type: kind === "chart" ? "chart" : "artifact", artifactId });
     } else {
       segments.push({ type: "markdown", content: match[0] });
     }

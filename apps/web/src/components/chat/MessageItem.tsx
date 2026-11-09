@@ -166,7 +166,9 @@ export function MessageItem({
   // duplicate card below when the text already references that artifact.
   const segments = parseReportMarkdown(assistantText);
   const referenced = new Set(
-    segments.filter((segment) => segment.type === "artifact").map((segment) => segment.artifactId),
+    segments
+      .filter((segment) => segment.type !== "markdown")
+      .map((segment) => segment.artifactId),
   );
   const standaloneResults = message.results.filter(
     (result) => !referenced.has(result.artifactId),
@@ -214,12 +216,23 @@ export function MessageItem({
         {assistantText ? (
           <div className="flex flex-col gap-2">
             {hasStandaloneData ? <SectionLabel>回答</SectionLabel> : null}
-            {segments.map((segment, index) =>
-              segment.type === "markdown" ? (
-                segment.content.trim() ? (
+            {segments.map((segment, index) => {
+              if (segment.type === "markdown") {
+                return segment.content.trim() ? (
                   <MarkdownText key={`md-${index}`} content={segment.content} />
-                ) : null
-              ) : (
+                ) : null;
+              }
+              if (segment.type === "chart") {
+                const chart = charts.find((item) => item.id === segment.artifactId);
+                return chart ? (
+                  <HistoricalChart key={`chart-${index}`} artifact={chart} />
+                ) : (
+                  <p key={`chart-${index}`} className="text-[11px] text-muted">
+                    图表引用不可用
+                  </p>
+                );
+              }
+              return (
                 <InlineArtifact
                   key={`artifact-${index}`}
                   artifactId={segment.artifactId}
@@ -227,17 +240,15 @@ export function MessageItem({
                   charts={charts}
                   onCreateReport={onCreateReport}
                 />
-              ),
-            )}
+              );
+            })}
           </div>
         ) : null}
         {standaloneCharts.length > 0 ? (
           <div className="flex flex-col gap-2">
-            <div className="flex flex-col gap-2">
-              {standaloneCharts.map((chart) => (
-                <HistoricalChart key={chart.id} artifact={chart} />
-              ))}
-            </div>
+            {standaloneCharts.map((chart) => (
+              <HistoricalChart key={chart.id} artifact={chart} />
+            ))}
           </div>
         ) : null}
         {message.status === "aborted" ? (

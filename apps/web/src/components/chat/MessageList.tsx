@@ -10,6 +10,8 @@ import { QueryPairList } from "./QueryPairList";
 import { RunStatus } from "./RunStatus";
 import { ToolCard } from "./ToolCard";
 import { ProcessBlock } from "./ProcessBlock";
+import { ResultCard } from "./ResultCard";
+import { parseReportMarkdown } from "../../lib/report-markdown";
 
 export interface MessageListProps {
   messages: ChatMessage[];
@@ -85,6 +87,15 @@ export function MessageList({
   const stickToBottom = useRef(true);
   const [showJump, setShowJump] = useState(false);
   const hasContent = messages.length > 0 || showStream;
+  const streamSegments = parseReportMarkdown(stream.text);
+  const referencedCharts = new Set(
+    streamSegments
+      .filter((segment) => segment.type === "chart")
+      .map((segment) => segment.artifactId),
+  );
+  const standaloneCharts = stream.charts.filter(
+    (chart) => !referencedCharts.has(chart.chartArtifactId),
+  );
 
   useEffect(() => {
     const element = containerRef.current;
@@ -178,10 +189,35 @@ export function MessageList({
                 }
 
               />
-              {stream.text ? <MarkdownText content={stream.text} /> : null}
-              {stream.charts.length > 0 ? (
+              {streamSegments.map((segment, index) => {
+                if (segment.type === "markdown") {
+                  return segment.content.trim() ? (
+                    <MarkdownText key={`md-${index}`} content={segment.content} />
+                  ) : null;
+                }
+                if (segment.type === "artifact") {
+                  const result = stream.results.find(
+                    (item) => item.artifactId === segment.artifactId,
+                  );
+                  return result ? (
+                    <ResultCard key={`result-${index}`} {...result} />
+                  ) : null;
+                }
+                const chart = stream.charts.find(
+                  (item) => item.chartArtifactId === segment.artifactId,
+                );
+                return chart ? (
+                  <ChartCard
+                    key={`chart-${index}`}
+                    title={chart.title}
+                    option={chartOptionFromSpec(chart.spec)}
+                    points={chart.points}
+                  />
+                ) : null;
+              })}
+              {standaloneCharts.length > 0 ? (
                 <div className="flex flex-col gap-2">
-                  {stream.charts.map((chart) => (
+                  {standaloneCharts.map((chart) => (
                     <ChartCard
                       key={chart.chartArtifactId}
                       title={chart.title}
