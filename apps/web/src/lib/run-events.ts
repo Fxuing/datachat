@@ -37,6 +37,24 @@ export interface RunChartState {
   title: string;
 }
 
+export interface RunQuestionOption {
+  label: string;
+  description: string;
+  hasPreview: boolean;
+}
+
+export interface RunQuestion {
+  question: string;
+  header: string;
+  multiSelect: boolean;
+  options: RunQuestionOption[];
+}
+
+export interface RunQuestionState {
+  toolCallId: string;
+  questions: RunQuestion[];
+}
+
 export interface RunNotice {
   kind: "retry" | "compaction";
   message: string;
@@ -51,6 +69,7 @@ export interface RunStreamState {
   sqls: RunSqlState[];
   results: RunResultState[];
   charts: RunChartState[];
+  questions: RunQuestionState[];
   notices: RunNotice[];
   error: string | null;
   queuePosition: number | null;
@@ -67,6 +86,7 @@ export const initialRunStreamState: RunStreamState = {
   sqls: [],
   results: [],
   charts: [],
+  questions: [],
   notices: [],
   error: null,
   queuePosition: null,
@@ -203,6 +223,21 @@ export function runStreamReducer(
               points: event.payload.points,
               title: event.payload.title,
             }),
+          };
+        case "question":
+          return {
+            ...base,
+            questions: [
+              ...state.questions.filter((item) => item.toolCallId !== event.payload.toolCallId),
+              { toolCallId: event.payload.toolCallId, questions: event.payload.questions },
+            ],
+          };
+        case "question_resolved":
+          return {
+            ...base,
+            questions: state.questions.filter(
+              (item) => item.toolCallId !== event.payload.toolCallId,
+            ),
           };
         case "retry":
           return {

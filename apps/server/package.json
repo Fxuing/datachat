@@ -11,8 +11,10 @@
   "dependencies": {
     "@datachat/shared": "workspace:*",
     "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/rate-limit": "^10.3.0",
+    "@juicesharp/rpiv-ask-user-question": "2.15.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@node-rs/argon2": "^2.0.2",
     "better-sqlite3": "^11.7.0",

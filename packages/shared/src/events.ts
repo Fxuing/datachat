@@ -64,6 +64,35 @@ export const runEventSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({
+    type: z.literal("question"),
+    payload: z.object({
+      toolCallId: z.string(),
+      questions: z.array(
+        z.object({
+          question: z.string(),
+          header: z.string(),
+          multiSelect: z.boolean(),
+          options: z.array(
+            z.object({
+              label: z.string(),
+              description: z.string(),
+              hasPreview: z.boolean().default(false),
+            }),
+          ),
+        }),
+      ),
+    }),
+  }),
+  z.object({
+    type: z.literal("question_resolved"),
+    payload: z.object({
+      toolCallId: z.string(),
+      ok: z.boolean(),
+      code: z.string().optional(),
+      reason: z.string().optional(),
+    }),
+  }),
+  z.object({
     type: z.literal("sql"),
     payload: z.object({
       sql: z.string(),

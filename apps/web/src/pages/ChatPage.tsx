@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Share2 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { Composer } from "../components/chat/Composer";
+import { QuestionCard } from "../components/chat/QuestionCard";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { MessageList } from "../components/chat/MessageList";
 import { ShareDialog } from "../components/ShareDialog";
@@ -325,6 +326,18 @@ export default function ChatPage() {
             >
               {sendError}
             </p>
+          </div>
+        ) : null}
+        {conversationId && stream.state.questions.length > 0 ? (
+          <div className="w-full px-4 pb-2">
+            {stream.state.questions.map((question) => (
+              <QuestionCard
+                key={question.toolCallId}
+                conversationId={conversationId}
+                toolCallId={question.toolCallId}
+                questions={question.questions}
+              />
+            ))}
           </div>
         ) : null}
         <Composer

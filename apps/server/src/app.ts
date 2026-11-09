@@ -13,6 +13,7 @@ import { datasourceRoutes } from "./routes/datasources.js";
 import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
 import { modelsRoutes } from "./routes/models.js";
 import { conversationRoutes } from "./routes/conversations.js";
+import { questionRoutes } from "./routes/questions.js";
 import { artifactRoutes } from "./routes/artifacts.js";
 import { runRoutes } from "./routes/runs.js";
 import { reportRoutes } from "./routes/reports.js";
@@ -147,6 +148,7 @@ export async function buildApp({
     runtime: agentRuntime,
     getRuntime: () => modelRuntime.get(),
   });
+  await app.register(questionRoutes, { db, runtime: agentRuntime });
   await app.register(artifactRoutes, { db, artifacts });
   await app.register(reportRoutes, { db, artifacts });
   await app.register(shareRoutes, { db, artifacts, config });

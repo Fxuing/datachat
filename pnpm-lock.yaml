@@ -32,12 +32,18 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 1.5.0
         version: 1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@modelcontextprotocol/sdk@1.32.2(zod@3.25.76))(@smithy/signature-v4@5.7.5)(ws@8.22.1)(zod@3.25.76)
+      '@earendil-works/pi-tui':
+        specifier: 1.5.0
+        version: 1.5.0
       '@fastify/cookie':
         specifier: ^11.0.2
         version: 11.1.5
       '@fastify/rate-limit':
         specifier: ^10.3.0
         version: 10.3.0
+      '@juicesharp/rpiv-ask-user-question':
+        specifier: 2.15.0
+        version: 2.15.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@modelcontextprotocol/sdk@1.32.2(zod@3.25.76))(@smithy/signature-v4@5.7.5)(ws@8.22.1)(zod@3.25.76))(@earendil-works/pi-tui@1.5.0)(typebox@1.4.4)
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.2
         version: 1.32.2(zod@3.25.76)
@@ -1153,6 +1159,22 @@ packages:
 
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
+
+  '@juicesharp/rpiv-ask-user-question@2.15.0':
+    resolution: {integrity: sha512-Gm6de5IZF52BaSeh9dnDqJBn821Z5XfJkCmhkCmqTzvNv3SCpSv1mA4Gj5VBcfrSe+xTtWSVQzJwIqJFQHH3Lg==}
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '*'
+      '@earendil-works/pi-tui': '*'
+      '@juicesharp/rpiv-i18n': '*'
+      typebox: '*'
+    peerDependenciesMeta:
+      '@juicesharp/rpiv-i18n':
+        optional: true
+
+  '@juicesharp/rpiv-config@2.15.0':
+    resolution: {integrity: sha512-S2BAGX4dJjQ2AyNYOEjC6ha04p9f6CdEfmtxpdxzSKrfDMwqIvOjjO9HiHc1IPY7jDY1q2Q8cGCtpIZWV6Y8NQ==}
+    peerDependencies:
+      typebox: '*'
 
   '@lukeed/ms@2.0.2':
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
@@ -5815,6 +5837,17 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   '@js-sdsl/ordered-map@4.4.2': {}
+
+  '@juicesharp/rpiv-ask-user-question@2.15.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@modelcontextprotocol/sdk@1.32.2(zod@3.25.76))(@smithy/signature-v4@5.7.5)(ws@8.22.1)(zod@3.25.76))(@earendil-works/pi-tui@1.5.0)(typebox@1.4.4)':
+    dependencies:
+      '@earendil-works/pi-coding-agent': 1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@modelcontextprotocol/sdk@1.32.2(zod@3.25.76))(@smithy/signature-v4@5.7.5)(ws@8.22.1)(zod@3.25.76)
+      '@earendil-works/pi-tui': 1.5.0
+      '@juicesharp/rpiv-config': 2.15.0(typebox@1.4.4)
+      typebox: 1.4.4
+
+  '@juicesharp/rpiv-config@2.15.0(typebox@1.4.4)':
+    dependencies:
+      typebox: 1.4.4
 
   '@lukeed/ms@2.0.2': {}
 

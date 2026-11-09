@@ -1,6 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DefaultResourceLoader, createMcpExtension } from "@earendil-works/pi-coding-agent";
+import { createRequire } from "node:module";
+import {
+  DefaultResourceLoader,
+  createEventBus,
+  createMcpExtension,
+  type EventBusController,
+} from "@earendil-works/pi-coding-agent";
 import type { Db } from "../db/client.js";
 import type { AppConfig } from "../config.js";
 import { loadMcpFor } from "./mcp.js";
@@ -21,6 +27,21 @@ export interface ConversationResourcesInput {
 export interface ConversationResources {
   loader: DefaultResourceLoader;
   workspaceDir: string;
+  eventBus: EventBusController;
+}
+
+const require = createRequire(import.meta.url);
+
+/**
+ * Resolve the installed questionnaire extension. Keeping it optional makes the server
+ * start even when the package was removed; the model simply loses the tool.
+ */
+function askUserQuestionExtensionPath(): string | undefined {
+  try {
+    return require.resolve("@juicesharp/rpiv-ask-user-question");
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -34,10 +55,14 @@ export async function createConversationResources(
   const workspaceDir = path.join(input.config.dataDir, "workspaces", input.conversationId);
   await fs.mkdir(workspaceDir, { recursive: true });
 
+  const askUserExtension = askUserQuestionExtensionPath();
+  const eventBus = createEventBus();
   const loader = new DefaultResourceLoader({
     cwd: workspaceDir,
     agentDir: input.config.agentDir,
+    eventBus,
     additionalSkillPaths: [input.skillsDir],
+    ...(askUserExtension ? { additionalExtensionPaths: [askUserExtension] } : {}),
     noExtensions: true,
     // Auto-discovered host/project skills would collide with the materialized ones by name and
     // shadow datasource overrides, so only the conversation skill directory is loaded.
@@ -61,5 +86,5 @@ export async function createConversationResources(
   });
 
   await loader.reload();
-  return { loader, workspaceDir };
+  return { loader, workspaceDir, eventBus };
 }

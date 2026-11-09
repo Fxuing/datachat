@@ -15,6 +15,7 @@ import type { PoolRegistry } from "./datasource/pool.js";
 import { resolveConversationModel } from "./model-runtime.js";
 
 import { createConversationResources } from "./resources.js";
+import type { QuestionBridge } from "./question-bridge.js";
 import type { AgentToolContext } from "./tools/context.js";
 import { buildAgentTools } from "./tools/index.js";
 import { enabledProviderIds } from "../services/llm-catalog.js";
@@ -31,6 +32,7 @@ export interface CreateConversationSessionInput {
   skillsDir: string;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
+  questionBridge: QuestionBridge;
 }
 
 export interface ConversationSessionResult {
@@ -76,7 +78,7 @@ export async function createConversationSession(
     skillsDir: input.skillsDir,
   };
 
-  const { loader, workspaceDir } = await createConversationResources({
+  const { loader, workspaceDir, eventBus } = await createConversationResources({
     db: input.db,
     config: input.config,
     conversationId: conversation.id,
@@ -106,7 +108,8 @@ export async function createConversationSession(
     noTools: "builtin",
     customTools: buildAgentTools(toolContext),
   });
-  await session.bindExtensions({});
+  input.questionBridge.bind(eventBus);
+  await session.bindExtensions({ uiContext: input.questionBridge.uiContext });
 
   const piSessionFile = session.sessionFile ?? sessionManager.getSessionFile();
   if (!piSessionFile) throw new Error("无法确定 Pi 会话文件路径");

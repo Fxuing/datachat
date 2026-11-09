@@ -334,6 +334,37 @@ export function sendMessage(
   });
 }
 
+export interface QuestionOption {
+  label: string;
+  description: string;
+  hasPreview: boolean;
+}
+
+export interface QuestionPrompt {
+  question: string;
+  header: string;
+  multiSelect: boolean;
+  options: QuestionOption[];
+}
+
+export interface QuestionAnswerEntry {
+  questionIndex: number;
+  optionIndexes?: number[];
+  text?: string;
+  notes?: string;
+}
+
+export function answerQuestion(
+  conversationId: string,
+  toolCallId: string,
+  input: { answers?: QuestionAnswerEntry[]; globalNote?: string; cancel?: boolean },
+): Promise<void> {
+  return apiRequest(
+    `/api/conversations/${conversationId}/questions/${encodeURIComponent(toolCallId)}/answer`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
 export function createReport(input: {
   conversationId: string;
   title?: string;

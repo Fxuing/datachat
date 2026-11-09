@@ -22,6 +22,8 @@ const RUN_EVENT_TYPES = [
   "result",
   "chart",
   "report",
+  "question",
+  "question_resolved",
   "retry",
   "compaction",
   "usage",

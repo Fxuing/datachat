@@ -19,6 +19,7 @@ import {
 } from "./event-bridge.js";
 import { createAgentModelRuntime } from "./model-runtime.js";
 import { createConversationSession } from "./session.js";
+import { QuestionBridge, type AskUserAnswerInput, type AskUserAnswerVerdict } from "./question-bridge.js";
 import { materializeSkills } from "./skills.js";
 import type { AgentToolContext } from "./tools/context.js";
 
@@ -39,6 +40,7 @@ export type ConversationSessionFactory = (input: {
   conversation: ConversationRow;
   userId: string;
   runId: string;
+  questionBridge: QuestionBridge;
 }) => Promise<SessionBundle>;
 
 export interface ConversationRuntimeOptions {
@@ -76,6 +78,7 @@ export class ConversationRuntime {
 
   private sessionBundle: SessionBundle | undefined;
   private sessionPromise: Promise<SessionBundle> | undefined;
+  private questionBridge: QuestionBridge | undefined;
   private activeSettled: Promise<void> | undefined;
   private disposePromise: Promise<void> | undefined;
   private disposed = false;
@@ -266,6 +269,7 @@ export class ConversationRuntime {
         conversation,
         userId: this.userId,
         runId,
+        questionBridge: this.getQuestionBridge(),
       }).then((bundle) => {
         this.sessionBundle = bundle;
         return bundle;
@@ -282,6 +286,8 @@ export class ConversationRuntime {
     const bundle = this.sessionBundle;
     this.sessionBundle = undefined;
     this.sessionPromise = undefined;
+    this.questionBridge?.dispose();
+    this.questionBridge = undefined;
     if (!bundle) return;
     await bundle.session.abort().catch(() => undefined);
     try {
@@ -289,6 +295,34 @@ export class ConversationRuntime {
     } catch {
       // A failed dispose must not prevent a fresh session from being created.
     }
+  }
+
+  private getQuestionBridge(): QuestionBridge {
+    if (this.questionBridge) return this.questionBridge;
+    this.questionBridge = new QuestionBridge({
+      onQuestion: (prompt) => {
+        const runId = this.activeJob?.runId;
+        if (runId) this.emitEvent(runId, { type: "question", payload: prompt });
+      },
+      onResolved: (verdict) => {
+        const runId = this.activeJob?.runId;
+        if (runId) {
+          this.emitEvent(runId, {
+            type: "question_resolved",
+            payload: verdict,
+          });
+        }
+      },
+    });
+    return this.questionBridge;
+  }
+
+  /** Forward a browser answer to the questionnaire extension. */
+  answerQuestion(
+    toolCallId: string,
+    input: AskUserAnswerInput,
+  ): AskUserAnswerVerdict | undefined {
+    return this.questionBridge?.answer(toolCallId, input);
   }
 
   private emitEvent(runId: string, event: RunEvent): void {
@@ -318,6 +352,7 @@ export class ConversationRuntime {
     usage?: UsageTotals,
   ): void {
     if (this.finalized.has(runId)) return;
+    this.questionBridge?.clear();
     this.emitEvent(runId, {
       type: "run_end",
       payload: error ? { status, error } : { status },
@@ -435,7 +470,7 @@ export class RuntimeManager {
     this.bus = options.bus ?? new RunEventBus();
     this.createSession =
       options.createSession ??
-      (async ({ conversation, userId }) => {
+      (async ({ conversation, userId, questionBridge }) => {
         const runtime = await this.getModelRuntime();
         const skillsDir = await materializeSkills(this.db, {
           conversationId: conversation.id,
@@ -451,6 +486,7 @@ export class RuntimeManager {
           skillsDir,
           pools: this.pools,
           artifacts: this.artifacts,
+          questionBridge,
         });
       });
     this.maxRuntimes = options.maxRuntimes ?? 20;
@@ -497,6 +533,14 @@ export class RuntimeManager {
 
   abort(conversationId: string, runId: string): boolean {
     return this.runtimes.get(conversationId)?.abort(runId) ?? false;
+  }
+
+  answerQuestion(
+    conversationId: string,
+    toolCallId: string,
+    input: AskUserAnswerInput,
+  ): AskUserAnswerVerdict | undefined {
+    return this.runtimes.get(conversationId)?.answerQuestion(toolCallId, input);
   }
 
   async remove(conversationId: string): Promise<void> {
