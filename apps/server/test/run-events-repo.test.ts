@@ -255,4 +255,31 @@ describe("run events repository", () => {
     ]);
     expect(listConversationEvents(db, "other-conversation")).toEqual([]);
   });
+
+  it("skips thinking deltas so the user message survives the window", () => {
+    const run = newRun();
+    appendRunEvent(db, {
+      runId: run.id,
+      conversationId,
+      type: "user_message",
+      payload: { content: "分析一下" },
+    });
+    for (let index = 0; index < 2_500; index += 1) {
+      appendRunEvent(db, {
+        runId: run.id,
+        conversationId,
+        type: "thinking_delta",
+        payload: { text: `step ${index}` },
+      });
+    }
+    appendRunEvent(db, {
+      runId: run.id,
+      conversationId,
+      type: "text_delta",
+      payload: { text: "结论" },
+    });
+
+    const rows = listConversationEvents(db, conversationId, 2_000);
+    expect(rows.map((row) => row.type)).toEqual(["user_message", "text_delta"]);
+  });
 });

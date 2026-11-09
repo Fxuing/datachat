@@ -290,7 +290,7 @@ function applyEvent(group: MessageGroup, event: RunEvent): void {
  */
 function buildConversationShare(db: Db, conversation: ConversationRow): PublicConversationShare {
   const groups = new Map<string, MessageGroup>();
-  for (const row of listConversationEvents(db, conversation.id, 2_000)) {
+  for (const row of listConversationEvents(db, conversation.id, 20_000)) {
     const event = parseEvent(row);
     if (!event) continue;
     applyEvent(groupFor(groups, row.runId, row.createdAt), event);

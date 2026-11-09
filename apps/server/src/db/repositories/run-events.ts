@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, ne, sql } from "drizzle-orm";
 import type { Db } from "../client.js";
 import { runEvents } from "../schema.js";
 
@@ -59,6 +59,10 @@ export function listRunEventsAfter(db: Db, runId: string, seq: number): RunEvent
  * Most recent `limit` events of a conversation, returned oldest-first so callers can
  * aggregate history in a single pass. Ordering follows global chronology
  * (`createdAt`), not the per-run `seq`, because two runs can interleave.
+ *
+ * `thinking_delta` frames are excluded: a long reasoning run can emit thousands of
+ * them, and retaining them would push the conversation's `user_message` beyond the
+ * window, making history render as empty.
  */
 export function listConversationEvents(
   db: Db,
@@ -68,7 +72,12 @@ export function listConversationEvents(
   const rows = db
     .select()
     .from(runEvents)
-    .where(eq(runEvents.conversationId, conversationId))
+    .where(
+      and(
+        eq(runEvents.conversationId, conversationId),
+        ne(runEvents.type, "thinking_delta"),
+      ),
+    )
     .orderBy(desc(runEvents.createdAt), desc(runEvents.seq))
     .limit(limit)
     .all();

@@ -6,7 +6,7 @@ import { PageSpinner } from "../ui/spinner";
 import { BrandMark } from "../BrandMark";
 import { ChartCard, chartOptionFromSpec } from "./ChartCard";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
-import { ResultCard } from "./ResultCard";
+import { ResultsPanel } from "./ResultsPanel";
 import { RunStatus } from "./RunStatus";
 import { SqlCard } from "./SqlCard";
 import { ToolCard } from "./ToolCard";
@@ -157,16 +157,7 @@ export function MessageList({
               />
               {stream.text ? <MarkdownText content={stream.text} /> : null}
               {stream.results.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  {stream.results.map((result, index) => (
-                    <ResultCard
-                      key={result.artifactId}
-                      {...result}
-                      index={stream.results.length > 1 ? index + 1 : undefined}
-                      onCreateReport={onCreateReport}
-                    />
-                  ))}
-                </div>
+                <ResultsPanel results={stream.results} onCreateReport={onCreateReport} />
               ) : null}
               {stream.charts.length > 0 ? (
                 <div className="flex flex-col gap-2">

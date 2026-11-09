@@ -220,7 +220,7 @@ export function getConversationDetail(
 ): ConversationDetail {
   const grouped = new Map<string, MessageGroup>();
   let contextUsage: ConversationDetail["contextUsage"] = null;
-  for (const row of listConversationEvents(db, conversation.id, 2_000)) {
+  for (const row of listConversationEvents(db, conversation.id, 20_000)) {
     const event = parseEvent(row);
     if (!event) continue;
     if (event.type === "context_usage") {

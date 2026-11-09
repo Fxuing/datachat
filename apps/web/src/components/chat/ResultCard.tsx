@@ -10,6 +10,8 @@ export interface ResultCardProps extends ResultTableProps {
   index?: number;
   /** Guarded SQL that produced the rows; collapsed by default. */
   sql?: string;
+  /** Inside a grouped list: drop the card border and rounding. */
+  flat?: boolean;
 }
 
 /**
@@ -17,14 +19,14 @@ export interface ResultCardProps extends ResultTableProps {
  * Dumping every result table into the transcript buries the answer, so users
  * only open the details they actually asked for.
  */
-export function ResultCard({ index, sql, ...props }: ResultCardProps) {
+export function ResultCard({ index, sql, flat, ...props }: ResultCardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [sqlOpen, setSqlOpen] = useState(false);
   const title = index ? `查询结果 ${index}` : "查询结果";
 
   return (
     <>
-      <div className="overflow-hidden rounded-lg border border-line bg-surface">
+      <div className={cn("overflow-hidden bg-surface", !flat && "rounded-lg border border-line")}>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2">
           <Table2 className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
           <span className="text-[11px] font-medium text-ink">{title}</span>

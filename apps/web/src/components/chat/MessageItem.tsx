@@ -8,6 +8,7 @@ import { getArtifact, type ChatArtifact, type ChatMessage, type ChatResult } fro
 import { parseReportMarkdown } from "../../lib/report-markdown";
 import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard";
 import { ResultCard } from "./ResultCard";
+import { ResultsPanel } from "./ResultsPanel";
 import { SqlCard } from "./SqlCard";
 import { ToolCard } from "./ToolCard";
 import { ProcessBlock } from "./ProcessBlock";
@@ -227,16 +228,7 @@ export function MessageItem({
           </div>
         ) : null}
         {standaloneResults.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            {standaloneResults.map((result, index) => (
-              <ResultCard
-                key={result.artifactId}
-                {...result}
-                index={standaloneResults.length > 1 ? index + 1 : undefined}
-                onCreateReport={onCreateReport}
-              />
-            ))}
-          </div>
+          <ResultsPanel results={standaloneResults} onCreateReport={onCreateReport} />
         ) : null}
         {standaloneCharts.length > 0 ? (
           <div className="flex flex-col gap-2">
