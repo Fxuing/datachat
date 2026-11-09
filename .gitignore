@@ -12,3 +12,5 @@ coverage/
 
 # pi runtime state
 agent/models-store.json
+
+.vite/
