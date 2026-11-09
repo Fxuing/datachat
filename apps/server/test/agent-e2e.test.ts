@@ -306,6 +306,7 @@ describe("agent chat end to end", () => {
       rows: ROWS,
       rowCount: 3,
       truncated: false,
+      sql: SQL,
     });
     expect(frames.find((frame) => frame.event === "sql")?.data).toEqual({
       sql: SQL,
@@ -347,6 +348,7 @@ describe("agent chat end to end", () => {
         rows: ROWS,
         rowCount: 3,
         truncated: false,
+        sql: SQL,
       },
     ]);
     expect(entry.sqls).toEqual([{ sql: SQL, auditId: AUDIT_ID, status: "ok" }]);

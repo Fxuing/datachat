@@ -79,6 +79,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       rows: z.array(z.array(z.unknown())),
       rowCount: z.number().int().nonnegative(),
       truncated: z.boolean(),
+      /** The guarded statement that produced this result, for UI context. */
+      sql: z.string().optional(),
     }),
   }),
   z.object({

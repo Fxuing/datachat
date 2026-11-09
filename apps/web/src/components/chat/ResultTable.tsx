@@ -15,6 +15,8 @@ export interface ResultTableProps {
   truncated: boolean;
   /** When provided, offers to turn this result into a report. */
   onCreateReport?: (artifactId: string) => void;
+  /** Drop the outer frame when the table is already inside a card. */
+  embedded?: boolean;
 }
 
 function isNumeric(column: Column): boolean {
@@ -41,6 +43,7 @@ export function ResultTable({
   rowCount,
   truncated,
   onCreateReport,
+  embedded = false,
 }: ResultTableProps) {
   const [extraRows, setExtraRows] = useState<unknown[][]>([]);
 
@@ -54,7 +57,12 @@ export function ResultTable({
   const hiddenRows = Math.max(rowCount - displayRows.length, 0);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-line bg-surface">
+    <div
+      className={cn(
+        "overflow-hidden bg-surface",
+        !embedded && "rounded-lg border border-line",
+      )}
+    >
       <div className="max-h-80 overflow-auto">
         <table className="w-full border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-subtle/80">

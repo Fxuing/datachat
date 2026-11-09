@@ -5,7 +5,7 @@ import type { RunStreamState } from "../../lib/run-events";
 import { PageSpinner } from "../ui/spinner";
 import { ChartCard, chartOptionFromSpec } from "./ChartCard";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
-import { ResultTable } from "./ResultTable";
+import { ResultCard } from "./ResultCard";
 import { RunStatus } from "./RunStatus";
 import { SqlCard } from "./SqlCard";
 import { ToolCard } from "./ToolCard";
@@ -156,19 +156,24 @@ export function MessageList({
                   ) : null
                 }
               />
+              {stream.text ? <MarkdownText content={stream.text} /> : null}
               {stream.results.length > 0 ? (
-                <div className="flex flex-col gap-1.5">
-                  {stream.results.map((result) => (
-                    <ResultTable
+                <div className="flex flex-col gap-2">
+                  {stream.results.map((result, index) => (
+                    <ResultCard
                       key={result.artifactId}
                       {...result}
+                      index={stream.results.length > 1 ? index + 1 : undefined}
                       onCreateReport={onCreateReport}
                     />
                   ))}
                 </div>
               ) : null}
               {stream.charts.length > 0 ? (
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-2">
+                  <div className="text-[11px] font-medium uppercase tracking-wider text-muted">
+                    图表
+                  </div>
                   {stream.charts.map((chart) => (
                     <ChartCard
                       key={chart.chartArtifactId}
@@ -179,7 +184,6 @@ export function MessageList({
                   ))}
                 </div>
               ) : null}
-              {stream.text ? <MarkdownText content={stream.text} /> : null}
               {stream.notices.map((notice, index) => (
                 <p key={`${notice.kind}-${index}`} className="text-[11px] text-warning">
                   {notice.message}

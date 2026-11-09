@@ -228,6 +228,7 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
                 rows,
                 rowCount: details.rowCount,
                 truncated: details.truncated,
+                ...(typeof details.sql === "string" ? { sql: details.sql } : {}),
               },
             });
           }

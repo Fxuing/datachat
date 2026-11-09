@@ -48,6 +48,7 @@ export interface ConversationResultMessage {
   rows: unknown[][];
   rowCount: number;
   truncated: boolean;
+  sql?: string;
 }
 
 export interface SqlMessage {

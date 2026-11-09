@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import { getArtifact, type ChatArtifact, type ChatMessage, type ChatResult } from "../../lib/api";
 import { parseReportMarkdown } from "../../lib/report-markdown";
 import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard";
-import { ResultTable } from "./ResultTable";
+import { ResultCard } from "./ResultCard";
 import { SqlCard } from "./SqlCard";
 import { ToolCard } from "./ToolCard";
 import { ProcessBlock } from "./ProcessBlock";
@@ -129,7 +129,7 @@ function InlineArtifact({
 }) {
   const result = results.find((item) => item.artifactId === artifactId);
   if (result) {
-    return <ResultTable {...result} onCreateReport={onCreateReport} />;
+    return <ResultCard {...result} onCreateReport={onCreateReport} />;
   }
   const chart = charts.find((item) => item.id === artifactId);
   if (chart) {
@@ -139,6 +139,12 @@ function InlineArtifact({
     <p className="text-[11px] text-muted">
       结果引用不可用：<code className="rounded bg-subtle px-1 py-0.5">{artifactId}</code>
     </p>
+  );
+}
+
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <div className="text-[11px] font-medium uppercase tracking-wider text-muted">{children}</div>
   );
 }
 
@@ -166,6 +172,7 @@ export function MessageItem({
     (result) => !referenced.has(result.artifactId),
   );
   const standaloneCharts = charts.filter((chart) => !referenced.has(chart.id));
+  const hasStandaloneData = standaloneResults.length > 0 || standaloneCharts.length > 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -199,26 +206,10 @@ export function MessageItem({
             ) : null
           }
         />
-        {standaloneResults.length > 0 ? (
-          <div className="flex flex-col gap-1.5">
-            {standaloneResults.map((result) => (
-              <ResultTable
-                key={result.artifactId}
-                {...result}
-                onCreateReport={onCreateReport}
-              />
-            ))}
-          </div>
-        ) : null}
-        {standaloneCharts.length > 0 ? (
-          <div className="flex flex-col gap-1.5">
-            {standaloneCharts.map((chart) => (
-              <HistoricalChart key={chart.id} artifact={chart} />
-            ))}
-          </div>
-        ) : null}
-        {assistantText
-          ? segments.map((segment, index) =>
+        {assistantText ? (
+          <div className="flex flex-col gap-2">
+            {hasStandaloneData ? <SectionLabel>回答</SectionLabel> : null}
+            {segments.map((segment, index) =>
               segment.type === "markdown" ? (
                 segment.content.trim() ? (
                   <MarkdownText key={`md-${index}`} content={segment.content} />
@@ -232,8 +223,31 @@ export function MessageItem({
                   onCreateReport={onCreateReport}
                 />
               ),
-            )
-          : null}
+            )}
+          </div>
+        ) : null}
+        {standaloneResults.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {standaloneResults.map((result, index) => (
+              <ResultCard
+                key={result.artifactId}
+                {...result}
+                index={standaloneResults.length > 1 ? index + 1 : undefined}
+                onCreateReport={onCreateReport}
+              />
+            ))}
+          </div>
+        ) : null}
+        {standaloneCharts.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <SectionLabel>图表</SectionLabel>
+            <div className="flex flex-col gap-2">
+              {standaloneCharts.map((chart) => (
+                <HistoricalChart key={chart.id} artifact={chart} />
+              ))}
+            </div>
+          </div>
+        ) : null}
         {message.status === "aborted" ? (
           <p className="text-xs text-muted">已停止生成</p>
         ) : null}

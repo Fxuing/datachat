@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { MarkdownText, MessageItem } from "./MessageItem";
 import type { ChatMessage } from "../../lib/api";
@@ -52,6 +52,34 @@ describe("MessageItem", () => {
     expect(screen.queryByText(/\[\[artifact:/)).not.toBeInTheDocument();
     expect(screen.getByText("total")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
+  });
+
+  it("labels standalone result tables and exposes the SQL behind them", () => {
+    render(
+      <MemoryRouter>
+        <MessageItem
+          message={message({
+            status: "ok",
+            assistant: { content: "共 1 行。" },
+            results: [
+              {
+                artifactId: "artifact-1",
+                columns: [{ name: "total", type: "number" }],
+                rows: [[1]],
+                rowCount: 1,
+                truncated: false,
+                sql: "SELECT COUNT(*) AS total FROM users",
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("查询结果")).toBeInTheDocument();
+    expect(screen.getByText("1 行 · 1 列")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /查看 SQL/ }));
+    expect(screen.getByText("SELECT COUNT(*) AS total FROM users")).toBeInTheDocument();
   });
 
   it("turns a backticked report path into an internal link", () => {

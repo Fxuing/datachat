@@ -195,6 +195,7 @@ export interface ChatResult {
   rows: unknown[][];
   rowCount: number;
   truncated: boolean;
+  sql?: string;
 }
 
 export interface ChatMessage {

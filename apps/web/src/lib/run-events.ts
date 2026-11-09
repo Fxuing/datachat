@@ -26,6 +26,7 @@ export interface RunResultState {
   rows: unknown[][];
   rowCount: number;
   truncated: boolean;
+  sql?: string;
 }
 
 export interface RunChartState {
@@ -190,6 +191,7 @@ export function runStreamReducer(
               rows: event.payload.rows,
               rowCount: event.payload.rowCount,
               truncated: event.payload.truncated,
+              ...(event.payload.sql ? { sql: event.payload.sql } : {}),
             }),
           };
         case "chart":
