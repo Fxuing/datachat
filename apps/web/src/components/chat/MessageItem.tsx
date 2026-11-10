@@ -251,7 +251,17 @@ export function MessageItem({
           </div>
         ) : null}
         {message.status === "aborted" ? (
-          <p className="text-xs text-muted">已停止生成</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <p className="text-xs text-muted">已停止生成</p>
+            {onRetry ? (
+              <RetryActions
+                message={message}
+                models={models}
+                retrying={retrying}
+                onRetry={onRetry}
+              />
+            ) : null}
+          </div>
         ) : null}
         {message.status === "error" ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
