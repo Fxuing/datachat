@@ -163,6 +163,7 @@ afterEach(() => {
 
 describe("DatasourcesPage", () => {
   it("renders status, read-only verification, address and actions", async () => {
+    const browser = userEvent.setup();
     stubApi();
     renderPage();
 
@@ -174,9 +175,10 @@ describe("DatasourcesPage", () => {
     expect(screen.getByText("127.0.0.1:3306/analytics")).toBeInTheDocument();
     expect(screen.getByText("warehouse")).toBeInTheDocument();
     expect(screen.getByText("异常")).toBeInTheDocument();
-    expect(
-      screen.getByTitle("最近一次连接测试失败，请检查网络、账号或 SSL 配置。"),
-    ).toBeInTheDocument();
+    await browser.hover(screen.getByText("异常"));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "最近一次连接测试失败，请检查网络、账号或 SSL 配置。",
+    );
     expect(screen.getAllByRole("button", { name: "测试连接" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "查看结构" })).toHaveLength(2);
   });

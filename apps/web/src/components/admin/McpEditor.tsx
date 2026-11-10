@@ -12,6 +12,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export interface McpEditorProps {
@@ -439,16 +440,24 @@ export function McpEditor({
               <div className="space-y-2 rounded-md border border-line bg-subtle p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-medium text-muted">连接测试</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!server || testing || busy}
-                    title={server ? undefined : "保存后可测试连接"}
-                    onClick={onTest}
-                  >
-                    {testing ? "测试中…" : "测试连接"}
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span tabIndex={0} className="inline-flex">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={!server || testing || busy}
+                          onClick={onTest}
+                        >
+                          {testing ? "测试中…" : "测试连接"}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    {!server ? (
+                      <TooltipContent side="top">保存后可测试连接</TooltipContent>
+                    ) : null}
+                  </Tooltip>
                 </div>
 
                 {!server ? (

@@ -11,6 +11,11 @@ import { DatasourceSchemaDrawer } from "../../components/admin/DatasourceSchemaD
 import { Button } from "../../components/ui/button";
 import { PageSpinner } from "../../components/ui/spinner";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
+import {
   ApiError,
   createDatasource,
   deleteDatasource,
@@ -297,38 +302,55 @@ export default function DatasourcesPage() {
                           {datasource.host}:{datasource.port}/{datasource.database}
                         </td>
                         <td className="px-4 py-2.5">
-                          <span
-                            className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs ${statusClass(datasource.status)}`}
-                            title={statusHint(datasource.status)}
-                          >
-                            <span
-                              aria-hidden="true"
-                              className={`h-1.5 w-1.5 rounded-full ${statusDotClass(datasource.status)}`}
-                            />
-                            {statusLabel(datasource.status)}
-                          </span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs ${statusClass(datasource.status)}`}
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className={`h-1.5 w-1.5 rounded-full ${statusDotClass(datasource.status)}`}
+                                />
+                                {statusLabel(datasource.status)}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              {statusHint(datasource.status)}
+                            </TooltipContent>
+                          </Tooltip>
                         </td>
                         <td className="px-4 py-2.5">
                           {datasource.readOnlyVerified ? (
-                            <span
-                              className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-success"
-                              title="最近一次检测确认该账号只有只读权限。"
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              只读已验证
-                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-success">
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                  只读已验证
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                最近一次检测确认该账号只有只读权限。
+                              </TooltipContent>
+                            </Tooltip>
                           ) : datasource.allowWriteAccount ? (
-                            <span
-                              className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-warning"
-                              title="该账号具有写权限；DataChat 仍通过 SQL 守卫和连接层强制只读。"
-                            >
-                              <ShieldAlert className="h-3.5 w-3.5" />
-                              账号可写 · 应用只读
-                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-warning">
+                                  <ShieldAlert className="h-3.5 w-3.5" />
+                                  账号可写 · 应用只读
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                该账号具有写权限；DataChat 仍通过 SQL 守卫和连接层强制只读。
+                              </TooltipContent>
+                            </Tooltip>
                           ) : (
-                            <span className="text-xs text-muted" title="尚未验证只读权限。">
-                              未验证
-                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-xs text-muted">未验证</span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">尚未验证只读权限。</TooltipContent>
+                            </Tooltip>
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-xs text-muted">

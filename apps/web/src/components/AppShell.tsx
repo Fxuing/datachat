@@ -15,6 +15,7 @@ import { cn } from "../lib/utils";
 import { BrandMark } from "./BrandMark";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export interface AppShellProps {
   user: SessionUser;
@@ -107,16 +108,22 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
               </p>
             </div>
             <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="icon"
-              title="退出登录"
-              aria-label="退出登录"
-              disabled={logoutMutation.isPending}
-              onClick={() => logoutMutation.mutate()}
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="inline-flex">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="退出登录"
+                    disabled={logoutMutation.isPending}
+                    onClick={() => logoutMutation.mutate()}
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">退出登录</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </aside>

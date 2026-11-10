@@ -16,6 +16,7 @@ import { cn, formatClock } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Input } from "../ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 export interface ConversationSidebarProps {
   activeId?: string;
@@ -236,43 +237,57 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
                     </form>
                   ) : (
                     <>
-                      <button
-                        type="button"
-                        title={title}
-                        onClick={() => navigate(`/chat/${conversation.id}`)}
-                        className="min-w-0 flex-1 truncate text-left"
-                      >
-                        <span
-                          className={cn(
-                            "block truncate text-sm",
-                            active ? "font-medium text-brandtext" : "text-inksoft",
-                          )}
-                        >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/chat/${conversation.id}`)}
+                            className="min-w-0 flex-1 truncate text-left"
+                          >
+                            <span
+                              className={cn(
+                                "block truncate text-sm",
+                                active ? "font-medium text-brandtext" : "text-inksoft",
+                              )}
+                            >
+                              {title}
+                            </span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" align="start" className="max-w-[16rem]">
                           {title}
-                        </span>
-                      </button>
+                        </TooltipContent>
+                      </Tooltip>
                       <span className="shrink-0 text-[10px] text-muted group-hover:hidden group-focus-within:hidden">
                         {formatClock(conversation.lastMessageAt ?? conversation.updatedAt)}
                       </span>
                       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                        <button
-                          type="button"
-                          aria-label="重命名会话"
-                          title="重命名"
-                          onClick={() => startRename(conversation)}
-                          className="rounded p-1 text-muted hover:bg-line hover:text-inksoft"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="删除会话"
-                          title="删除"
-                          onClick={() => setDeleting(conversation)}
-                          className="rounded p-1 text-muted hover:bg-line hover:text-danger"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label="重命名会话"
+                              onClick={() => startRename(conversation)}
+                              className="rounded p-1 text-muted hover:bg-line hover:text-inksoft"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">重命名</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label="删除会话"
+                              onClick={() => setDeleting(conversation)}
+                              className="rounded p-1 text-muted hover:bg-line hover:text-danger"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">删除</TooltipContent>
+                        </Tooltip>
                       </div>
                     </>
                   )}
