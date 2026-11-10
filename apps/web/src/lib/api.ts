@@ -359,13 +359,26 @@ export function deleteRunFeedback(runId: string): Promise<void> {
   return apiRequest(`/api/runs/${runId}/feedback`, { method: "DELETE" });
 }
 
+export interface ConversationSkill {
+  name: string;
+  description: string;
+  scope: "global" | "datasource";
+}
+
+export function listConversationSkills(
+  conversationId: string,
+): Promise<{ skills: ConversationSkill[] }> {
+  return apiRequest(`/api/conversations/${conversationId}/skills`);
+}
+
 export function sendMessage(
   conversationId: string,
   content: string,
+  skill?: string,
 ): Promise<{ runId: string; position: number }> {
   return apiRequest(`/api/conversations/${conversationId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(skill ? { content, skill } : { content }),
   });
 }
 

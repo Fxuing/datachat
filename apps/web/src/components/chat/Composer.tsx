@@ -1,10 +1,10 @@
-import { useState, type KeyboardEvent } from "react";
-import { SendHorizontal, Square } from "lucide-react";
+import { useRef, useState, type KeyboardEvent } from "react";
+import { SendHorizontal, Sparkles, Square, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { ModelPicker } from "./ModelPicker";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import type { ChatModelInfo } from "../../lib/api";
+import type { ChatModelInfo, ConversationSkill } from "../../lib/api";
 import { cn } from "../../lib/utils";
 
 const MAX_LENGTH = 8_000;
@@ -17,10 +17,11 @@ export interface ComposerProps {
   modelId: string;
   modelPickerDisabled: boolean;
   thinkingLevel: string;
+  skills: ConversationSkill[];
   contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null } | null;
   onModelChange: (modelId: string) => void;
   onThinkingChange: (level: string) => void;
-  onSend: (content: string) => Promise<void>;
+  onSend: (content: string, skill?: string) => Promise<void>;
   onStop: () => void;
 }
 
@@ -32,6 +33,7 @@ export function Composer({
   modelId,
   modelPickerDisabled,
   thinkingLevel,
+  skills,
   contextUsage,
   onModelChange,
   onThinkingChange,
@@ -40,16 +42,34 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [selectedSkill, setSelectedSkill] = useState<ConversationSkill | null>(null);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const disabled = !conversationReady || active || submitting;
   const canType = conversationReady;
   const trimmed = text.trim();
 
+  const slashMatch = /^\/([^\s]*)$/.exec(text);
+  const slashQuery = slashMatch?.[1]?.toLowerCase() ?? "";
+  const menuOpen =
+    Boolean(slashMatch) && !slashDismissed && canType && !active && skills.length > 0;
+  const filtered = menuOpen
+    ? skills.filter(
+        (skill) =>
+          skill.name.toLowerCase().includes(slashQuery) ||
+          skill.description.toLowerCase().includes(slashQuery),
+      )
+    : [];
+  const highlighted = filtered.length === 0 ? 0 : Math.min(activeIndex, filtered.length - 1);
+
   const submit = async () => {
-    if (!trimmed || disabled) return;
+    if (!trimmed || disabled || menuOpen) return;
     setSubmitting(true);
     try {
-      await onSend(trimmed);
+      await onSend(trimmed, selectedSkill?.name);
       setText("");
+      setSelectedSkill(null);
     } catch {
       // The page renders the send error inline; keep the draft for a retry.
     } finally {
@@ -57,7 +77,38 @@ export function Composer({
     }
   };
 
+  const chooseSkill = (skill: ConversationSkill) => {
+    setSelectedSkill(skill);
+    setText("");
+    setSlashDismissed(false);
+    setActiveIndex(0);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (menuOpen) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex(filtered.length === 0 ? 0 : (highlighted + 1) % filtered.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex(filtered.length === 0 ? 0 : (highlighted - 1 + filtered.length) % filtered.length);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSlashDismissed(true);
+        return;
+      }
+      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        const skill = filtered[highlighted];
+        if (skill) chooseSkill(skill);
+        return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       void submit();
@@ -73,40 +124,110 @@ export function Composer({
           void submit();
         }}
       >
-        <div className="rounded-xl border border-line bg-surface shadow-card transition-colors focus-within:border-brand/40 focus-within:ring-2 focus-within:ring-brand/10">
+        <div className="relative rounded-xl border border-line bg-surface shadow-card transition-colors focus-within:border-brand/40 focus-within:ring-2 focus-within:ring-brand/10">
+          {menuOpen ? (
+            <div
+              role="listbox"
+              aria-label="选择技能"
+              className="absolute inset-x-2 bottom-full z-20 mb-2 max-h-64 overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-pop"
+            >
+              <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted">
+                技能
+              </p>
+              {filtered.length === 0 ? (
+                <p className="px-2 py-2 text-xs text-muted">没有匹配的技能</p>
+              ) : (
+                filtered.map((skill, index) => (
+                  <button
+                    key={skill.name}
+                    type="button"
+                    role="option"
+                    aria-selected={index === highlighted}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => chooseSkill(skill)}
+                    className={cn(
+                      "flex w-full flex-col items-start gap-0.5 rounded-lg px-2 py-1.5 text-left",
+                      index === highlighted && "bg-subtle",
+                    )}
+                  >
+                    <span className="flex w-full items-center gap-1.5 text-xs font-medium text-ink">
+                      <Sparkles className="h-3 w-3 text-brand" />
+                      <span className="truncate">{skill.name}</span>
+                      <span className="ml-auto shrink-0 text-[10px] font-normal text-muted">
+                        {skill.scope === "global" ? "全局" : "数据源"}
+                      </span>
+                    </span>
+                    {skill.description ? (
+                      <span className="line-clamp-1 text-[11px] text-muted">
+                        {skill.description}
+                      </span>
+                    ) : null}
+                  </button>
+                ))
+              )}
+            </div>
+          ) : null}
+
+          {selectedSkill ? (
+            <div className="flex flex-wrap items-center gap-1 px-3 pt-2">
+              <span className="inline-flex items-center gap-1 rounded-md bg-brandsoft px-2 py-0.5 text-[11px] text-brandtext">
+                <Sparkles className="h-3 w-3" />
+                技能 · {selectedSkill.name}
+                <button
+                  type="button"
+                  aria-label="移除技能"
+                  onClick={() => setSelectedSkill(null)}
+                  className="rounded p-0.5 text-brandtext/70 hover:bg-brand/10 hover:text-brandtext"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            </div>
+          ) : null}
+
           <div className="flex items-end gap-2 p-2">
-          <Textarea
-            aria-label="输入问题"
-            rows={2}
-            maxLength={MAX_LENGTH}
-            value={text}
-            disabled={!canType}
-            placeholder={
-              conversationReady ? "输入问题，例如：users 表有多少行？" : "请先在左侧选择或新建会话"
-            }
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={onKeyDown}
-            className="min-h-[52px] resize-none border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:border-0 focus-visible:ring-0"
-          />
-          <ModelPicker
-            models={models}
-            modelId={modelId}
-            thinkingLevel={thinkingLevel}
-            disabled={!conversationReady || modelPickerDisabled}
-            onModelChange={onModelChange}
-            onThinkingChange={onThinkingChange}
-          />
-          {active && canStop ? (
-            <Button variant="outline" className="gap-2" onClick={onStop}>
-              <Square className="h-3.5 w-3.5 fill-current" />
-              停止
-            </Button>
-          ) : (
-            <Button type="submit" className="gap-2" disabled={disabled || !trimmed}>
-              <SendHorizontal className="h-4 w-4" />
-              {submitting ? "发送中…" : "发送"}
-            </Button>
-          )}
+            <Textarea
+              ref={textareaRef}
+              aria-label="输入问题"
+              rows={2}
+              maxLength={MAX_LENGTH}
+              value={text}
+              disabled={!canType}
+              placeholder={
+                conversationReady
+                  ? skills.length > 0
+                    ? "输入问题，输入 / 选择技能"
+                    : "输入问题，例如：users 表有多少行？"
+                  : "请先在左侧选择或新建会话"
+              }
+              onChange={(event) => {
+                setText(event.target.value);
+                setSlashDismissed(false);
+                setActiveIndex(0);
+              }}
+              onKeyDown={onKeyDown}
+              className="min-h-[52px] resize-none border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:border-0 focus-visible:ring-0"
+            />
+            <ModelPicker
+              models={models}
+              modelId={modelId}
+              thinkingLevel={thinkingLevel}
+              disabled={!conversationReady || modelPickerDisabled}
+              onModelChange={onModelChange}
+              onThinkingChange={onThinkingChange}
+            />
+            {active && canStop ? (
+              <Button variant="outline" className="gap-2" onClick={onStop}>
+                <Square className="h-3.5 w-3.5 fill-current" />
+                停止
+              </Button>
+            ) : (
+              <Button type="submit" className="gap-2" disabled={disabled || !trimmed || menuOpen}>
+                <SendHorizontal className="h-4 w-4" />
+                {submitting ? "发送中…" : "发送"}
+              </Button>
+            )}
           </div>
           <div className="flex items-center justify-between px-3 pb-2 text-[11px] text-muted">
             <div className="flex items-center gap-2">
@@ -122,7 +243,6 @@ export function Composer({
     </div>
   );
 }
-
 
 function ContextRing({
   usage,
@@ -148,24 +268,34 @@ function ContextRing({
     <Tooltip>
       <TooltipTrigger asChild>
         <span className="flex items-center gap-1.5" tabIndex={0} aria-label={title}>
-      <svg viewBox="0 0 16 16" className={cn("h-4 w-4 -rotate-90", color)} aria-hidden>
-        <circle cx="8" cy="8" r={radius} fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.2" />
-        <circle
-          cx="8"
-          cy="8"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - ratio)}
-        />
-      </svg>
+          <svg viewBox="0 0 16 16" className={cn("h-4 w-4 -rotate-90", color)} aria-hidden>
+            <circle
+              cx="8"
+              cy="8"
+              r={radius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              opacity="0.2"
+            />
+            <circle
+              cx="8"
+              cy="8"
+              r={radius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={circumference * (1 - ratio)}
+            />
+          </svg>
           <span className="tabular-nums">{label}</span>
         </span>
       </TooltipTrigger>
-      <TooltipContent side="top" align="start">{title}</TooltipContent>
+      <TooltipContent side="top" align="start">
+        {title}
+      </TooltipContent>
     </Tooltip>
   );
 }

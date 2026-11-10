@@ -24,6 +24,7 @@ import {
   type ChatModelInfo,
 } from "../agent/model-runtime.js";
 import type { RuntimeManager } from "../agent/runtime.js";
+import { composeSkillInstruction, findApplicableSkill, listApplicableSkills } from "../agent/skills.js";
 
 import type { ArtifactStore } from "../services/artifacts.js";
 import { resolveDefaultModelId } from "../services/app-settings.js";
@@ -62,6 +63,7 @@ const updateBodySchema = z.object({
 });
 const messageBodySchema = z.object({
   content: z.string().trim().min(1).max(8_000),
+  skill: z.string().trim().min(1).max(100).optional(),
 });
 
 function error(code: string, message: string) {
@@ -170,6 +172,32 @@ export async function conversationRoutes(
         return reply.code(404).send(error("NOT_FOUND", "会话不存在"));
       }
       return getConversationDetail(opts.db, opts.artifacts, conversation);
+    },
+  );
+
+  app.get(
+    "/api/conversations/:id/skills",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const params = idParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.code(400).send(error("VALIDATION", "参数不合法"));
+      }
+      const conversation = findOwnedConversation(
+        opts.db,
+        params.data.id,
+        request.user!.sub,
+      );
+      if (!conversation) {
+        return reply.code(404).send(error("NOT_FOUND", "会话不存在"));
+      }
+      return {
+        skills: listApplicableSkills(opts.db, conversation.datasourceId).map((skill) => ({
+          name: skill.name,
+          description: skill.description,
+          scope: skill.scope,
+        })),
+      };
     },
   );
 
@@ -282,6 +310,13 @@ export async function conversationRoutes(
       }
 
       const content = body.data.content;
+      const skill = body.data.skill
+        ? findApplicableSkill(opts.db, conversation.datasourceId, body.data.skill)
+        : undefined;
+      if (body.data.skill && !skill) {
+        return reply.code(400).send(error("UNKNOWN_SKILL", "技能不存在或未启用"));
+      }
+      const promptContent = skill ? composeSkillInstruction(skill, content) : content;
       const runtime = await opts.runtime.getOrCreate(conversation, user.sub);
       if (runtime.queueLength >= 5) {
         return reply.code(429).send(error("RATE_LIMITED", "当前会话排队消息过多，请稍后再试"));
@@ -302,7 +337,11 @@ export async function conversationRoutes(
 
       let position: number;
       try {
-        position = runtime.enqueue({ runId: run.id, content });
+        position = runtime.enqueue({
+          runId: run.id,
+          content: promptContent,
+          displayContent: content,
+        });
       } catch (enqueueError) {
         request.log.error({ err: enqueueError, runId: run.id }, "failed to enqueue run");
         const message =

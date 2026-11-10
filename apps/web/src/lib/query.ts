@@ -18,6 +18,7 @@ export const queryKeys = {
   me: ["me"] as const,
   conversations: ["conversations"] as const,
   conversation: (id: string) => ["conversation", id] as const,
+  conversationSkills: (id: string) => ["conversation-skills", id] as const,
   report: (id: string) => ["report", id] as const,
   artifact: (id: string) => ["artifact", id] as const,
   artifactRows: (id: string) => ["artifactRows", id] as const,

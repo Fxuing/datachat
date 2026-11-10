@@ -17,6 +17,7 @@ import {
   fetchMe,
   getConversation,
   listDatasources,
+  listConversationSkills,
   listModels,
   sendMessage,
   updateConversation,
@@ -54,6 +55,12 @@ export default function ChatPage() {
     queryFn: listModels,
     enabled: Boolean(conversationId),
   });
+  const skillsQuery = useQuery({
+    queryKey: queryKeys.conversationSkills(conversationId ?? ""),
+    queryFn: () => listConversationSkills(conversationId as string),
+    enabled: Boolean(conversationId),
+    staleTime: 60_000,
+  });
 
   const conversation = conversationQuery.data?.conversation;
   const messages = conversationQuery.data?.messages;
@@ -87,7 +94,8 @@ export default function ChatPage() {
   });
 
   const sendMutation = useMutation({
-    mutationFn: (content: string) => sendMessage(conversationId as string, content),
+    mutationFn: (input: { content: string; skill?: string }) =>
+      sendMessage(conversationId as string, input.content, input.skill),
     onSuccess: ({ runId }) => {
       setActiveRunId(runId);
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
@@ -147,10 +155,10 @@ export default function ChatPage() {
     if (!alreadyFinished) setActiveRunId(activeRunFromServer.id);
   }, [activeRunId, activeRunFromServer, messages]);
 
-  const handleSend = async (content: string) => {
+  const handleSend = async (content: string, skill?: string) => {
     setSendError(null);
     setOptimisticText(content);
-    await sendMutation.mutateAsync(content);
+    await sendMutation.mutateAsync(skill ? { content, skill } : { content });
   };
 
   const user = meQuery.data?.user;
@@ -268,6 +276,7 @@ export default function ChatPage() {
             modelsQuery.isPending || modelMutation.isPending || !conversation
           }
           thinkingLevel={conversation?.thinkingLevel ?? "off"}
+          skills={skillsQuery.data?.skills ?? []}
           contextUsage={stream.state.contextUsage ?? conversationQuery.data?.contextUsage ?? null}
           onModelChange={(modelId) => modelMutation.mutate(modelId)}
           onThinkingChange={(level) => thinkingMutation.mutate(level)}

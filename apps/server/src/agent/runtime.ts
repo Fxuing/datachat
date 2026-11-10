@@ -28,6 +28,7 @@ const DISPOSE_ABORT_TIMEOUT_MS = 5_000;
 export interface QueueJob {
   runId: string;
   content: string;
+  displayContent?: string;
 }
 
 export interface SessionBundle {
@@ -185,7 +186,10 @@ export class ConversationRuntime {
       // The queue must keep moving even if the status write fails.
     }
     this.emitEvent(job.runId, { type: "run_start", payload: { startedAt: this.now() } });
-    this.emitEvent(job.runId, { type: "user_message", payload: { content: job.content } });
+    this.emitEvent(job.runId, {
+      type: "user_message",
+      payload: { content: job.displayContent ?? job.content },
+    });
 
     let bridge: EventBridge | undefined;
     try {

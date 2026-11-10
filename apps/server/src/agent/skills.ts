@@ -13,14 +13,15 @@ export interface MaterializeSkillsInput {
   dataDir: string;
 }
 
-interface ApplicableSkill {
+export interface ApplicableSkill {
   name: string;
   description: string;
   content: string;
+  scope: "global" | "datasource";
 }
 
 /** Skills visible to a conversation: global first, then datasource-scoped by name override. */
-function loadApplicableSkills(db: Db, datasourceId: string): ApplicableSkill[] {
+export function listApplicableSkills(db: Db, datasourceId: string): ApplicableSkill[] {
   const rows = db
     .select()
     .from(skills)
@@ -35,13 +36,46 @@ function loadApplicableSkills(db: Db, datasourceId: string): ApplicableSkill[] {
   const byName = new Map<string, ApplicableSkill>();
   for (const row of rows) {
     if (row.scope !== "global") continue;
-    byName.set(row.name, { name: row.name, description: row.description, content: row.content });
+    byName.set(row.name, {
+      name: row.name,
+      description: row.description,
+      content: row.content,
+      scope: "global",
+    });
   }
   for (const row of rows) {
     if (row.scope !== "datasource") continue;
-    byName.set(row.name, { name: row.name, description: row.description, content: row.content });
+    byName.set(row.name, {
+      name: row.name,
+      description: row.description,
+      content: row.content,
+      scope: "datasource",
+    });
   }
   return [...byName.values()];
+}
+
+export function findApplicableSkill(
+  db: Db,
+  datasourceId: string,
+  name: string,
+): ApplicableSkill | undefined {
+  return listApplicableSkills(db, datasourceId).find((skill) => skill.name === name);
+}
+
+/** Explicit invocation: put the skill body in the prompt so weaker models cannot skip it. */
+export function composeSkillInstruction(skill: ApplicableSkill, question: string): string {
+  const body = parseFrontmatter(skill.content).body.trim().slice(0, 60_000);
+  return [
+    `请使用技能「${skill.name}」完成本次回答，并严格遵循下面给出的技能说明。`,
+    "",
+    "<skill>",
+    body,
+    "</skill>",
+    "",
+    "用户问题：",
+    question,
+  ].join("\n");
 }
 
 /** Safe single-segment directory name derived from a skill name. */
@@ -71,7 +105,7 @@ export async function materializeSkills(db: Db, input: MaterializeSkillsInput): 
   await fsp.rm(skillsDir, { recursive: true, force: true });
   await fsp.mkdir(skillsDir, { recursive: true });
 
-  for (const skill of loadApplicableSkills(db, input.datasourceId)) {
+  for (const skill of listApplicableSkills(db, input.datasourceId)) {
     const dir = path.join(skillsDir, skillDirectoryName(skill.name));
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(path.join(dir, "SKILL.md"), composeSkillFile(skill), "utf8");

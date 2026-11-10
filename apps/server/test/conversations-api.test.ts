@@ -8,7 +8,7 @@ import { createSessionSigner } from "../src/auth/jwt.js";
 import { hashPassword } from "../src/auth/password.js";
 import { createDb, type Db } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
-import { artifacts, runs } from "../src/db/schema.js";
+import { artifacts, runs, skills } from "../src/db/schema.js";
 import {
   createConversation,
   findConversation,
@@ -34,7 +34,7 @@ let otherCookie: string;
 
 const fakeRuntime = {
   bus: new RunEventBus(),
-  enqueued: [] as Array<{ runId: string; content: string }>,
+  enqueued: [] as Array<{ runId: string; content: string; displayContent?: string }>,
   position: 1,
   abort: vi.fn(() => true),
   remove: vi.fn(async () => undefined),
@@ -42,7 +42,7 @@ const fakeRuntime = {
   shutdown: vi.fn(async () => undefined),
   getOrCreate: vi.fn(() => ({
     queueLength: 0,
-    enqueue: (input: { runId: string; content: string }) => {
+    enqueue: (input: { runId: string; content: string; displayContent?: string }) => {
       fakeRuntime.enqueued.push(input);
       return fakeRuntime.position++;
     },
@@ -630,6 +630,90 @@ describe("conversation routes", () => {
         type: "run_end",
         payloadJson: JSON.stringify({ status: "error", error: "runtime closed" }),
       });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("conversation skills", () => {
+  it("lists applicable skills and injects the invoked one into the prompt", async () => {
+    const app = await makeApp();
+    const conversationId = await createTestConversation();
+    const now = Date.now();
+    db.insert(skills)
+      .values([
+        {
+          id: randomUUID(),
+          scope: "global",
+          datasourceId: null,
+          name: "monthly-revenue",
+          description: "月度收入口径",
+          content: `---
+name: monthly-revenue
+description: 月度收入口径
+---
+
+# 月度收入
+
+使用 SUM(amount)，排除退款。`,
+          enabled: 1,
+          updatedBy: userId,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: randomUUID(),
+          scope: "datasource",
+          datasourceId,
+          name: "churn",
+          description: "流失分析",
+          content: `# 流失
+
+按最近登录时间判断。`,
+          enabled: 1,
+          updatedBy: userId,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      .run();
+
+    try {
+      const listed = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversationId}/skills`,
+        cookies: { dc_session: cookie },
+      });
+      expect(listed.statusCode).toBe(200);
+      expect(listed.json().skills).toEqual([
+        { name: "monthly-revenue", description: "月度收入口径", scope: "global" },
+        { name: "churn", description: "流失分析", scope: "datasource" },
+      ]);
+
+      const unknown = await app.inject({
+        method: "POST",
+        url: `/api/conversations/${conversationId}/messages`,
+        cookies: { dc_session: cookie },
+        payload: { content: "你好", skill: "missing" },
+      });
+      expect(unknown.statusCode).toBe(400);
+      expect(unknown.json().error.code).toBe("UNKNOWN_SKILL");
+
+      const sent = await app.inject({
+        method: "POST",
+        url: `/api/conversations/${conversationId}/messages`,
+        cookies: { dc_session: cookie },
+        payload: { content: "本月收入是多少？", skill: "monthly-revenue" },
+      });
+      expect(sent.statusCode).toBe(202);
+      const enqueued = fakeRuntime.enqueued.at(-1)!;
+      expect(enqueued.content).toContain("请使用技能「monthly-revenue」");
+      expect(enqueued.content).toContain("使用 SUM(amount)，排除退款。");
+      expect(enqueued.content).toContain("本月收入是多少？");
+
+      expect(enqueued.displayContent).toBe("本月收入是多少？");
+      expect(findConversation(db, conversationId)?.title).toBe("本月收入是多少？");
     } finally {
       await app.close();
     }

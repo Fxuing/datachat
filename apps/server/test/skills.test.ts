@@ -9,7 +9,12 @@ import { migrateDb } from "../src/db/migrate.js";
 import { mcpServers, skills } from "../src/db/schema.js";
 import { deriveSecretKey, encryptSecret } from "../src/agent/datasource/crypto.js";
 import { loadMcpFor } from "../src/agent/mcp.js";
-import { materializeSkills, seedSkills } from "../src/agent/skills.js";
+import {
+  composeSkillInstruction,
+  findApplicableSkill,
+  materializeSkills,
+  seedSkills,
+} from "../src/agent/skills.js";
 import { createConversationResources } from "../src/agent/resources.js";
 import { testConfig } from "./helpers/config.js";
 
@@ -135,6 +140,51 @@ describe("materializeSkills", () => {
     expect(fs.existsSync(path.join(dataDir, "skills", "c1", "analysis-standards", "SKILL.md"))).toBe(
       true,
     );
+  });
+});
+
+describe("composeSkillInstruction", () => {
+  it("embeds the skill body and the question, without frontmatter", () => {
+    const skill = {
+      name: "monthly-revenue",
+      description: "月度收入口径",
+      scope: "global" as const,
+      content: `---
+name: monthly-revenue
+description: 月度收入口径
+---
+
+# 月度收入
+
+使用 SUM(amount) 并排除退款。`,
+    };
+    const prompt = composeSkillInstruction(skill, "本月收入是多少？");
+
+    expect(prompt).toContain("请使用技能「monthly-revenue」");
+    expect(prompt).toContain("# 月度收入");
+    expect(prompt).toContain("使用 SUM(amount) 并排除退款。");
+    expect(prompt).not.toContain("description: 月度收入口径");
+    expect(prompt).toContain(`用户问题：
+本月收入是多少？`);
+  });
+
+  it("lets a datasource skill override a global skill with the same name", () => {
+    insertSkill({ name: "churn", content: `# churn
+
+global body` });
+    insertSkill({
+      name: "churn",
+      scope: "datasource",
+      datasourceId: "ds-1",
+      content: `# churn
+
+datasource body`,
+    });
+
+    expect(findApplicableSkill(handle.db, "ds-1", "churn")?.content).toContain(
+      "datasource body",
+    );
+    expect(findApplicableSkill(handle.db, "ds-2", "churn")?.content).toContain("global body");
   });
 });
 
