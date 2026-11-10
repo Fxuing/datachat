@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "../../lib/utils";
 import type { ChatModelInfo } from "../../lib/api";
 
@@ -55,15 +56,16 @@ export function ModelPicker({
   const label = selected?.name ?? (models.length > 0 ? "选择模型" : "未配置模型");
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <Tooltip>
+      <Popover open={open} onOpenChange={setOpen}>
+      <TooltipTrigger asChild>
+        <PopoverTrigger asChild>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           disabled={disabled || models.length === 0}
           aria-label="选择模型与思考等级"
-          title="模型与思考等级（对下一次提问生效）"
           className="h-8 max-w-[15rem] shrink-0 gap-1 rounded-lg px-2 text-[11px] font-normal text-inksoft"
         >
           <span className="truncate">{label}</span>
@@ -71,7 +73,8 @@ export function ModelPicker({
           <span className="shrink-0">{thinkingLabel}</span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
         </Button>
-      </PopoverTrigger>
+        </PopoverTrigger>
+      </TooltipTrigger>
       <PopoverContent side="top" align="start" className="w-[17rem]">
         <p className="px-1 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted">
           模型
@@ -133,6 +136,8 @@ export function ModelPicker({
           })}
         </div>
       </PopoverContent>
-    </Popover>
+      </Popover>
+      <TooltipContent side="top" align="start">模型与思考等级（对下一次提问生效）</TooltipContent>
+    </Tooltip>
   );
 }

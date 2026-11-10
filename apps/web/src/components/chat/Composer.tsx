@@ -3,6 +3,7 @@ import { SendHorizontal, Square } from "lucide-react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { ModelPicker } from "./ModelPicker";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import type { ChatModelInfo } from "../../lib/api";
 import { cn } from "../../lib/utils";
 
@@ -144,7 +145,9 @@ function ContextRing({
       ? `${formatTokens(usage.tokens)} / ${formatTokens(usage.contextWindow)} tokens`
       : "上下文使用情况（等待首轮回复后更新）";
   return (
-    <span className="flex items-center gap-1.5" title={title}>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="flex items-center gap-1.5" tabIndex={0} aria-label={title}>
       <svg viewBox="0 0 16 16" className={cn("h-4 w-4 -rotate-90", color)} aria-hidden>
         <circle cx="8" cy="8" r={radius} fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.2" />
         <circle
@@ -159,8 +162,11 @@ function ContextRing({
           strokeDashoffset={circumference * (1 - ratio)}
         />
       </svg>
-      <span className="tabular-nums">{label}</span>
-    </span>
+          <span className="tabular-nums">{label}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="start">{title}</TooltipContent>
+    </Tooltip>
   );
 }
 

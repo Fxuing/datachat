@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Textarea } from "../ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 export interface TurnFooterProps {
   runId: string | null;
@@ -145,18 +146,27 @@ export function TurnFooter({
         ) : null}
 
         {totalTokens > 0 && usage ? (
-          <span
-            title={`输入 ${usage.input} · 输出 ${usage.output} · 缓存读 ${usage.cacheRead} · 缓存写 ${usage.cacheWrite}`}
-          >
-            {formatTokens(totalTokens)} tokens
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0}>{formatTokens(totalTokens)} tokens</span>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              输入 {usage.input} · 输出 {usage.output} · 缓存读 {usage.cacheRead} · 缓存写{" "}
+              {usage.cacheWrite}
+            </TooltipContent>
+          </Tooltip>
         ) : null}
 
         {durationMs != null ? (
-          <span className="flex items-center gap-1" title="本次运行耗时">
-            <Clock3 className="h-3 w-3" />
-            {formatDuration(durationMs)}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex items-center gap-1" tabIndex={0}>
+                <Clock3 className="h-3 w-3" />
+                {formatDuration(durationMs)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top">本次运行耗时</TooltipContent>
+          </Tooltip>
         ) : null}
 
         {stepCount > 0 ? (
