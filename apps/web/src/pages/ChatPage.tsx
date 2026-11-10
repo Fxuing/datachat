@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Share2 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { Composer } from "../components/chat/Composer";
@@ -13,7 +13,9 @@ import { Button } from "../components/ui/button";
 import { useRunStream } from "../hooks/useRunStream";
 import {
   ApiError,
+  createConversation,
   createReport,
+  deleteConversation,
   fetchMe,
   getConversation,
   listDatasources,
@@ -43,7 +45,9 @@ export default function ChatPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [failedSend, setFailedSend] = useState<{ content: string; skill?: string } | null>(null);
   const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
+  const [draftDatasourceId, setDraftDatasourceId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const location = useLocation();
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const datasourcesQuery = useQuery({
@@ -58,7 +62,6 @@ export default function ChatPage() {
   const modelsQuery = useQuery({
     queryKey: queryKeys.models,
     queryFn: listModels,
-    enabled: Boolean(conversationId),
   });
   const skillsQuery = useQuery({
     queryKey: queryKeys.conversationSkills(conversationId ?? ""),
@@ -95,6 +98,32 @@ export default function ChatPage() {
         queryKeys.conversation(conversationId as string),
         (previous) => (previous ? { ...previous, conversation: updated } : previous),
       );
+    },
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async (input: { content: string; datasourceId: string }) => {
+      const { conversation: created } = await createConversation({
+        datasourceId: input.datasourceId,
+      });
+      try {
+        const { runId } = await sendMessage(created.id, input.content);
+        return { conversationId: created.id, runId };
+      } catch (error) {
+        await deleteConversation(created.id).catch(() => undefined);
+        throw error;
+      }
+    },
+    onSuccess: ({ conversationId: createdId, runId }, input) => {
+      setFailedSend(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+      navigate(`/chat/${createdId}`, {
+        state: { pendingRun: { runId, content: input.content } },
+      });
+    },
+    onError: (error, input) => {
+      setFailedSend({ content: input.content });
+      setSendError(errorMessage(error, "创建会话失败，请稍后重试"));
     },
   });
 
@@ -180,6 +209,28 @@ export default function ChatPage() {
     setSendError(null);
   }, [conversationId]);
 
+  // A brand-new conversation is created on the empty state and navigated to
+  // immediately; seed the optimistic turn and stream from the navigation state
+  // so the first question does not flash away while history is fetched.
+  useEffect(() => {
+    const pending = (
+      location.state as
+        | { pendingRun?: { runId: string; content: string; skill?: string } }
+        | null
+    )?.pendingRun;
+    if (!pending || !conversationId) return;
+    setActiveRunId(pending.runId);
+    setOptimisticText(pending.content);
+    setOptimisticSkill(pending.skill ?? null);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [conversationId, location.pathname, location.state, navigate]);
+
+  const availableDatasources = datasourcesQuery.data?.datasources ?? [];
+  useEffect(() => {
+    if (draftDatasourceId || availableDatasources.length === 0) return;
+    setDraftDatasourceId(availableDatasources[0]!.id);
+  }, [availableDatasources, draftDatasourceId]);
+
   // Reattach to a run that was still queued/running when the page was (re)loaded.
   useEffect(() => {
     if (activeRunId || !activeRunFromServer) return;
@@ -193,6 +244,15 @@ export default function ChatPage() {
   }, [activeRunId, activeRunFromServer, messages]);
 
   const handleSend = async (content: string, skill?: string) => {
+    if (!conversationId) {
+      if (!draftDatasourceId) {
+        setSendError("请先选择一个数据源");
+        return;
+      }
+      setSendError(null);
+      await startMutation.mutateAsync({ content, datasourceId: draftDatasourceId });
+      return;
+    }
     setSendError(null);
     setOptimisticText(content);
     setOptimisticSkill(skill ?? null);
@@ -209,7 +269,7 @@ export default function ChatPage() {
   }
 
   const showStream = !activeRunPersisted && (activeRunId !== null || optimisticText !== null);
-  const active = sendMutation.isPending || stream.active;
+  const active = sendMutation.isPending || startMutation.isPending || stream.active;
   const models = modelsQuery.data;
   const currentModelId = conversation?.modelId ?? models?.defaultId ?? "";
   const topbar = (
@@ -247,6 +307,13 @@ export default function ChatPage() {
         stream={stream.state}
         showStream={false}
         optimisticText={null}
+        datasources={availableDatasources}
+        datasourcesLoading={datasourcesQuery.isPending}
+        selectedDatasourceId={draftDatasourceId}
+        onSelectDatasource={setDraftDatasourceId}
+        onExample={(content) => void handleSend(content)}
+        starting={startMutation.isPending}
+        isAdmin={user.role === "admin"}
       />
     );
   } else if (conversationQuery.isPending) {
@@ -325,7 +392,9 @@ export default function ChatPage() {
           </div>
         ) : null}
         <Composer
-          conversationReady={Boolean(conversationId) && Boolean(conversation)}
+          conversationReady={
+            conversationId ? Boolean(conversation) : Boolean(draftDatasourceId)
+          }
           active={active}
           canStop={activeRunId !== null}
           models={models?.models ?? []}

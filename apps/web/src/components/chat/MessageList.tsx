@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, Bot } from "lucide-react";
-import type { ChatArtifact, ChatMessage, ChatModelInfo } from "../../lib/api";
+import { ArrowDown, ArrowUpRight, Bot, Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import type {
+  ChatArtifact,
+  ChatMessage,
+  ChatModelInfo,
+  DatasourceSummary,
+} from "../../lib/api";
 import type { RunStreamState } from "../../lib/run-events";
 import { PageSpinner } from "../ui/spinner";
 import { BrandMark } from "../BrandMark";
@@ -12,6 +18,7 @@ import { ToolCard } from "./ToolCard";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnFooter } from "./TurnFooter";
 import { ConversationMinimap } from "./ConversationMinimap";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { ResultCard } from "./ResultCard";
 import { parseReportMarkdown } from "../../lib/report-markdown";
 
@@ -33,6 +40,14 @@ export interface MessageListProps {
   /** Run id currently being retried, used to disable its actions. */
   retryingRunId?: string | null;
   onRetry?: (message: ChatMessage, modelId?: string) => void;
+  /** Datasources offered on the empty state so a new chat can start in place. */
+  datasources?: DatasourceSummary[];
+  datasourcesLoading?: boolean;
+  selectedDatasourceId?: string | null;
+  onSelectDatasource?: (id: string) => void;
+  onExample?: (content: string) => void;
+  starting?: boolean;
+  isAdmin?: boolean;
 }
 
 function AssistantHeader() {
@@ -47,14 +62,40 @@ function AssistantHeader() {
 }
 
 const examples = [
-  { title: "看看数据长什么样", body: "列出所有表，并说明每张表的用途" },
-  { title: "做一次趋势分析", body: "orders 表最近 12 个月每月订单量和金额" },
-  { title: "按维度拆分", body: "按渠道统计本月新客数，并画成柱状图" },
+  {
+    title: "先了解数据结构",
+    body: "这个库有哪些表？分别做什么？",
+  },
+  {
+    title: "抽查几张表",
+    body: "找出数据量最大的 3 张表，各看 5 行样例",
+  },
+  {
+    title: "做一个趋势分析",
+    body: "选一个关键指标，看看最近 12 个月的趋势",
+  },
 ];
 
-function EmptyChat() {
+function EmptyChat({
+  datasources = [],
+  datasourcesLoading = false,
+  selectedDatasourceId = null,
+  onSelectDatasource,
+  onExample,
+  starting = false,
+  isAdmin = false,
+}: {
+  datasources?: DatasourceSummary[];
+  datasourcesLoading?: boolean;
+  selectedDatasourceId?: string | null;
+  onSelectDatasource?: (id: string) => void;
+  onExample?: (content: string) => void;
+  starting?: boolean;
+  isAdmin?: boolean;
+}) {
+  const canStart = Boolean(selectedDatasourceId) && !starting;
   return (
-    <div className="flex flex-col items-center justify-center gap-8 py-20 text-center">
+    <div className="flex flex-col items-center justify-center gap-7 py-20 text-center">
       <div className="relative">
         <span className="absolute inset-0 -z-10 rounded-full bg-brand/20 blur-2xl" />
         <BrandMark size={60} className="rounded-[14px] shadow-card" />
@@ -62,22 +103,75 @@ function EmptyChat() {
       <div>
         <p className="text-lg font-semibold tracking-tight text-ink">开始新的对话</p>
         <p className="mt-1.5 text-sm text-muted">
-          选择左侧会话，或直接描述你想了解的数据问题
+          选择一个数据源，然后直接提问或用下面的示例开始
         </p>
       </div>
+
+      <div className="w-full max-w-md text-left">
+        <div className="mb-1.5 flex items-baseline justify-between gap-3">
+          <label className="text-[11px] font-medium text-inksoft">数据源</label>
+          <span className="text-[10px] text-muted">只会执行只读查询</span>
+        </div>
+        {datasourcesLoading ? (
+          <div className="flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs text-muted">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            正在加载数据源…
+          </div>
+        ) : datasources.length > 0 ? (
+          <Select
+            value={selectedDatasourceId ?? undefined}
+            onValueChange={onSelectDatasource}
+            disabled={starting}
+          >
+            <SelectTrigger aria-label="选择数据源" className="h-10 bg-surface">
+              <SelectValue placeholder="选择一个数据源" />
+            </SelectTrigger>
+            <SelectContent>
+              {datasources.map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  {item.name} · {item.type === "mysql" ? "MySQL" : "PostgreSQL"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <div className="rounded-lg border border-dashed border-line bg-subtle/40 px-4 py-3 text-left">
+            <p className="text-xs font-medium text-ink">还没有可用的数据源</p>
+            <p className="mt-1 text-[11px] leading-5 text-muted">
+              请联系管理员完成数据库连接配置并授权给你。
+            </p>
+            {isAdmin ? (
+              <Link
+                to="/admin/datasources"
+                className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-brand hover:underline"
+              >
+                去添加数据源
+                <ArrowUpRight className="h-3 w-3" />
+              </Link>
+            ) : null}
+          </div>
+        )}
+      </div>
+
       <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-3">
         {examples.map((example) => (
-          <div
+          <button
             key={example.title}
-            className="rounded-xl border border-line bg-surface/70 p-3 text-left shadow-card"
+            type="button"
+            disabled={!canStart || !onExample}
+            onClick={() => onExample?.(example.body)}
+            className="group rounded-xl border border-line bg-surface/70 p-3 text-left shadow-card transition-colors hover:border-brand/40 hover:bg-surface disabled:cursor-not-allowed disabled:opacity-55"
           >
-            <p className="text-[12px] font-medium text-inksoft">{example.title}</p>
+            <p className="flex items-center justify-between gap-2 text-[12px] font-medium text-inksoft">
+              {example.title}
+              <ArrowUpRight className="h-3.5 w-3.5 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+            </p>
             <p className="mt-1 text-[11px] leading-5 text-muted">{example.body}</p>
-          </div>
+          </button>
         ))}
       </div>
       <p className="text-[11px] text-muted/80">
-        需要先在「管理 → 数据源」完成连接配置
+        {starting ? "正在创建会话…" : "点击示例会直接开始对话，也可以在下方输入框提问"}
       </p>
     </div>
   );
@@ -96,12 +190,26 @@ export function MessageList({
   models = [],
   retryingRunId = null,
   onRetry,
+  datasources = [],
+  datasourcesLoading = false,
+  selectedDatasourceId = null,
+  onSelectDatasource,
+  onExample,
+  starting = false,
+  isAdmin = false,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const [showJump, setShowJump] = useState(false);
-  const hasContent = messages.length > 0 || showStream;
+  // While a run is streaming, its persisted group can already be in the history
+  // (the page fetched the conversation right after navigating from the empty
+  // state). Render the live block instead of both it and the persisted copy.
+  const visibleMessages =
+    showStream && activeRunId
+      ? messages.filter((message) => message.runId !== activeRunId)
+      : messages;
+  const hasContent = visibleMessages.length > 0 || showStream;
   const streamSegments = parseReportMarkdown(stream.text);
   const referencedCharts = new Set(
     streamSegments
@@ -159,9 +267,19 @@ export function MessageList({
         ref={containerRef}
         className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgb(var(--brand)/0.06),transparent_70%)]">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
-        {!hasContent ? <EmptyChat /> : null}
+        {!hasContent ? (
+          <EmptyChat
+            datasources={datasources}
+            datasourcesLoading={datasourcesLoading}
+            selectedDatasourceId={selectedDatasourceId}
+            onSelectDatasource={onSelectDatasource}
+            onExample={onExample}
+            starting={starting}
+            isAdmin={isAdmin}
+          />
+        ) : null}
 
-        {messages.map((message) => (
+        {visibleMessages.map((message) => (
           <div key={message.runId} id={`turn-${message.runId}`}>
             <MessageItem
               message={message}

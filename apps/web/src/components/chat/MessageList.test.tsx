@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { MessageList } from "./MessageList";
@@ -27,6 +28,71 @@ function renderList(state: RunStreamState) {
 }
 
 describe("MessageList charts", () => {
+  it("does not duplicate the active turn when history already contains it", () => {
+    render(
+      <MemoryRouter>
+        <MessageList
+          messages={[
+            {
+              runId: "run-1",
+              status: "running",
+              user: { content: "这个库有哪些表？" },
+              assistant: null,
+              tools: [],
+              results: [],
+              sqls: [],
+              error: null,
+              createdAt: 1,
+            },
+          ]}
+          stream={stream({ status: "running" })}
+          showStream
+          optimisticText="这个库有哪些表？"
+          activeRunId="run-1"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("这个库有哪些表？")).toHaveLength(1);
+  });
+
+  it("starts a chat from the empty state via a datasource and example", async () => {
+    const user = userEvent.setup();
+    const onExample = vi.fn();
+    render(
+      <MemoryRouter>
+        <MessageList
+          messages={[]}
+          stream={initialRunStreamState}
+          showStream={false}
+          optimisticText={null}
+          datasources={[
+            {
+              id: "ds-1",
+              name: "业务库",
+              type: "mysql",
+              host: "db.local",
+              port: 3306,
+              database: "biz",
+              username: "reader",
+              sslMode: "disable",
+              status: "ok",
+              readOnlyVerified: true,
+              allowWriteAccount: false,
+              lastCheckedAt: null,
+            },
+          ]}
+          selectedDatasourceId="ds-1"
+          onExample={onExample}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("选择数据源")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /先了解数据结构/ }));
+    expect(onExample).toHaveBeenCalledWith("这个库有哪些表？分别做什么？");
+  });
+
   it("waits for the run to finish before showing charts", () => {
     const text = "趋势如下。\n\n[[chart:chart-1]]\n\n结论。";
     const { rerender } = renderList(
