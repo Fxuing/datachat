@@ -255,7 +255,7 @@ export default function ChatPage() {
           </div>
         ) : null}
         {conversationId && stream.state.questions.length > 0 ? (
-          <div className="w-full px-4 pb-2">
+          <div className="mx-auto w-full max-w-3xl space-y-2 px-4 pb-2">
             {stream.state.questions.map((question) => (
               <QuestionCard
                 key={question.toolCallId}

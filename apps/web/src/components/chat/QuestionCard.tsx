@@ -31,6 +31,10 @@ export function QuestionCard({ conversationId, toolCallId, questions }: Question
     [questions, selected, texts],
   );
 
+  const answeredCount = questions.filter(
+    (_, index) => (selected[index]?.length ?? 0) > 0 || (texts[index] ?? "").trim().length > 0,
+  ).length;
+
   const toggle = (questionIndex: number, optionIndex: number) => {
     const question = questions[questionIndex];
     if (!question) return;
@@ -78,41 +82,59 @@ export function QuestionCard({ conversationId, toolCallId, questions }: Question
   if (!current) return null;
 
   return (
-    <div className="mx-auto w-full max-w-3xl rounded-card border border-brand/30 bg-surface shadow-card">
-      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-        <CircleHelp className="size-4 text-brandtext" />
-        <span className="text-sm font-medium text-ink">需要你的选择</span>
-        <span className="text-xs text-muted">模型正在等待回答</span>
+    <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-pop">
+      <div className="flex items-center gap-2.5 bg-subtle/60 px-4 py-2.5">
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-brandsoft text-brandtext">
+          <CircleHelp className="size-3.5" />
+        </span>
+        <span className="text-[13px] font-medium text-ink">需要你的选择</span>
+        <span className="ml-auto flex items-center gap-1.5 text-[11px] text-muted">
+          <span className="size-1.5 animate-pulse rounded-full bg-warning" />
+          模型等待中
+        </span>
       </div>
 
       {questions.length > 1 && (
-        <div className="flex gap-1 overflow-x-auto border-b border-line px-3 py-2">
-          {questions.map((question, index) => (
-            <button
-              key={`${question.header}-${index}`}
-              type="button"
-              onClick={() => setActive(index)}
-              className={cn(
-                "shrink-0 rounded-md px-2.5 py-1 text-xs transition-colors",
-                index === active
-                  ? "bg-brandsoft text-brandtext"
-                  : "text-muted hover:bg-subtle hover:text-ink",
-              )}
-            >
-              {question.header || `问题 ${index + 1}`}
-              {(selected[index]?.length ?? 0) > 0 || texts[index]?.trim() ? " ✓" : ""}
-            </button>
-          ))}
+        <div className="flex items-center gap-1 overflow-x-auto px-3 pt-3">
+          <div className="flex min-w-0 items-center gap-1 rounded-lg bg-subtle p-1">
+            {questions.map((question, index) => {
+              const done =
+                (selected[index]?.length ?? 0) > 0 || (texts[index] ?? "").trim().length > 0;
+              return (
+                <button
+                  key={`${question.header}-${index}`}
+                  type="button"
+                  onClick={() => setActive(index)}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
+                    index === active
+                      ? "bg-surface text-ink shadow-card"
+                      : "text-muted hover:text-ink",
+                  )}
+                >
+                  {question.header || `问题 ${index + 1}`}
+                  {done && <Check className="size-3 text-success" />}
+                </button>
+              );
+            })}
+          </div>
+          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted">
+            {answeredCount}/{questions.length}
+          </span>
         </div>
       )}
 
-      <div className="space-y-3 px-4 py-4">
-        <div>
-          <p className="text-sm font-medium text-ink">{current.question}</p>
-          {current.multiSelect && <p className="mt-0.5 text-xs text-muted">可多选</p>}
+      <div className="space-y-3 px-4 py-3.5">
+        <div className="flex items-start gap-2">
+          <p className="text-[15px] font-medium leading-6 text-ink">{current.question}</p>
+          {current.multiSelect && (
+            <span className="mt-0.5 shrink-0 rounded bg-subtle px-1.5 py-0.5 text-[10px] text-muted">
+              多选
+            </span>
+          )}
         </div>
 
-        <div className="space-y-2">
+        <div className="overflow-hidden rounded-lg border border-line">
           {current.options.map((option, index) => {
             const checked = selected[active]?.includes(index) ?? false;
             return (
@@ -121,27 +143,37 @@ export function QuestionCard({ conversationId, toolCallId, questions }: Question
                 type="button"
                 onClick={() => toggle(active, index)}
                 disabled={pending}
+                aria-pressed={checked}
                 className={cn(
-                  "flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                  checked
-                    ? "border-brand bg-brandsoft/60"
-                    : "border-line bg-surface hover:border-linestrong hover:bg-subtle",
+                  "flex w-full items-start gap-2.5 border-b border-line px-3 py-2.5 text-left transition-colors last:border-b-0",
+                  checked ? "bg-brandsoft/60" : "bg-surface hover:bg-subtle/70",
                   pending && "opacity-60",
                 )}
               >
                 <span
                   className={cn(
-                    "mt-0.5 flex size-4 shrink-0 items-center justify-center border",
-                    current.multiSelect ? "rounded" : "rounded-full",
-                    checked ? "border-brand bg-brand text-white" : "border-linestrong",
+                    "mt-0.5 flex size-4 shrink-0 items-center justify-center border transition-colors",
+                    current.multiSelect ? "rounded-[5px]" : "rounded-full",
+                    checked
+                      ? current.multiSelect
+                        ? "border-brand bg-brand text-white"
+                        : "border-brand bg-surface"
+                      : "border-linestrong bg-surface",
                   )}
                 >
-                  {checked && <Check className="size-3" />}
+                  {checked &&
+                    (current.multiSelect ? (
+                      <Check className="size-3" />
+                    ) : (
+                      <span className="size-2 rounded-full bg-brand" />
+                    ))}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm text-ink">{option.label}</span>
+                  <span className="block text-[13px] font-medium leading-5 text-ink">
+                    {option.label}
+                  </span>
                   {option.description && (
-                    <span className="mt-0.5 block text-xs leading-relaxed text-muted">
+                    <span className="mt-0.5 block text-[12px] leading-5 text-muted">
                       {option.description}
                     </span>
                   )}
@@ -152,7 +184,10 @@ export function QuestionCard({ conversationId, toolCallId, questions }: Question
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-muted" htmlFor={`question-text-${active}`}>
+          <label
+            className="mb-1 flex items-center gap-1.5 text-[11px] text-muted"
+            htmlFor={`question-text-${active}`}
+          >
             其他答案或补充说明（可选）
           </label>
           <Textarea
@@ -165,22 +200,30 @@ export function QuestionCard({ conversationId, toolCallId, questions }: Question
                 currentTexts.map((value, index) => (index === active ? event.target.value : value)),
               )
             }
-            placeholder="直接输入你的答案，或补充选择理由"
+            placeholder="直接输入答案，或补充选择理由"
+            className="min-h-[56px] resize-none text-[13px]"
           />
         </div>
 
-        {questions.length > 1 && !complete && (
-          <p className="text-xs text-muted">还有问题未回答，切换上方标签继续选择。</p>
-        )}
         {error && <p className="text-xs text-danger">{error}</p>}
       </div>
 
-      <div className="flex items-center justify-end gap-2 border-t border-line px-4 py-3">
+      <div className="flex items-center gap-3 border-t border-line/70 bg-subtle/30 px-4 py-2.5">
+        <p className="min-w-0 flex-1 truncate text-[11px] text-muted">
+          {questions.length > 1 && !complete
+            ? `还有 ${questions.length - answeredCount} 个问题未回答`
+            : "提交后模型会继续执行"}
+        </p>
         <Button variant="ghost" size="sm" onClick={() => void cancel()} disabled={pending}>
           <X className="size-3.5" />
           取消
         </Button>
-        <Button size="sm" onClick={() => void submit()} disabled={pending || !complete}>
+        <Button
+          size="sm"
+          className="min-w-[6.5rem]"
+          onClick={() => void submit()}
+          disabled={pending || !complete}
+        >
           {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
           {pending ? "提交中" : "提交回答"}
         </Button>
