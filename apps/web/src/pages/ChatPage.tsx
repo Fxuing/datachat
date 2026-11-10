@@ -19,8 +19,10 @@ import {
   listDatasources,
   listConversationSkills,
   listModels,
+  retryRun,
   sendMessage,
   updateConversation,
+  type ChatMessage,
   type ConversationDetail,
 } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -39,6 +41,8 @@ export default function ChatPage() {
   const [optimisticText, setOptimisticText] = useState<string | null>(null);
   const [optimisticSkill, setOptimisticSkill] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [failedSend, setFailedSend] = useState<{ content: string; skill?: string } | null>(null);
+  const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
@@ -99,12 +103,41 @@ export default function ChatPage() {
       sendMessage(conversationId as string, input.content, input.skill),
     onSuccess: ({ runId }) => {
       setActiveRunId(runId);
+      setFailedSend(null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+    },
+    onError: (error, input) => {
+      setOptimisticText(null);
+      setOptimisticSkill(null);
+      setFailedSend(input);
+      setSendError(errorMessage(error, "发送失败，请稍后重试"));
+    },
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: async ({ message, modelId }: { message: ChatMessage; modelId?: string }) => {
+      if (modelId) {
+        await updateConversation(conversationId as string, { modelId });
+      }
+      return retryRun(message.runId);
+    },
+    onMutate: ({ message }) => {
+      setRetryingRunId(message.runId);
+      setSendError(null);
+    },
+    onSuccess: ({ runId }, { message }) => {
+      setOptimisticText(message.user.content);
+      setOptimisticSkill(message.user.skill ?? null);
+      setActiveRunId(runId);
+      setRetryingRunId(null);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.conversation(conversationId as string),
+      });
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
     },
     onError: (error) => {
-      setOptimisticText(null);
-      setOptimisticSkill(null);
-      setSendError(errorMessage(error, "发送失败，请稍后重试"));
+      setRetryingRunId(null);
+      setSendError(errorMessage(error, "重试失败，请稍后重试"));
     },
   });
 
@@ -164,6 +197,10 @@ export default function ChatPage() {
     setOptimisticText(content);
     setOptimisticSkill(skill ?? null);
     await sendMutation.mutateAsync(skill ? { content, skill } : { content });
+  };
+
+  const handleRetry = (message: ChatMessage, modelId?: string) => {
+    retryMutation.mutate(modelId ? { message, modelId } : { message });
   };
 
   const user = meQuery.data?.user;
@@ -242,6 +279,9 @@ export default function ChatPage() {
         optimisticSkill={optimisticSkill}
         onCreateReport={handleCreateReport}
         activeRunId={activeRunId}
+        models={models?.models ?? []}
+        retryingRunId={retryingRunId}
+        onRetry={handleRetry}
       />
     );
   }
@@ -252,12 +292,24 @@ export default function ChatPage() {
         {content}
         {sendError ? (
           <div className="mx-auto w-full max-w-3xl px-4 pb-2">
-            <p
+            <div
               role="alert"
-              className="rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger"
             >
-              {sendError}
-            </p>
+              <span>{sendError}</span>
+              {failedSend ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px]"
+                  disabled={sendMutation.isPending}
+                  onClick={() => void handleSend(failedSend.content, failedSend.skill)}
+                >
+                  重新发送
+                </Button>
+              ) : null}
+            </div>
           </div>
         ) : null}
         {conversationId && stream.state.questions.length > 0 ? (

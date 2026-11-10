@@ -437,6 +437,10 @@ export function abortRun(runId: string): Promise<void> {
   return apiRequest(`/api/runs/${runId}/abort`, { method: "POST" });
 }
 
+export function retryRun(runId: string): Promise<{ runId: string; position: number }> {
+  return apiRequest(`/api/runs/${runId}/retry`, { method: "POST" });
+}
+
 export function listDatasources(): Promise<{ datasources: DatasourceSummary[] }> {
   return apiRequest("/api/datasources");
 }

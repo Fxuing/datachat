@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import { getArtifact, type ChatArtifact, type ChatMessage, type ChatResult } from "../../lib/api";
+import {
+  getArtifact,
+  type ChatArtifact,
+  type ChatMessage,
+  type ChatModelInfo,
+  type ChatResult,
+} from "../../lib/api";
 import { parseReportMarkdown } from "../../lib/report-markdown";
 import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard";
 import { ResultCard } from "./ResultCard";
@@ -12,6 +18,7 @@ import { QueryPairList } from "./QueryPairList";
 import { ToolCard } from "./ToolCard";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnFooter } from "./TurnFooter";
+import { RetryActions } from "./RetryActions";
 
 export function MarkdownText({ content }: { content: string }) {
   return (
@@ -160,11 +167,17 @@ function InlineArtifact({
 export function MessageItem({
   message,
   artifacts = [],
+  models = [],
+  retrying = false,
   onCreateReport,
+  onRetry,
 }: {
   message: ChatMessage;
   artifacts?: ChatArtifact[];
+  models?: ChatModelInfo[];
+  retrying?: boolean;
   onCreateReport?: (artifactId: string) => void;
+  onRetry?: (message: ChatMessage, modelId?: string) => void;
 }) {
   const assistantText = message.assistant?.content ?? "";
   const charts = artifacts.filter(
@@ -240,10 +253,20 @@ export function MessageItem({
         {message.status === "aborted" ? (
           <p className="text-xs text-muted">已停止生成</p>
         ) : null}
-        {message.status === "error" && !assistantText ? (
-          <p className="text-xs text-danger">
-            {message.error ?? "本次回答失败，请重试。"}
-          </p>
+        {message.status === "error" ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <p className="text-xs text-danger">
+              {message.error ?? "本次回答失败，请重试。"}
+            </p>
+            {onRetry ? (
+              <RetryActions
+                message={message}
+                models={models}
+                retrying={retrying}
+                onRetry={onRetry}
+              />
+            ) : null}
+          </div>
         ) : null}
         <TurnFooter
           runId={message.runId}

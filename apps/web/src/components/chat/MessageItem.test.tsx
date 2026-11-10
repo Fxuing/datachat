@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -54,6 +54,36 @@ describe("MessageItem", () => {
     render(<MessageItem message={message({ error: "upstream exploded" })} />);
     expect(screen.getByText("upstream exploded")).toBeInTheDocument();
     expect(screen.queryByText("本次回答失败，请重试。")).not.toBeInTheDocument();
+  });
+
+  it("retries a failed turn as-is or with another model", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const failed = message({ error: "upstream exploded" });
+    render(
+      <MessageItem
+        message={failed}
+        models={[
+          {
+            id: "acme::backup",
+            modelId: "backup",
+            providerId: "acme",
+            providerName: "Acme",
+            name: "Backup",
+            contextWindow: 128000,
+            maxTokens: 4096,
+          },
+        ]}
+        onRetry={onRetry}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    expect(onRetry).toHaveBeenLastCalledWith(failed);
+
+    await user.click(screen.getByRole("button", { name: /换模型重试/ }));
+    await user.click(screen.getByText("Backup"));
+    expect(onRetry).toHaveBeenLastCalledWith(failed, "acme::backup");
   });
 
   it("renders report-style artifact placeholders as inline result tables", () => {

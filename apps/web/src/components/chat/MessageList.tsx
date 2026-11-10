@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, Bot } from "lucide-react";
-import type { ChatArtifact, ChatMessage } from "../../lib/api";
+import type { ChatArtifact, ChatMessage, ChatModelInfo } from "../../lib/api";
 import type { RunStreamState } from "../../lib/run-events";
 import { PageSpinner } from "../ui/spinner";
 import { BrandMark } from "../BrandMark";
@@ -28,6 +28,11 @@ export interface MessageListProps {
   onCreateReport?: (artifactId: string) => void;
   /** The run currently streaming, if any (enables feedback once it ends). */
   activeRunId?: string | null;
+  /** Models available for retrying a failed turn on another model. */
+  models?: ChatModelInfo[];
+  /** Run id currently being retried, used to disable its actions. */
+  retryingRunId?: string | null;
+  onRetry?: (message: ChatMessage, modelId?: string) => void;
 }
 
 function AssistantHeader() {
@@ -88,6 +93,9 @@ export function MessageList({
   artifacts = [],
   onCreateReport,
   activeRunId = null,
+  models = [],
+  retryingRunId = null,
+  onRetry,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -158,7 +166,10 @@ export function MessageList({
             <MessageItem
               message={message}
               artifacts={artifacts}
+              models={models}
+              retrying={retryingRunId === message.runId}
               onCreateReport={onCreateReport}
+              onRetry={onRetry}
             />
           </div>
         ))}
