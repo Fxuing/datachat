@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Bot } from "lucide-react";
+import { Bot, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -60,11 +60,25 @@ export function MarkdownText({ content }: { content: string }) {
   );
 }
 
-export function UserBubble({ content, pending = false }: { content: string; pending?: boolean }) {
+export function UserBubble({
+  content,
+  skill,
+  pending = false,
+}: {
+  content: string;
+  skill?: string | null;
+  pending?: boolean;
+}) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-sm text-canvas shadow-sm">
-        {content}
+      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-sm text-canvas shadow-sm">
+        {skill ? (
+          <span className="mb-1 flex w-fit items-center gap-1 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/75">
+            <Sparkles className="h-2.5 w-2.5" />
+            技能 · {skill}
+          </span>
+        ) : null}
+        <div className="whitespace-pre-wrap">{content}</div>
         {pending ? <span className="ml-2 text-[10px] text-muted">发送中…</span> : null}
       </div>
     </div>
@@ -177,7 +191,7 @@ export function MessageItem({
 
   return (
     <div className="flex flex-col gap-3">
-      <UserBubble content={message.user.content} />
+      <UserBubble content={message.user.content} skill={message.user.skill} />
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-[11px] font-medium text-muted">
           <span className="flex h-5 w-5 items-center justify-center rounded bg-line text-muted">

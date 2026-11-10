@@ -20,6 +20,7 @@ export interface MessageListProps {
   stream: RunStreamState;
   showStream: boolean;
   optimisticText: string | null;
+  optimisticSkill?: string | null;
   loading?: boolean;
   /** Conversation artifacts, used to restore charts for persisted runs. */
   artifacts?: ChatArtifact[];
@@ -82,6 +83,7 @@ export function MessageList({
   stream,
   showStream,
   optimisticText,
+  optimisticSkill = null,
   loading = false,
   artifacts = [],
   onCreateReport,
@@ -166,6 +168,7 @@ export function MessageList({
             {optimisticText ? (
               <UserBubble
                 content={optimisticText}
+                skill={optimisticSkill}
                 pending={stream.status === "idle" || stream.status === "queued"}
               />
             ) : null}

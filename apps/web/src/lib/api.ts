@@ -213,7 +213,7 @@ export interface ChatFeedback {
 export interface ChatMessage {
   runId: string;
   status: "queued" | "running" | "ok" | "error" | "aborted";
-  user: { content: string };
+  user: { content: string; skill?: string | null };
   assistant: { content: string } | null;
   thinking?: string | null;
   usage?: ChatUsage | null;

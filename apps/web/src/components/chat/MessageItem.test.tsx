@@ -21,6 +21,19 @@ function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
 }
 
 describe("MessageItem", () => {
+  it("shows the explicitly invoked skill on the user bubble", () => {
+    render(
+      <MessageItem
+        message={message({
+          status: "ok",
+          user: { content: "本月收入是多少？", skill: "monthly-revenue" },
+        })}
+      />,
+    );
+    expect(screen.getByText(/技能 · monthly-revenue/)).toBeInTheDocument();
+    expect(screen.getByText("本月收入是多少？")).toBeInTheDocument();
+  });
+
   it("keeps the thinking transcript collapsed until opened", async () => {
     const user = userEvent.setup();
     render(

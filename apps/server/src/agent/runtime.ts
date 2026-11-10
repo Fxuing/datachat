@@ -29,6 +29,7 @@ export interface QueueJob {
   runId: string;
   content: string;
   displayContent?: string;
+  skill?: string;
 }
 
 export interface SessionBundle {
@@ -188,7 +189,10 @@ export class ConversationRuntime {
     this.emitEvent(job.runId, { type: "run_start", payload: { startedAt: this.now() } });
     this.emitEvent(job.runId, {
       type: "user_message",
-      payload: { content: job.displayContent ?? job.content },
+      payload: {
+        content: job.displayContent ?? job.content,
+        ...(job.skill ? { skill: job.skill } : {}),
+      },
     });
 
     let bridge: EventBridge | undefined;

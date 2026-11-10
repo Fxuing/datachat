@@ -30,7 +30,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("user_message"),
-    payload: z.object({ content: z.string() }),
+    payload: z.object({ content: z.string(), skill: z.string().optional() }),
   }),
   z.object({
     type: z.literal("assistant_message"),

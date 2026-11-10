@@ -34,7 +34,7 @@ let otherCookie: string;
 
 const fakeRuntime = {
   bus: new RunEventBus(),
-  enqueued: [] as Array<{ runId: string; content: string; displayContent?: string }>,
+  enqueued: [] as Array<{ runId: string; content: string; displayContent?: string; skill?: string }>,
   position: 1,
   abort: vi.fn(() => true),
   remove: vi.fn(async () => undefined),
@@ -42,7 +42,7 @@ const fakeRuntime = {
   shutdown: vi.fn(async () => undefined),
   getOrCreate: vi.fn(() => ({
     queueLength: 0,
-    enqueue: (input: { runId: string; content: string; displayContent?: string }) => {
+    enqueue: (input: { runId: string; content: string; displayContent?: string; skill?: string }) => {
       fakeRuntime.enqueued.push(input);
       return fakeRuntime.position++;
     },
@@ -713,6 +713,7 @@ description: 月度收入口径
       expect(enqueued.content).toContain("本月收入是多少？");
 
       expect(enqueued.displayContent).toBe("本月收入是多少？");
+      expect(enqueued.skill).toBe("monthly-revenue");
       expect(findConversation(db, conversationId)?.title).toBe("本月收入是多少？");
     } finally {
       await app.close();

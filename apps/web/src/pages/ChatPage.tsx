@@ -37,6 +37,7 @@ export default function ChatPage() {
 
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [optimisticText, setOptimisticText] = useState<string | null>(null);
+  const [optimisticSkill, setOptimisticSkill] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
 
@@ -102,6 +103,7 @@ export default function ChatPage() {
     },
     onError: (error) => {
       setOptimisticText(null);
+      setOptimisticSkill(null);
       setSendError(errorMessage(error, "发送失败，请稍后重试"));
     },
   });
@@ -135,11 +137,13 @@ export default function ChatPage() {
     if (!activeRunPersisted) return;
     setActiveRunId(null);
     setOptimisticText(null);
+    setOptimisticSkill(null);
   }, [activeRunPersisted]);
 
   useEffect(() => {
     setActiveRunId(null);
     setOptimisticText(null);
+    setOptimisticSkill(null);
     setSendError(null);
   }, [conversationId]);
 
@@ -158,6 +162,7 @@ export default function ChatPage() {
   const handleSend = async (content: string, skill?: string) => {
     setSendError(null);
     setOptimisticText(content);
+    setOptimisticSkill(skill ?? null);
     await sendMutation.mutateAsync(skill ? { content, skill } : { content });
   };
 
@@ -234,6 +239,7 @@ export default function ChatPage() {
         stream={stream.state}
         showStream={showStream}
         optimisticText={optimisticText}
+        optimisticSkill={optimisticSkill}
         onCreateReport={handleCreateReport}
         activeRunId={activeRunId}
       />

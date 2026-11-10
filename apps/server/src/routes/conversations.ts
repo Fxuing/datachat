@@ -341,6 +341,7 @@ export async function conversationRoutes(
           runId: run.id,
           content: promptContent,
           displayContent: content,
+          ...(skill ? { skill: skill.name } : {}),
         });
       } catch (enqueueError) {
         request.log.error({ err: enqueueError, runId: run.id }, "failed to enqueue run");

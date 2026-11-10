@@ -73,7 +73,7 @@ export interface ConversationFeedback {
 export interface ConversationMessage {
   runId: string;
   status: RunStatus;
-  user: { content: string };
+  user: { content: string; skill?: string | null };
   assistant: { content: string } | null;
   /** Full thinking transcript, when the model produced one. */
   thinking: string | null;
@@ -118,7 +118,7 @@ export interface ConversationDetail {
 interface MessageGroup {
   runId: string;
   createdAt: number;
-  user: string | null;
+  user: { content: string; skill?: string } | null;
   assistant: string | null;
   thinking: string | null;
   deltas: string[];
@@ -199,7 +199,10 @@ function groupFor(grouped: Map<string, MessageGroup>, runId: string, createdAt: 
 function applyEvent(group: MessageGroup, event: RunEvent): void {
   switch (event.type) {
     case "user_message":
-      group.user = event.payload.content;
+      group.user = {
+        content: event.payload.content,
+        ...(event.payload.skill ? { skill: event.payload.skill } : {}),
+      };
       break;
     case "assistant_message":
       group.assistant = event.payload.content;
@@ -267,7 +270,7 @@ export function getConversationDetail(
     messages.push({
       runId: group.runId,
       status: toRunStatus(run?.status),
-      user: { content: group.user },
+      user: group.user,
       assistant: group.assistant !== null
         ? { content: group.assistant }
         : group.deltas.length > 0
