@@ -56,7 +56,7 @@ export function ConversationMinimap({
         }}
       >
         {open ? (
-          <div className="max-h-[60vh] w-60 translate-x-6 animate-[minimap-panel_200ms_ease-out] overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-pop">
+          <div className="max-h-[60vh] w-60 translate-x-[5.75rem] animate-[minimap-panel_200ms_ease-out] overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-pop">
             <p className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted">
               {messages.length} 轮对话
             </p>
