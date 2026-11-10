@@ -1,25 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
-import { decryptSecret, deriveSecretKey } from "../agent/datasource/crypto.js";
-import {
-  introspectMysql,
-  introspectPostgres,
-  type SchemaSnapshot,
-} from "../agent/datasource/introspect.js";
-import { safeErrorMessage } from "../agent/datasource/probe.js";
-import { PoolRegistry } from "../agent/datasource/pool.js";
+import type { PoolRegistry } from "../agent/datasource/pool.js";
 import {
   findDatasource,
   userCanAccess,
-  type DatasourceRow,
 } from "../db/repositories/datasources.js";
-import {
-  SCHEMA_CACHE_TTL_MS,
-  loadSchemaEntry,
-  saveSchema,
-  saveSchemaError,
-} from "../db/repositories/schema-cache.js";
+import { SCHEMA_CACHE_TTL_MS, loadSchemaEntry } from "../db/repositories/schema-cache.js";
+import { refreshDatasourceSchema } from "../services/schema-refresh.js";
 
 interface DatasourceSchemaRoutesOptions {
   config: AppConfig;
@@ -35,19 +23,6 @@ const idParamsSchema = {
 
 const schemaPageLimit = 50;
 
-function connectionFor(datasource: DatasourceRow, key: Buffer) {
-  return {
-    id: datasource.id,
-    type: datasource.type,
-    host: datasource.host,
-    port: datasource.port,
-    database: datasource.database,
-    username: datasource.username,
-    password: decryptSecret(datasource.passwordCipher, key),
-    sslMode: datasource.sslMode,
-  };
-}
-
 function checkAccess(
   db: Db,
   request: { user?: { sub: string; role: string } },
@@ -62,8 +37,6 @@ export async function datasourceSchemaRoutes(
   app: FastifyInstance,
   opts: DatasourceSchemaRoutesOptions,
 ): Promise<void> {
-  const key = deriveSecretKey(opts.config.appSecret);
-
   // TODO(Task 8): once `services/artifacts.ts` exists, register the ArtifactStore
   // and close it here on shutdown alongside the pool registry.
 
@@ -77,25 +50,14 @@ export async function datasourceSchemaRoutes(
         return reply.code(404).send({ error: { code: "NOT_FOUND", message: "数据源不存在" } });
       }
 
-      const connection = connectionFor(datasource, key);
       try {
-        const pools = opts.pools.get(connection);
-        const snapshot: SchemaSnapshot =
-          datasource.type === "mysql"
-            ? await introspectMysql(pools.mysql!, datasource.database)
-            : await introspectPostgres(pools.pg!);
-        saveSchema(opts.db, datasource.id, snapshot);
+        const snapshot = await refreshDatasourceSchema(opts, datasource);
         return { tableCount: snapshot.tables.length, refreshedAt: snapshot.refreshedAt };
       } catch (error) {
-        saveSchemaError(
-          opts.db,
-          datasource.id,
-          safeErrorMessage(error, connection.password),
-        );
         return reply.code(502).send({
           error: {
             code: "DS_UNREACHABLE",
-            message: safeErrorMessage(error, connection.password),
+            message: error instanceof Error ? error.message : "数据源连接失败",
           },
         });
       }
