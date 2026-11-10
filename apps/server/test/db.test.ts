@@ -171,6 +171,7 @@ describe("database lifecycle", () => {
     expect(columnNames(sqlite, "artifacts")).toEqual(
       expect.arrayContaining(["user_id", "conversation_id"]),
     );
+    expect(columnNames(sqlite, "runs")).toContain("retry_of_run_id");
     expect(columnNames(sqlite, "query_audit")).toEqual(
       expect.arrayContaining(["detail_json", "user_id", "datasource_id"]),
     );
@@ -237,8 +238,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(8);
-    expect(migrateDb(handle.db)).toBe(8);
+    expect(migrateDb(handle.db)).toBe(9);
+    expect(migrateDb(handle.db)).toBe(9);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

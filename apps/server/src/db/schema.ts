@@ -96,6 +96,7 @@ export const runs = sqliteTable(
     userId: text("user_id").notNull(),
     status: text("status").notNull().default("queued"),
     modelId: text("model_id"),
+    retryOfRunId: text("retry_of_run_id"),
     inputTokens: integer("input_tokens"),
     outputTokens: integer("output_tokens"),
     cacheReadTokens: integer("cache_read_tokens"),
@@ -108,6 +109,7 @@ export const runs = sqliteTable(
   (t) => [
     index("runs_conversation_idx").on(t.conversationId),
     index("runs_conversation_created_idx").on(t.conversationId, t.createdAt),
+    index("runs_retry_of_idx").on(t.retryOfRunId),
   ],
 );
 

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { Db } from "../client.js";
 import { runs } from "../schema.js";
 
@@ -10,6 +10,7 @@ export interface CreateRunInput {
   conversationId: string;
   userId: string;
   modelId?: string | null;
+  retryOfRunId?: string | null;
 }
 
 export function createRun(db: Db, input: CreateRunInput): RunRow {
@@ -20,6 +21,7 @@ export function createRun(db: Db, input: CreateRunInput): RunRow {
       conversationId: input.conversationId,
       userId: input.userId,
       modelId: input.modelId ?? null,
+      retryOfRunId: input.retryOfRunId ?? null,
       status: "queued",
       createdAt: Date.now(),
     })
@@ -62,6 +64,20 @@ export function findOwnedRun(db: Db, id: string, userId: string): RunRow | undef
     .from(runs)
     .where(and(eq(runs.id, id), eq(runs.userId, userId)))
     .get();
+}
+
+/** Ids of the original runs that a retry replaced; hide them from history. */
+export function listReplacedRunIds(db: Db, conversationId: string): Set<string> {
+  return new Set(
+    db
+      .select({ retryOfRunId: runs.retryOfRunId })
+      .from(runs)
+      .where(
+        and(eq(runs.conversationId, conversationId), isNotNull(runs.retryOfRunId)),
+      )
+      .all()
+      .flatMap((row) => (row.retryOfRunId ? [row.retryOfRunId] : [])),
+  );
 }
 
 /** FIFO queue for a conversation; the concurrency guard picks the oldest waiting run. */

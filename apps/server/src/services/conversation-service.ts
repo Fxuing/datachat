@@ -12,6 +12,7 @@ import { listConversationEvents } from "../db/repositories/run-events.js";
 import {
   findActiveRunForConversation,
   findRun,
+  listReplacedRunIds,
   type RunStatus,
 } from "../db/repositories/runs.js";
 import { listFeedbackForRuns } from "../db/repositories/run-feedback.js";
@@ -247,8 +248,10 @@ export function getConversationDetail(
   conversation: ConversationRow,
 ): ConversationDetail {
   const grouped = new Map<string, MessageGroup>();
+  const retriedRunIds = listReplacedRunIds(db, conversation.id);
   let contextUsage: ConversationDetail["contextUsage"] = null;
   for (const row of listConversationEvents(db, conversation.id, 20_000)) {
+    if (retriedRunIds.has(row.runId)) continue;
     const event = parseEvent(row);
     if (!event) continue;
     if (event.type === "context_usage") {
@@ -305,7 +308,8 @@ export function getConversationDetail(
     .from(artifacts)
     .where(eq(artifacts.conversationId, conversation.id))
     .orderBy(artifacts.createdAt)
-    .all();
+    .all()
+    .filter((row) => row.runId === null || !retriedRunIds.has(row.runId));
 
   return {
     conversation: toConversationResponse(conversation),

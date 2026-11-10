@@ -556,6 +556,93 @@ describe("conversation routes", () => {
     }
   });
 
+  it("hides a failed turn once it has been replaced by a retry", async () => {
+    const conversation = createConversation(db, { userId, datasourceId });
+    const failed = createRun(db, { conversationId: conversation.id, userId });
+    appendRunEvent(db, {
+      runId: failed.id,
+      conversationId: conversation.id,
+      type: "user_message",
+      payload: { content: "first" },
+    });
+    appendRunEvent(db, {
+      runId: failed.id,
+      conversationId: conversation.id,
+      type: "run_end",
+      payload: { status: "error", error: "upstream exploded" },
+    });
+    markRun(db, failed.id, { status: "error", error: "upstream exploded", endedAt: Date.now() });
+
+    const retried = createRun(db, {
+      conversationId: conversation.id,
+      userId,
+      retryOfRunId: failed.id,
+    });
+    appendRunEvent(db, {
+      runId: retried.id,
+      conversationId: conversation.id,
+      type: "user_message",
+      payload: { content: "first" },
+    });
+    appendRunEvent(db, {
+      runId: retried.id,
+      conversationId: conversation.id,
+      type: "assistant_message",
+      payload: { content: "ok now" },
+    });
+    markRun(db, retried.id, { status: "ok", endedAt: Date.now() });
+
+    const now = Date.now();
+    db.insert(artifacts)
+      .values([
+        {
+          id: "artifact-failed",
+          conversationId: conversation.id,
+          runId: failed.id,
+          userId,
+          kind: "result",
+          columnsJson: JSON.stringify([{ name: "x", type: "number" }]),
+          specJson: JSON.stringify({ artifactId: "artifact-failed", columns: [], rows: [], rowCount: 0 }),
+          rowCount: 0,
+          truncated: 0,
+          createdAt: now,
+        },
+        {
+          id: "artifact-retried",
+          conversationId: conversation.id,
+          runId: retried.id,
+          userId,
+          kind: "result",
+          columnsJson: JSON.stringify([{ name: "x", type: "number" }]),
+          specJson: JSON.stringify({ artifactId: "artifact-retried", columns: [], rows: [], rowCount: 0 }),
+          rowCount: 0,
+          truncated: 0,
+          createdAt: now + 1,
+        },
+      ])
+      .run();
+
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversation.id}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.messages).toHaveLength(1);
+      expect(body.messages[0]).toMatchObject({
+        runId: retried.id,
+        status: "ok",
+        assistant: { content: "ok now" },
+      });
+      expect(body.artifacts.map((item: { id: string }) => item.id)).toEqual(["artifact-retried"]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("rejects a message when the conversation queue is full", async () => {
     const conversationId = await createTestConversation();
     fakeRuntime.getOrCreate.mockImplementationOnce(() => ({
