@@ -29,12 +29,55 @@ export function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
 
+function positiveInt(...candidates: unknown[]): number | undefined {
+  for (const value of candidates) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.trunc(value);
+    }
+    if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+      const parsed = Number(value.trim());
+      if (parsed > 0) return parsed;
+    }
+  }
+  return undefined;
+}
+
+/** Reads a context window from the metadata shapes used by common providers. */
+export function readContextWindow(record: Record<string, unknown>): number | undefined {
+  const top = record.top_provider as Record<string, unknown> | undefined;
+  const details = record.details as Record<string, unknown> | undefined;
+  const meta = record.meta as Record<string, unknown> | undefined;
+  return positiveInt(
+    record.context_length,
+    record.context_window,
+    record.max_context_length,
+    record.max_input_tokens,
+    record.input_token_limit,
+    record.max_model_len,
+    top?.context_length,
+    details?.context_length,
+    meta?.n_ctx_train,
+  );
+}
+
+function readMaxOutputTokens(record: Record<string, unknown>): number | undefined {
+  const top = record.top_provider as Record<string, unknown> | undefined;
+  return positiveInt(
+    record.max_output_tokens,
+    record.max_completion_tokens,
+    record.max_tokens,
+    top?.max_completion_tokens,
+  );
+}
+
 /** Maps `/models` responses (OpenAI `data[].id`, Anthropic `data[].id/display_name`). */
 export function normalizeFetchedModels(
   payload: unknown,
   protocol: LlmProtocol,
+  existing: LlmProviderModel[] = [],
 ): LlmProviderModel[] {
   const defaults = modelDefaults(protocol);
+  const previous = new Map(existing.map((model) => [model.id, model]));
   const data =
     payload && typeof payload === "object" && Array.isArray((payload as { data?: unknown }).data)
       ? ((payload as { data: unknown[] }).data as unknown[])
@@ -51,9 +94,25 @@ export function normalizeFetchedModels(
       (typeof record.display_name === "string" && record.display_name.trim()) ||
       (typeof record.name === "string" && record.name.trim()) ||
       id;
-    models.push({ id, name, contextWindow: defaults.contextWindow, maxTokens: defaults.maxTokens });
+    const contextWindow =
+      readContextWindow(record) ?? previous.get(id)?.contextWindow ?? defaults.contextWindow;
+    const maxTokens = Math.min(
+      readMaxOutputTokens(record) ?? previous.get(id)?.maxTokens ?? defaults.maxTokens,
+      contextWindow,
+    );
+    models.push({ id, name, contextWindow, maxTokens });
   }
   return models;
+}
+
+function clampContextWindow(value: unknown, fallback: number): number {
+  const parsed = positiveInt(value) ?? fallback;
+  return Math.min(Math.max(parsed, 1_000), 10_000_000);
+}
+
+function clampMaxTokens(value: unknown, fallback: number): number {
+  const parsed = positiveInt(value) ?? fallback;
+  return Math.min(Math.max(parsed, 256), 10_000_000);
 }
 
 /** Accepts ids only (from the test dialog) or full model rows (from the editor). */
@@ -78,14 +137,8 @@ export function normalizeSelectedModels(
     out.push({
       id,
       name: typeof record.name === "string" && record.name.trim() ? record.name.trim() : id,
-      contextWindow:
-        typeof record.contextWindow === "number" && record.contextWindow > 0
-          ? Math.trunc(record.contextWindow)
-          : defaults.contextWindow,
-      maxTokens:
-        typeof record.maxTokens === "number" && record.maxTokens > 0
-          ? Math.trunc(record.maxTokens)
-          : defaults.maxTokens,
+      contextWindow: clampContextWindow(record.contextWindow, defaults.contextWindow),
+      maxTokens: clampMaxTokens(record.maxTokens, defaults.maxTokens),
     });
   }
   return out;

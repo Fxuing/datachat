@@ -103,6 +103,8 @@ export async function fetchRemoteModels(input: {
   apiKey: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** Previously saved rows; their context sizes survive catalogs without metadata. */
+  existing?: LlmProviderModel[];
 }): Promise<LlmProviderModel[]> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const response = await fetchImpl(modelsUrl(input.protocol, input.baseUrl), {
@@ -114,7 +116,7 @@ export async function fetchRemoteModels(input: {
     throw new Error(`上游返回 ${response.status}${body ? `：${body}` : ""}`);
   }
   const payload: unknown = await response.json();
-  const models = normalizeFetchedModels(payload, input.protocol);
+  const models = normalizeFetchedModels(payload, input.protocol, input.existing ?? []);
   if (models.length === 0) throw new Error("上游没有返回任何模型");
   return models;
 }
@@ -143,14 +145,18 @@ export async function llmProviderRoutes(
     async (request, reply) => {
       const body = testSchema.parse(request.body);
       let apiKey = body.apiKey?.trim() ?? "";
-      if (!apiKey && body.providerId) {
+      let existingModels: LlmProviderModel[] = [];
+      if (body.providerId) {
         const stored = getLlmProvider(opts.db, body.providerId);
-        if (!stored) {
+        if (!stored && !apiKey) {
           return reply
             .code(404)
             .send({ error: { code: "NOT_FOUND", message: "模型服务不存在" } });
         }
-        apiKey = decryptProviderKey(stored, opts.config.appSecret);
+        if (stored) {
+          existingModels = parseProviderModels(stored);
+          if (!apiKey) apiKey = decryptProviderKey(stored, opts.config.appSecret);
+        }
       }
       if (!apiKey) {
         return reply
@@ -163,6 +169,7 @@ export async function llmProviderRoutes(
           baseUrl: body.baseUrl,
           apiKey,
           fetchImpl,
+          existing: existingModels,
         });
         return { models, count: models.length };
       } catch (error) {
@@ -254,6 +261,7 @@ export async function llmProviderRoutes(
           baseUrl: existing.baseUrl,
           apiKey,
           fetchImpl,
+          existing: parseProviderModels(existing),
         });
         const row = updateLlmProvider(opts.db, id, { models, now: Date.now() });
         opts.manager.invalidate();

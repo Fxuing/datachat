@@ -239,6 +239,10 @@ export function LlmProvidersSection() {
   );
 }
 
+function formatContext(tokens: number): string {
+  return tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : `${tokens}`;
+}
+
 function ProviderEditor({
   state,
   onClose,
@@ -299,7 +303,12 @@ function ProviderEditor({
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const models = draft.selected.map((model) => ({ id: model.id, name: model.name }));
+      const models = draft.selected.map((model) => ({
+        id: model.id,
+        name: model.name,
+        contextWindow: model.contextWindow,
+        maxTokens: model.maxTokens,
+      }));
       if (existing) {
         return updateLlmProvider(existing.id, {
           name: draft.name,
@@ -335,6 +344,15 @@ function ProviderEditor({
   };
 
   const selectedIds = new Set(draft.selected.map((model) => model.id));
+  const updateContext = (id: string, contextWindow: number) => {
+    setDraft((current) => ({
+      ...current,
+      selected: current.selected.map((model) =>
+        model.id === id ? { ...model, contextWindow } : model,
+      ),
+    }));
+  };
+
   const toggleModel = (model: LlmProviderModel) => {
     setDraft((current) => {
       const has = current.selected.some((item) => item.id === model.id);
@@ -463,23 +481,52 @@ function ProviderEditor({
             <fieldset className="rounded-lg border border-line">
               <legend className="ml-2 px-1 text-xs font-medium text-inksoft">开放模型</legend>
               <div className="max-h-64 space-y-1 overflow-y-auto p-2">
-                {tested.map((model) => (
-                  <label
-                    key={model.id}
-                    className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-subtle"
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 accent-[rgb(var(--brand))]"
-                      checked={selectedIds.has(model.id)}
-                      onChange={() => toggleModel(model)}
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium text-ink">{model.name}</span>
-                      <span className="block truncate font-mono text-[11px] text-muted">{model.id}</span>
-                    </span>
-                  </label>
-                ))}
+                {tested.map((model) => {
+                  const selected = draft.selected.find((item) => item.id === model.id);
+                  return (
+                    <div
+                      key={model.id}
+                      className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-subtle"
+                    >
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 accent-[rgb(var(--brand))]"
+                          checked={selectedIds.has(model.id)}
+                          onChange={() => toggleModel(model)}
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-ink">{model.name}</span>
+                          <span className="block truncate font-mono text-[11px] text-muted">{model.id}</span>
+                        </span>
+                      </label>
+                      {selected ? (
+                        <label className="flex shrink-0 items-center gap-1 text-[10px] text-muted">
+                          上下文
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            aria-label={`${model.name} 上下文大小（千 tokens）`}
+                            className="h-6 w-14 rounded border border-line bg-canvas px-1 text-right text-[11px] text-ink"
+                            value={Math.max(1, Math.round(selected.contextWindow / 1000))}
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              if (Number.isFinite(value) && value > 0) {
+                                updateContext(model.id, Math.round(value * 1000));
+                              }
+                            }}
+                          />
+                          k
+                        </label>
+                      ) : (
+                        <span className="shrink-0 text-[10px] text-muted">
+                          {formatContext(model.contextWindow)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </fieldset>
           ) : (

@@ -235,6 +235,39 @@ describe("fetchRemoteModels", () => {
     expect(models[0]).toMatchObject({ name: "m1", contextWindow: 128_000, maxTokens: 8_192 });
   });
 
+  it("reads context sizes from model metadata and keeps saved ones", async () => {
+    const models = await fetchRemoteModels({
+      protocol: "openai-completions",
+      baseUrl: "https://llm.example.com/v1",
+      apiKey: "sk-test",
+      fetchImpl: (async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              { id: "m1", name: "M1", context_length: 200_000, max_completion_tokens: 16_384 },
+              { id: "m2", context_window: 64_000 },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        )) as typeof fetch,
+    });
+    expect(models[0]).toMatchObject({ contextWindow: 200_000, maxTokens: 16_384 });
+    expect(models[1]).toMatchObject({ contextWindow: 64_000 });
+
+    const kept = await fetchRemoteModels({
+      protocol: "openai-completions",
+      baseUrl: "https://llm.example.com/v1",
+      apiKey: "sk-test",
+      fetchImpl: (async () =>
+        new Response(JSON.stringify({ data: [{ id: "m3" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })) as typeof fetch,
+      existing: [{ id: "m3", name: "M3", contextWindow: 300_000, maxTokens: 4_096 }],
+    });
+    expect(kept[0]).toMatchObject({ contextWindow: 300_000, maxTokens: 4_096 });
+  });
+
   it("uses Anthropic headers and surfaces upstream errors", async () => {
     let seenKey = "";
     let seenVersion = "";
