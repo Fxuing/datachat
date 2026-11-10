@@ -103,6 +103,7 @@ function renderPage(path = "/reports/r-1") {
         <Routes>
           <Route path="/reports/:id" element={<ReportPage />} />
           <Route path="/chat" element={<div>chat-home</div>} />
+          <Route path="/chat/:id" element={<div>chat-conversation</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -165,7 +166,18 @@ describe("ReportPage", () => {
     expect(window.print).toHaveBeenCalledTimes(1);
   });
 
-  it("confirms before deleting and returns to chat", async () => {
+  it("returns to the originating conversation", async () => {
+    stubFetch();
+    const browser = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole("heading", { name: report.title });
+    await browser.click(screen.getByRole("button", { name: "返回" }));
+
+    expect(await screen.findByText("chat-conversation")).toBeInTheDocument();
+  });
+
+  it("confirms before deleting and returns to the conversation", async () => {
     const fetchMock = stubFetch({ confirmDelete: true });
     const browser = userEvent.setup();
     renderPage();
@@ -182,7 +194,7 @@ describe("ReportPage", () => {
         expect.objectContaining({ method: "DELETE" }),
       ),
     );
-    expect(await screen.findByText("chat-home")).toBeInTheDocument();
+    expect(await screen.findByText("chat-conversation")).toBeInTheDocument();
   });
 
   it("does not delete when the confirmation is cancelled", async () => {

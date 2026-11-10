@@ -227,11 +227,24 @@ export default function ReportPage() {
     retry: false,
   });
 
+  const goBack = () => {
+    const conversationId = reportQuery.data?.report.conversationId;
+    if (conversationId) {
+      navigate(`/chat/${conversationId}`);
+      return;
+    }
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/chat");
+  };
+
   const deleteMutation = useMutation({
     mutationFn: () => deleteReport(id as string),
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: queryKeys.report(id ?? "") });
-      navigate("/chat");
+      goBack();
     },
   });
 
@@ -254,7 +267,7 @@ export default function ReportPage() {
   const topbar = (
     <>
       <div className="flex min-w-0 items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/chat")}>
+        <Button variant="ghost" size="sm" onClick={goBack}>
           <ArrowLeft className="h-3.5 w-3.5" />
           返回
         </Button>
@@ -305,7 +318,7 @@ export default function ReportPage() {
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted">
         <p>{notFound ? "报告不存在或已被删除。" : "报告加载失败，请稍后重试。"}</p>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate("/chat")}>
+          <Button variant="outline" size="sm" onClick={goBack}>
             返回对话
           </Button>
           {notFound ? null : (
