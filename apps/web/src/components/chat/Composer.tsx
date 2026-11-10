@@ -224,21 +224,6 @@ export function Composer({
               onKeyDown={onKeyDown}
               className="max-h-40 min-h-[28px] resize-none overflow-y-auto border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:border-0 focus-visible:ring-0"
             />
-            {active && canStop ? (
-              <Button variant="outline" className="shrink-0 gap-2" onClick={onStop}>
-                <Square className="h-3.5 w-3.5 fill-current" />
-                停止
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                className="shrink-0 gap-2"
-                disabled={disabled || !trimmed || menuOpen}
-              >
-                <SendHorizontal className="h-4 w-4" />
-                {submitting ? "发送中…" : "发送"}
-              </Button>
-            )}
           </div>
           <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-1 text-[11px] text-muted">
             <span className="truncate">Enter 发送，Shift + Enter 换行</span>
@@ -255,6 +240,28 @@ export function Composer({
                 onModelChange={onModelChange}
                 onThinkingChange={onThinkingChange}
               />
+              {active && canStop ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0 gap-1.5 px-2.5"
+                  onClick={onStop}
+                >
+                  <Square className="h-3 w-3 fill-current" />
+                  停止
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="h-8 shrink-0 gap-1.5 px-3"
+                  disabled={disabled || !trimmed || menuOpen}
+                >
+                  <SendHorizontal className="h-3.5 w-3.5" />
+                  {submitting ? "发送中…" : "发送"}
+                </Button>
+              )}
             </div>
           </div>
         </div>
