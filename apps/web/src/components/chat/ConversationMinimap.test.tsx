@@ -42,9 +42,9 @@ describe("ConversationMinimap", () => {
 
     const tick = screen.getByRole("button", { name: "跳到第 2 轮" });
     fireEvent.mouseEnter(tick);
-    expect(screen.getByText("第 2 轮")).toBeInTheDocument();
-    expect(screen.getByText("第二个问题")).toBeInTheDocument();
-    fireEvent.click(tick);
+    expect(screen.getByText("3 轮对话")).toBeInTheDocument();
+    const row = screen.getByRole("button", { name: /第二个问题/ });
+    fireEvent.click(row);
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
