@@ -1,7 +1,12 @@
 import { Type, type Static } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { loadSchema } from "../../db/repositories/schema-cache.js";
+import { findDatasource } from "../../db/repositories/datasources.js";
+import {
+  SCHEMA_CACHE_TTL_MS,
+  loadSchemaEntry,
+} from "../../db/repositories/schema-cache.js";
 import { authorizeDatasourceAccess } from "../../services/query-service.js";
+import { refreshDatasourceSchema } from "../../services/schema-refresh.js";
 import type { SchemaSnapshot, SchemaTable } from "../datasource/introspect.js";
 import { errorResult, safeJsonStringify, textResult, type AgentToolContext } from "./context.js";
 
@@ -21,6 +26,8 @@ export interface DbSchemaDetails {
   tableCount: number;
   returned: number;
   truncated: boolean;
+  /** True when a stale snapshot was served after a failed background refresh. */
+  stale?: boolean;
   code?: string;
   message?: string;
 }
@@ -138,7 +145,7 @@ export function createDbSchemaTool(ctx: AgentToolContext): ToolDefinition<typeof
     name: "db_schema",
     label: "查看表结构",
     description:
-      "读取当前数据源的已缓存表结构。可用 search 搜索表名/列名，或用 table 精确查看一张表；未传参数时返回全部表。写 SQL 前先调用它。",
+      "读取当前数据源的表结构（缓存缺失或过期时自动刷新）。可用 search 搜索表名/列名，或用 table 精确查看一张表；未传参数时返回全部表。写 SQL 前先调用它。",
     parameters: schemaParameters,
     async execute(_toolCallId, params) {
       const denied = authorizeDatasourceAccess(ctx.db, ctx.userId, ctx.datasourceId);
@@ -151,20 +158,58 @@ export function createDbSchemaTool(ctx: AgentToolContext): ToolDefinition<typeof
           message: denied,
         });
       }
-      const snapshot = loadSchema(ctx.db, ctx.datasourceId);
+
+      const entry = loadSchemaEntry(ctx.db, ctx.datasourceId);
+      let snapshot = entry?.snapshot ?? null;
+      let stale = false;
+      const expired = entry ? Date.now() - entry.refreshedAt > SCHEMA_CACHE_TTL_MS : true;
+      if (!snapshot || expired) {
+        const datasource = findDatasource(ctx.db, ctx.datasourceId);
+        if (!datasource) {
+          return errorResult<DbSchemaDetails>("SCHEMA_UNAVAILABLE", "数据源不存在", {
+            tableCount: 0,
+            returned: 0,
+            truncated: false,
+            code: "SCHEMA_UNAVAILABLE",
+          });
+        }
+        try {
+          snapshot = await refreshDatasourceSchema(ctx, datasource);
+        } catch (error) {
+          if (!snapshot) {
+            const message =
+              error instanceof Error ? error.message : "读取表结构失败，请检查数据源连接";
+            return errorResult<DbSchemaDetails>(
+              "SCHEMA_UNAVAILABLE",
+              `读取表结构失败：${message}。请检查数据源连接或联系管理员。`,
+              {
+                tableCount: 0,
+                returned: 0,
+                truncated: false,
+                code: "SCHEMA_UNAVAILABLE",
+                message,
+              },
+            );
+          }
+          stale = true;
+        }
+      }
+
       if (!snapshot) {
-        return errorResult(
-          "SCHEMA_NOT_CACHED",
-          "当前数据源还没有表结构缓存，请先在数据源页面刷新表结构",
-          { tableCount: 0, returned: 0, truncated: false },
+        return errorResult<DbSchemaDetails>(
+          "SCHEMA_UNAVAILABLE",
+          "当前数据源没有可用的表结构，请检查数据源连接或联系管理员。",
+          { tableCount: 0, returned: 0, truncated: false, code: "SCHEMA_UNAVAILABLE" },
         );
       }
+
       const { tables, total } = selectTables(snapshot, params);
       const { text, truncated } = renderTables(tables);
       return textResult(text, {
         tableCount: total,
         returned: tables.length,
         truncated,
+        ...(stale ? { stale: true } : {}),
       });
     },
   };
