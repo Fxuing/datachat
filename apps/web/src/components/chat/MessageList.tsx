@@ -96,6 +96,10 @@ export function MessageList({
   const standaloneCharts = stream.charts.filter(
     (chart) => !referencedCharts.has(chart.chartArtifactId),
   );
+  // Charts only settle into their final place once the run finishes. Rendering
+  // them mid-stream makes them jump from the fallback slot into an inline
+  // placeholder as soon as the model writes it.
+  const chartsReady = stream.status === "ok" || stream.status === "error";
 
   useEffect(() => {
     const element = containerRef.current;
@@ -191,8 +195,11 @@ export function MessageList({
               />
               {streamSegments.map((segment, index) => {
                 if (segment.type === "markdown") {
-                  return segment.content.trim() ? (
-                    <MarkdownText key={`md-${index}`} content={segment.content} />
+                  const content = chartsReady
+                    ? segment.content
+                    : segment.content.replace(/\[\[(?:chart|artifact):[^\]\s]*$/, "");
+                  return content.trim() ? (
+                    <MarkdownText key={`md-${index}`} content={content} />
                   ) : null;
                 }
                 if (segment.type === "artifact") {
@@ -203,6 +210,7 @@ export function MessageList({
                     <ResultCard key={`result-${index}`} {...result} />
                   ) : null;
                 }
+                if (!chartsReady) return null;
                 const chart = stream.charts.find(
                   (item) => item.chartArtifactId === segment.artifactId,
                 );
@@ -215,7 +223,7 @@ export function MessageList({
                   />
                 ) : null;
               })}
-              {standaloneCharts.length > 0 ? (
+              {chartsReady && standaloneCharts.length > 0 ? (
                 <div className="flex flex-col gap-2">
                   {standaloneCharts.map((chart) => (
                     <ChartCard
