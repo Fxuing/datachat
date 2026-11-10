@@ -44,6 +44,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
     type: z.literal("thinking_delta"),
     payload: z.object({ text: z.string() }),
   }),
+  /** Final thinking transcript, persisted once per run for reloaded histories. */
+  z.object({
+    type: z.literal("thinking"),
+    payload: z.object({ content: z.string() }),
+  }),
   z.object({
     type: z.literal("tool_start"),
     payload: z.object({

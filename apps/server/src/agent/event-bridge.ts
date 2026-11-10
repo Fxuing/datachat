@@ -124,6 +124,7 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
   const usage: UsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   let streamedText = "";
   let completedText = "";
+  let thinkingText = "";
   let ended = false;
 
   const persist = (event: RunEvent): void => {
@@ -149,6 +150,7 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
           streamedText += update.delta;
           persist({ type: "text_delta", payload: { text: update.delta } });
         } else if (update.type === "thinking_delta") {
+          thinkingText += update.delta;
           persist({ type: "thinking_delta", payload: { text: update.delta } });
         }
         return;
@@ -261,6 +263,7 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
         // must not leak into the final assistant message or the live stream.
         streamedText = "";
         completedText = "";
+        thinkingText = "";
         persist({
           type: "retry",
           payload: {
@@ -290,6 +293,9 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
         const content = completedText || streamedText || fallback;
         // A failed attempt that will be retried is not part of the transcript: only the
         // final attempt's assistant_message is stored.
+        if (!event.willRetry && thinkingText) {
+          persist({ type: "thinking", payload: { content: thinkingText } });
+        }
         if (!event.willRetry && content) {
           persist({ type: "assistant_message", payload: { content } });
         }

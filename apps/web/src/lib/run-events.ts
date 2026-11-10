@@ -66,6 +66,13 @@ export interface RunNotice {
   message: string;
 }
 
+export interface RunUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
 export interface RunStreamState {
   status: RunStatusValue;
   connection: RunConnection;
@@ -77,6 +84,9 @@ export interface RunStreamState {
   charts: RunChartState[];
   questions: RunQuestionState[];
   contextUsage: RunContextUsage | null;
+  usage: RunUsage | null;
+  startedAt: number | null;
+  durationMs: number | null;
   notices: RunNotice[];
   error: string | null;
   queuePosition: number | null;
@@ -95,6 +105,9 @@ export const initialRunStreamState: RunStreamState = {
   charts: [],
   questions: [],
   contextUsage: null,
+  usage: null,
+  startedAt: null,
+  durationMs: null,
   notices: [],
   error: null,
   queuePosition: null,
@@ -161,7 +174,12 @@ export function runStreamReducer(
         case "run_queued":
           return { ...base, status: "queued", queuePosition: event.payload.position, error: null };
         case "run_start":
-          return { ...base, status: "running", queuePosition: null };
+          return {
+            ...base,
+            status: "running",
+            queuePosition: null,
+            startedAt: event.payload.startedAt,
+          };
         case "user_message":
           return base;
         case "assistant_message":
@@ -280,11 +298,14 @@ export function runStreamReducer(
             status: event.payload.status,
             queuePosition: null,
             error: event.payload.error ?? null,
+            durationMs:
+              base.startedAt !== null ? Math.max(0, Date.now() - base.startedAt) : null,
             connection: "closed",
           };
         case "context_usage":
           return { ...base, contextUsage: event.payload };
         case "usage":
+          return { ...base, usage: event.payload };
         case "report":
           return base;
         default:

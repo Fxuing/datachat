@@ -107,6 +107,33 @@ describe("bridgeSessionEvents", () => {
     expect(session.listenerCount).toBe(1);
   });
 
+  it("persists the full thinking transcript once the run ends", () => {
+    const { session } = setup();
+
+    send(session, {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "先确认表结构，" },
+    });
+    send(session, {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "再统计。" },
+    });
+    const message = assistantMessage("共有 3 行。");
+    send(session, { type: "message_end", message });
+    send(session, { type: "agent_end", messages: [message], willRetry: false });
+
+    const rows = stored();
+    expect(rows.map((row) => row.event.type)).toEqual([
+      "thinking_delta",
+      "thinking_delta",
+      "thinking",
+      "assistant_message",
+      "usage",
+      "run_end",
+    ]);
+    expect(rows[2]?.event.payload).toEqual({ content: "先确认表结构，再统计。" });
+  });
+
   it("does not persist an assistant message while the agent will retry", () => {
     const { session } = setup();
     const message = assistantMessage("partial");

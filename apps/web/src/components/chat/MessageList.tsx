@@ -9,7 +9,9 @@ import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
 import { QueryPairList } from "./QueryPairList";
 import { RunStatus } from "./RunStatus";
 import { ToolCard } from "./ToolCard";
-import { ProcessBlock } from "./ProcessBlock";
+import { ThinkingBlock } from "./ThinkingBlock";
+import { TurnFooter } from "./TurnFooter";
+import { ConversationMinimap } from "./ConversationMinimap";
 import { ResultCard } from "./ResultCard";
 import { parseReportMarkdown } from "../../lib/report-markdown";
 
@@ -23,6 +25,8 @@ export interface MessageListProps {
   artifacts?: ChatArtifact[];
   /** Turns a result artifact into a report and opens it. */
   onCreateReport?: (artifactId: string) => void;
+  /** The run currently streaming, if any (enables feedback once it ends). */
+  activeRunId?: string | null;
 }
 
 function AssistantHeader() {
@@ -81,6 +85,7 @@ export function MessageList({
   loading = false,
   artifacts = [],
   onCreateReport,
+  activeRunId = null,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -147,12 +152,13 @@ export function MessageList({
         {!hasContent ? <EmptyChat /> : null}
 
         {messages.map((message) => (
-          <MessageItem
-            key={message.runId}
-            message={message}
-            artifacts={artifacts}
-            onCreateReport={onCreateReport}
-          />
+          <div key={message.runId} id={`turn-${message.runId}`}>
+            <MessageItem
+              message={message}
+              artifacts={artifacts}
+              onCreateReport={onCreateReport}
+            />
+          </div>
         ))}
 
         {showStream ? (
@@ -165,33 +171,9 @@ export function MessageList({
             ) : null}
             <div className="flex flex-col gap-2">
               <AssistantHeader />
-              <ProcessBlock
+              <ThinkingBlock
                 thinking={stream.thinking}
-                toolCount={stream.tools.length}
-                sqlCount={stream.sqls.length}
-                resultCount={stream.results.length}
                 running={stream.status === "running"}
-                queries={
-                  stream.sqls.length > 0 || stream.results.length > 0 ? (
-                    <QueryPairList
-                      sqls={stream.sqls}
-                      results={stream.results}
-                      onCreateReport={onCreateReport}
-                    />
-                  ) : null
-                }
-                tools={
-                  stream.tools.some((tool) => tool.name !== "db_query" && tool.name !== "db_explain") ? (
-                    <div className="flex flex-col gap-1.5">
-                      {stream.tools
-                        .filter((tool) => tool.name !== "db_query" && tool.name !== "db_explain")
-                        .map((tool) => (
-                        <ToolCard key={tool.toolCallId} tool={tool} />
-                      ))}
-                    </div>
-                  ) : null
-                }
-
               />
               {streamSegments.map((segment, index) => {
                 if (segment.type === "markdown") {
@@ -244,6 +226,35 @@ export function MessageList({
                 <p className="text-[11px] text-muted">连接中断，正在重连…</p>
               ) : null}
               <RunStatus state={stream} />
+              <TurnFooter
+                runId={activeRunId}
+                status={stream.status}
+                usage={stream.usage}
+                durationMs={stream.durationMs}
+                stepCount={stream.tools.length}
+              >
+                {stream.sqls.length > 0 || stream.results.length > 0 ? (
+                  <QueryPairList
+                    sqls={stream.sqls}
+                    results={stream.results}
+                    onCreateReport={onCreateReport}
+                  />
+                ) : null}
+                {stream.tools.some(
+                  (tool) => tool.name !== "db_query" && tool.name !== "db_explain",
+                ) ? (
+                  <div className="flex flex-col gap-1.5">
+                    {stream.tools
+                      .filter(
+                        (tool) =>
+                          tool.name !== "db_query" && tool.name !== "db_explain",
+                      )
+                      .map((tool) => (
+                        <ToolCard key={tool.toolCallId} tool={tool} />
+                      ))}
+                  </div>
+                ) : null}
+              </TurnFooter>
             </div>
           </div>
         ) : null}
@@ -251,6 +262,7 @@ export function MessageList({
         <div ref={bottomRef} />
         </div>
       </div>
+      <ConversationMinimap messages={messages} containerRef={containerRef} />
       {showJump ? (
         <button
           type="button"

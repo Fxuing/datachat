@@ -14,6 +14,7 @@ import {
   findRun,
   type RunStatus,
 } from "../db/repositories/runs.js";
+import { listFeedbackForRuns } from "../db/repositories/run-feedback.js";
 import type { ArtifactStore } from "./artifacts.js";
 
 export interface ConversationResponse {
@@ -57,11 +58,30 @@ export interface SqlMessage {
   status: "ok" | "rejected" | "error";
 }
 
+export interface ConversationUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+export interface ConversationFeedback {
+  rating: 1 | -1;
+  comment: string | null;
+}
+
 export interface ConversationMessage {
   runId: string;
   status: RunStatus;
   user: { content: string };
   assistant: { content: string } | null;
+  /** Full thinking transcript, when the model produced one. */
+  thinking: string | null;
+  usage: ConversationUsage | null;
+  /** Wall-clock duration of the run, excluding queue time. */
+  durationMs: number | null;
+  /** The current user's rating for this run, if any. */
+  feedback: ConversationFeedback | null;
   tools: ToolMessage[];
   results: ConversationResultMessage[];
   sqls: SqlMessage[];
@@ -100,6 +120,7 @@ interface MessageGroup {
   createdAt: number;
   user: string | null;
   assistant: string | null;
+  thinking: string | null;
   deltas: string[];
   tools: ToolMessage[];
   results: ConversationResultMessage[];
@@ -165,6 +186,7 @@ function groupFor(grouped: Map<string, MessageGroup>, runId: string, createdAt: 
     createdAt,
     user: null,
     assistant: null,
+    thinking: null,
     deltas: [],
     tools: [],
     results: [],
@@ -181,6 +203,9 @@ function applyEvent(group: MessageGroup, event: RunEvent): void {
       break;
     case "assistant_message":
       group.assistant = event.payload.content;
+      break;
+    case "thinking":
+      group.thinking = event.payload.content;
       break;
     case "text_delta":
       group.deltas.push(event.payload.text);
@@ -230,6 +255,11 @@ export function getConversationDetail(
     applyEvent(groupFor(grouped, row.runId, row.createdAt), event);
   }
 
+  const feedbackByRun = listFeedbackForRuns(
+    db,
+    [...grouped.keys()],
+    conversation.userId,
+  );
   const messages: ConversationMessage[] = [];
   for (const group of [...grouped.values()].sort((a, b) => a.createdAt - b.createdAt)) {
     if (group.user === null) continue;
@@ -243,6 +273,13 @@ export function getConversationDetail(
         : group.deltas.length > 0
           ? { content: group.deltas.join("") }
           : null,
+      thinking: group.thinking,
+      usage: toUsage(run),
+      durationMs:
+        run?.startedAt != null && run.endedAt != null
+          ? Math.max(0, run.endedAt - run.startedAt)
+          : null,
+      feedback: toFeedback(feedbackByRun.get(group.runId)),
       tools: group.tools,
       results: group.results,
       sqls: group.sqls,
@@ -316,6 +353,32 @@ function toActiveRun(run: { id: string; status: string } | undefined): Conversat
   if (!run) return null;
   if (run.status !== "queued" && run.status !== "running") return null;
   return { id: run.id, status: run.status };
+}
+
+function toUsage(run: { inputTokens: number | null; outputTokens: number | null; cacheReadTokens: number | null; cacheWriteTokens: number | null } | undefined): ConversationUsage | null {
+  if (!run) return null;
+  if (
+    run.inputTokens === null &&
+    run.outputTokens === null &&
+    run.cacheReadTokens === null &&
+    run.cacheWriteTokens === null
+  ) {
+    return null;
+  }
+  return {
+    input: run.inputTokens ?? 0,
+    output: run.outputTokens ?? 0,
+    cacheRead: run.cacheReadTokens ?? 0,
+    cacheWrite: run.cacheWriteTokens ?? 0,
+  };
+}
+
+function toFeedback(
+  row: { rating: number; comment: string | null } | undefined,
+): ConversationFeedback | null {
+  if (!row) return null;
+  if (row.rating !== 1 && row.rating !== -1) return null;
+  return { rating: row.rating, comment: row.comment };
 }
 
 export async function deleteConversationFiles(

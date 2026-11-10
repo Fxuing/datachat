@@ -111,6 +111,25 @@ export const runs = sqliteTable(
   ],
 );
 
+export const runFeedback = sqliteTable(
+  "run_feedback",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id").notNull(),
+    userId: text("user_id").notNull(),
+    /** 1 = helpful, -1 = not helpful. */
+    rating: integer("rating").notNull(),
+    comment: text("comment"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("run_feedback_run_user_unique").on(t.runId, t.userId),
+    index("run_feedback_user_idx").on(t.userId),
+    check("run_feedback_rating_check", sql`${t.rating} in (-1, 1)`),
+  ],
+);
+
 export const runEvents = sqliteTable(
   "run_events",
   {

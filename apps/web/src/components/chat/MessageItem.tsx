@@ -10,7 +10,8 @@ import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard"
 import { ResultCard } from "./ResultCard";
 import { QueryPairList } from "./QueryPairList";
 import { ToolCard } from "./ToolCard";
-import { ProcessBlock } from "./ProcessBlock";
+import { ThinkingBlock } from "./ThinkingBlock";
+import { TurnFooter } from "./TurnFooter";
 
 export function MarkdownText({ content }: { content: string }) {
   return (
@@ -142,12 +143,6 @@ function InlineArtifact({
   );
 }
 
-function SectionLabel({ children }: { children: string }) {
-  return (
-    <div className="text-[11px] font-medium uppercase tracking-wider text-muted">{children}</div>
-  );
-}
-
 export function MessageItem({
   message,
   artifacts = [],
@@ -177,7 +172,8 @@ export function MessageItem({
   const detailTools = message.tools.filter(
     (tool) => tool.name !== "db_query" && tool.name !== "db_explain",
   );
-  const hasStandaloneData = standaloneResults.length > 0 || standaloneCharts.length > 0;
+  const stepCount =
+    message.tools.length || message.sqls.length + standaloneResults.length;
 
   return (
     <div className="flex flex-col gap-3">
@@ -189,33 +185,9 @@ export function MessageItem({
           </span>
           DataChat
         </div>
-        <ProcessBlock
-          toolCount={message.tools.length}
-          sqlCount={message.sqls.length}
-          resultCount={standaloneResults.length}
-          queries={
-            standaloneResults.length > 0 || message.sqls.length > 0 ? (
-              <QueryPairList
-                sqls={message.sqls}
-                results={standaloneResults}
-                onCreateReport={onCreateReport}
-              />
-            ) : null
-          }
-          tools={
-            detailTools.length > 0 ? (
-              <div className="flex flex-col gap-1.5">
-                {detailTools.map((tool) => (
-                  <ToolCard key={tool.toolCallId} tool={tool} />
-                ))}
-              </div>
-            ) : null
-          }
-
-        />
+        <ThinkingBlock thinking={message.thinking ?? ""} />
         {assistantText ? (
           <div className="flex flex-col gap-2">
-            {hasStandaloneData ? <SectionLabel>回答</SectionLabel> : null}
             {segments.map((segment, index) => {
               if (segment.type === "markdown") {
                 return segment.content.trim() ? (
@@ -259,6 +231,29 @@ export function MessageItem({
             {message.error ?? "本次回答失败，请重试。"}
           </p>
         ) : null}
+        <TurnFooter
+          runId={message.runId}
+          status={message.status}
+          usage={message.usage ?? null}
+          durationMs={message.durationMs ?? null}
+          feedback={message.feedback ?? null}
+          stepCount={stepCount}
+        >
+          {standaloneResults.length > 0 || message.sqls.length > 0 ? (
+            <QueryPairList
+              sqls={message.sqls}
+              results={standaloneResults}
+              onCreateReport={onCreateReport}
+            />
+          ) : null}
+          {detailTools.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              {detailTools.map((tool) => (
+                <ToolCard key={tool.toolCallId} tool={tool} />
+              ))}
+            </div>
+          ) : null}
+        </TurnFooter>
       </div>
     </div>
   );

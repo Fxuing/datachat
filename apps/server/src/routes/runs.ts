@@ -4,6 +4,7 @@ import type { RunEvent } from "@datachat/shared";
 import type { Db } from "../db/client.js";
 import { findRun, findOwnedRun, markRun } from "../db/repositories/runs.js";
 import { appendRunEvent, listRunEventsAfter } from "../db/repositories/run-events.js";
+import { deleteRunFeedback, upsertRunFeedback } from "../db/repositories/run-feedback.js";
 import type { LiveRunEvent } from "../agent/event-bus.js";
 import type { RuntimeManager } from "../agent/runtime.js";
 
@@ -242,6 +243,51 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
         }
       }
       return reply;
+    },
+  );
+
+  const feedbackBodySchema = z.object({
+    rating: z.union([z.literal(1), z.literal(-1)]),
+    comment: z.string().trim().max(2_000).optional(),
+  });
+
+  app.put(
+    "/api/runs/:id/feedback",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const params = idParamsSchema.safeParse(request.params);
+      const body = feedbackBodySchema.safeParse(request.body);
+      if (!params.success || !body.success) {
+        return reply.code(400).send(error("VALIDATION", "参数不合法"));
+      }
+      const run = findOwnedRun(opts.db, params.data.id, request.user!.sub);
+      if (!run) {
+        return reply.code(404).send(error("NOT_FOUND", "运行不存在"));
+      }
+      upsertRunFeedback(opts.db, {
+        runId: run.id,
+        userId: request.user!.sub,
+        rating: body.data.rating,
+        comment: body.data.comment ?? null,
+      });
+      return reply.code(204).send();
+    },
+  );
+
+  app.delete(
+    "/api/runs/:id/feedback",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const params = idParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.code(400).send(error("VALIDATION", "参数不合法"));
+      }
+      const run = findOwnedRun(opts.db, params.data.id, request.user!.sub);
+      if (!run) {
+        return reply.code(404).send(error("NOT_FOUND", "运行不存在"));
+      }
+      deleteRunFeedback(opts.db, run.id, request.user!.sub);
+      return reply.code(204).send();
     },
   );
 }

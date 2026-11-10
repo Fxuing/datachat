@@ -21,6 +21,22 @@ function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
 }
 
 describe("MessageItem", () => {
+  it("keeps the thinking transcript collapsed until opened", async () => {
+    const user = userEvent.setup();
+    render(
+      <MessageItem
+        message={message({
+          status: "ok",
+          thinking: "先确认表结构，再统计 7 月数据。",
+          assistant: { content: "完成了。" },
+        })}
+      />,
+    );
+    expect(screen.queryByText("先确认表结构，再统计 7 月数据。")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /思考过程/ }));
+    expect(screen.getByText("先确认表结构，再统计 7 月数据。")).toBeInTheDocument();
+  });
+
   it("renders the persisted terminal error instead of a generic message", () => {
     render(<MessageItem message={message({ error: "upstream exploded" })} />);
     expect(screen.getByText("upstream exploded")).toBeInTheDocument();
@@ -83,7 +99,7 @@ describe("MessageItem", () => {
 
     const user = userEvent.setup();
     expect(screen.queryByText("查询结果")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /执行过程/ }));
+    await user.click(screen.getByRole("button", { name: /执行步骤/ }));
 
     expect(screen.getByText("查询结果")).toBeInTheDocument();
     expect(screen.getByText("1 行 · 1 列")).toBeInTheDocument();

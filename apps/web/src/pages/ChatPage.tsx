@@ -227,6 +227,7 @@ export default function ChatPage() {
         showStream={showStream}
         optimisticText={optimisticText}
         onCreateReport={handleCreateReport}
+        activeRunId={activeRunId}
       />
     );
   }

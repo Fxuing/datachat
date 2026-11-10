@@ -198,11 +198,27 @@ export interface ChatResult {
   sql?: string;
 }
 
+export interface ChatUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+export interface ChatFeedback {
+  rating: 1 | -1;
+  comment: string | null;
+}
+
 export interface ChatMessage {
   runId: string;
   status: "queued" | "running" | "ok" | "error" | "aborted";
   user: { content: string };
   assistant: { content: string } | null;
+  thinking?: string | null;
+  usage?: ChatUsage | null;
+  durationMs?: number | null;
+  feedback?: ChatFeedback | null;
   tools: ChatTool[];
   results: ChatResult[];
   sqls: ChatSql[];
@@ -327,6 +343,20 @@ export function updateConversation(
 
 export function deleteConversation(id: string): Promise<void> {
   return apiRequest(`/api/conversations/${id}`, { method: "DELETE" });
+}
+
+export function saveRunFeedback(
+  runId: string,
+  input: { rating: 1 | -1; comment?: string },
+): Promise<void> {
+  return apiRequest(`/api/runs/${runId}/feedback`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteRunFeedback(runId: string): Promise<void> {
+  return apiRequest(`/api/runs/${runId}/feedback`, { method: "DELETE" });
 }
 
 export function sendMessage(

@@ -317,4 +317,77 @@ describe("run routes", () => {
       await app.close();
     }
   });
+  it("stores one feedback rating per user and returns it with history", async () => {
+    const runId = createTestRun();
+    append(runId, "user_message", { content: "统计一下" });
+    append(runId, "assistant_message", { content: "共 3 行。" });
+    append(runId, "run_end", { status: "ok" });
+    markRun(db, runId, { status: "ok", startedAt: 100, endedAt: 2_600 });
+
+    const app = await makeApp();
+    try {
+      const put = await app.inject({
+        method: "PUT",
+        url: `/api/runs/${runId}/feedback`,
+        cookies: { dc_session: cookie },
+        payload: { rating: 1, comment: "很有用" },
+      });
+      expect(put.statusCode).toBe(204);
+
+      const history = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversationId}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(history.statusCode).toBe(200);
+      const message = history.json().messages[0];
+      expect(message.feedback).toEqual({ rating: 1, comment: "很有用" });
+      expect(message.durationMs).toBe(2_500);
+
+      const putAgain = await app.inject({
+        method: "PUT",
+        url: `/api/runs/${runId}/feedback`,
+        cookies: { dc_session: cookie },
+        payload: { rating: -1 },
+      });
+      expect(putAgain.statusCode).toBe(204);
+      const updated = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversationId}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(updated.json().messages[0].feedback).toEqual({ rating: -1, comment: null });
+
+      const remove = await app.inject({
+        method: "DELETE",
+        url: `/api/runs/${runId}/feedback`,
+        cookies: { dc_session: cookie },
+      });
+      expect(remove.statusCode).toBe(204);
+      const cleared = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversationId}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(cleared.json().messages[0].feedback).toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects invalid feedback payloads", async () => {
+    const runId = createTestRun();
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "PUT",
+        url: `/api/runs/${runId}/feedback`,
+        cookies: { dc_session: cookie },
+        payload: { rating: 5 },
+      });
+      expect(response.statusCode).toBe(400);
+    } finally {
+      await app.close();
+    }
+  });
 });
