@@ -66,6 +66,17 @@ export function findOwnedRun(db: Db, id: string, userId: string): RunRow | undef
     .get();
 }
 
+/** True when another run already retried this one. */
+export function hasRetriedRun(db: Db, runId: string): boolean {
+  return Boolean(
+    db
+      .select({ id: runs.id })
+      .from(runs)
+      .where(eq(runs.retryOfRunId, runId))
+      .get(),
+  );
+}
+
 /** Ids of the original runs that a retry replaced; hide them from history. */
 export function listReplacedRunIds(db: Db, conversationId: string): Set<string> {
   return new Set(

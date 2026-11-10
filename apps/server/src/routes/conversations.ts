@@ -14,8 +14,13 @@ import {
   touchConversation,
 } from "../db/repositories/conversations.js";
 import { findDatasource, userCanAccess } from "../db/repositories/datasources.js";
-import { appendRunEvent } from "../db/repositories/run-events.js";
-import { createRun, markRun } from "../db/repositories/runs.js";
+import { appendRunEvent, findRunEvent } from "../db/repositories/run-events.js";
+import {
+  createRun,
+  findOwnedRun,
+  hasRetriedRun,
+  markRun,
+} from "../db/repositories/runs.js";
 import {
   createAgentModelRuntime,
   listChatModels,
@@ -68,6 +73,50 @@ const messageBodySchema = z.object({
 
 function error(code: string, message: string) {
   return { error: { code, message } };
+}
+
+type ConversationRecord = NonNullable<ReturnType<typeof findOwnedConversation>>;
+type ConversationRuntime = Awaited<ReturnType<RuntimeManager["getOrCreate"]>>;
+
+/**
+ * Enqueues a prepared turn and records a terminal error when the runtime rejects it.
+ * Callers translate the thrown error into a 500 response.
+ */
+function enqueueOrFail(
+  opts: ConversationRouteOptions,
+  conversation: ConversationRecord,
+  runtime: ConversationRuntime,
+  input: Parameters<ConversationRuntime["enqueue"]>[0],
+): number {
+  try {
+    return runtime.enqueue(input);
+  } catch (enqueueError) {
+    const message =
+      enqueueError instanceof Error ? enqueueError.message : String(enqueueError);
+    markRun(opts.db, input.runId, {
+      status: "error",
+      error: message,
+      endedAt: Date.now(),
+    });
+    try {
+      const { seq, createdAt } = appendRunEvent(opts.db, {
+        runId: input.runId,
+        conversationId: conversation.id,
+        type: "run_end",
+        payload: { status: "error", error: message },
+      });
+      opts.runtime.bus.publish({
+        runId: input.runId,
+        conversationId: conversation.id,
+        seq,
+        createdAt,
+        event: { type: "run_end", payload: { status: "error", error: message } },
+      });
+    } catch {
+      // The run row already records the failure.
+    }
+    throw enqueueError;
+  }
 }
 
 export async function conversationRoutes(
@@ -337,7 +386,7 @@ export async function conversationRoutes(
 
       let position: number;
       try {
-        position = runtime.enqueue({
+        position = enqueueOrFail(opts, conversation, runtime, {
           runId: run.id,
           content: promptContent,
           displayContent: content,
@@ -345,30 +394,85 @@ export async function conversationRoutes(
         });
       } catch (enqueueError) {
         request.log.error({ err: enqueueError, runId: run.id }, "failed to enqueue run");
-        const message =
-          enqueueError instanceof Error ? enqueueError.message : String(enqueueError);
-        markRun(opts.db, run.id, {
-          status: "error",
-          error: message,
-          endedAt: Date.now(),
+        return reply.code(500).send(error("ENQUEUE_FAILED", "无法开始运行"));
+      }
+
+      return reply.code(202).send({ runId: run.id, position });
+    },
+  );
+
+  app.post(
+    "/api/runs/:runId/retry",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const params = z.object({ runId: z.string().uuid() }).safeParse(request.params);
+      if (!params.success) {
+        return reply.code(400).send(error("VALIDATION", "参数不合法"));
+      }
+      const user = request.user!;
+      const failed = findOwnedRun(opts.db, params.data.runId, user.sub);
+      if (!failed) {
+        return reply.code(404).send(error("NOT_FOUND", "运行不存在"));
+      }
+      const conversation = findOwnedConversation(opts.db, failed.conversationId, user.sub);
+      if (!conversation) {
+        return reply.code(404).send(error("NOT_FOUND", "会话不存在"));
+      }
+      if (failed.status !== "error" && failed.status !== "aborted") {
+        return reply.code(409).send(error("RUN_NOT_RETRYABLE", "只有失败或已停止的运行可以重试"));
+      }
+      if (hasRetriedRun(opts.db, failed.id)) {
+        return reply.code(409).send(error("ALREADY_RETRIED", "这次运行已经重试过"));
+      }
+
+      const event = findRunEvent(opts.db, failed.id, "user_message");
+      let payload: { content?: unknown; skill?: unknown } | null = null;
+      try {
+        payload = event
+          ? (JSON.parse(event.payloadJson) as { content?: unknown; skill?: unknown })
+          : null;
+      } catch {
+        payload = null;
+      }
+      const content = typeof payload?.content === "string" ? payload.content : null;
+      if (!content) {
+        return reply.code(409).send(error("RUN_NOT_RETRYABLE", "找不到原始问题，无法重试"));
+      }
+      const skillName = typeof payload?.skill === "string" ? payload.skill : undefined;
+      const skill = skillName
+        ? findApplicableSkill(opts.db, conversation.datasourceId, skillName)
+        : undefined;
+      if (skillName && !skill) {
+        return reply.code(400).send(error("UNKNOWN_SKILL", "技能不存在或未启用"));
+      }
+      const promptContent = skill ? composeSkillInstruction(skill, content) : content;
+
+      const runtime = await opts.runtime.getOrCreate(conversation, user.sub);
+      if (runtime.queueLength >= 5) {
+        return reply.code(429).send(error("RATE_LIMITED", "当前会话排队消息过多，请稍后再试"));
+      }
+
+      const run = createRun(opts.db, {
+        conversationId: conversation.id,
+        userId: user.sub,
+        modelId: conversation.modelId,
+        retryOfRunId: failed.id,
+      });
+      touchConversation(opts.db, conversation.id);
+
+      let position: number;
+      try {
+        position = enqueueOrFail(opts, conversation, runtime, {
+          runId: run.id,
+          content: promptContent,
+          displayContent: content,
+          ...(skill ? { skill: skill.name } : {}),
         });
-        try {
-          const { seq, createdAt } = appendRunEvent(opts.db, {
-            runId: run.id,
-            conversationId: conversation.id,
-            type: "run_end",
-            payload: { status: "error", error: message },
-          });
-          opts.runtime.bus.publish({
-            runId: run.id,
-            conversationId: conversation.id,
-            seq,
-            createdAt,
-            event: { type: "run_end", payload: { status: "error", error: message } },
-          });
-        } catch {
-          // The run row already records the failure.
-        }
+      } catch (enqueueError) {
+        request.log.error({ err: enqueueError, runId: run.id }, "failed to enqueue retry");
         return reply.code(500).send(error("ENQUEUE_FAILED", "无法开始运行"));
       }
 

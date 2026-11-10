@@ -109,7 +109,7 @@ export const runs = sqliteTable(
   (t) => [
     index("runs_conversation_idx").on(t.conversationId),
     index("runs_conversation_created_idx").on(t.conversationId, t.createdAt),
-    index("runs_retry_of_idx").on(t.retryOfRunId),
+    uniqueIndex("runs_retry_of_unique").on(t.retryOfRunId),
   ],
 );
 

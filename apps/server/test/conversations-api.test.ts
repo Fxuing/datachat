@@ -643,6 +643,62 @@ describe("conversation routes", () => {
     }
   });
 
+  it("retries a failed run as a replacement turn", async () => {
+    const conversation = createConversation(db, { userId, datasourceId });
+    const failed = createRun(db, { conversationId: conversation.id, userId });
+    appendRunEvent(db, {
+      runId: failed.id,
+      conversationId: conversation.id,
+      type: "user_message",
+      payload: { content: "查一下订单" },
+    });
+    appendRunEvent(db, {
+      runId: failed.id,
+      conversationId: conversation.id,
+      type: "run_end",
+      payload: { status: "error", error: "upstream exploded" },
+    });
+    markRun(db, failed.id, { status: "error", error: "upstream exploded", endedAt: Date.now() });
+
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/runs/${failed.id}/retry`,
+        cookies: { dc_session: cookie },
+      });
+      expect(response.statusCode).toBe(202);
+      const body = response.json();
+      expect(body.runId).not.toBe(failed.id);
+      expect(fakeRuntime.enqueued.at(-1)).toMatchObject({
+        runId: body.runId,
+        content: "查一下订单",
+        displayContent: "查一下订单",
+      });
+      expect(findRun(db, body.runId)?.retryOfRunId).toBe(failed.id);
+
+      const duplicate = await app.inject({
+        method: "POST",
+        url: `/api/runs/${failed.id}/retry`,
+        cookies: { dc_session: cookie },
+      });
+      expect(duplicate.statusCode).toBe(409);
+      expect(duplicate.json().error.code).toBe("ALREADY_RETRIED");
+
+      const okRun = createRun(db, { conversationId: conversation.id, userId });
+      markRun(db, okRun.id, { status: "ok", endedAt: Date.now() });
+      const notRetryable = await app.inject({
+        method: "POST",
+        url: `/api/runs/${okRun.id}/retry`,
+        cookies: { dc_session: cookie },
+      });
+      expect(notRetryable.statusCode).toBe(409);
+      expect(notRetryable.json().error.code).toBe("RUN_NOT_RETRYABLE");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("rejects a message when the conversation queue is full", async () => {
     const conversationId = await createTestConversation();
     fakeRuntime.getOrCreate.mockImplementationOnce(() => ({

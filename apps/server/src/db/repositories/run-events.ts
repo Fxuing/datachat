@@ -45,6 +45,21 @@ export function appendRunEvent(
   });
 }
 
+/** First event of a type in a run, used to replay the original prompt. */
+export function findRunEvent(
+  db: Db,
+  runId: string,
+  type: string,
+): RunEventRow | undefined {
+  return db
+    .select()
+    .from(runEvents)
+    .where(and(eq(runEvents.runId, runId), eq(runEvents.type, type)))
+    .orderBy(runEvents.seq)
+    .limit(1)
+    .get();
+}
+
 /** Replay support: everything after the client's `Last-Event-ID`. */
 export function listRunEventsAfter(db: Db, runId: string, seq: number): RunEventRow[] {
   return db
