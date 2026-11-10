@@ -1,6 +1,6 @@
 # 体验增强（失败恢复与新手引导）实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 让空态可直接选数据源开始提问、schema 缺失自动刷新、失败轮次可原地重试并支持换模型。
 
@@ -19,8 +19,8 @@
 - Modify: `apps/server/src/routes/datasource-schema.ts`
 - Test: `apps/server/test/schema-refresh.test.ts`
 
-- [ ] **Step 1: 写失败测试**：用假的 `pools.get` 返回 `{ introspect: ... }` 不现实；改为对服务暴露 `introspect` 注入点，测试并发去重与成功写缓存。
-- [ ] **Step 2: 实现服务**：
+- [x] **Step 1: 写失败测试**：用假的 `pools.get` 返回 `{ introspect: ... }` 不现实；改为对服务暴露 `introspect` 注入点，测试并发去重与成功写缓存。
+- [x] **Step 2: 实现服务**：
 
 ```ts
 const inFlight = new Map<string, Promise<SchemaSnapshot>>();
@@ -60,9 +60,9 @@ export async function refreshDatasourceSchema(
 }
 ```
 
-- [ ] **Step 3: 路由改为调用服务**，保持 502/`DS_UNREACHABLE` 响应。
-- [ ] **Step 4: 跑测试** `pnpm vitest run apps/server/test/schema-refresh.test.ts apps/server/test/datasource-schema-api.test.ts`。
-- [ ] **Step 5: Commit** `feat(server): add reusable datasource schema refresh service`。
+- [x] **Step 3: 路由改为调用服务**，保持 502/`DS_UNREACHABLE` 响应。
+- [x] **Step 4: 跑测试** `pnpm vitest run apps/server/test/schema-refresh.test.ts apps/server/test/datasource-schema-api.test.ts`。
+- [x] **Step 5: Commit** `feat(server): add reusable datasource schema refresh service`。
 
 ### Task 2: `db_schema` 懒刷新
 
@@ -70,8 +70,8 @@ export async function refreshDatasourceSchema(
 - Modify: `apps/server/src/agent/tools/db-schema.ts`
 - Test: `apps/server/test/db-schema-tool.test.ts`
 
-- [ ] **Step 1: 写失败测试**：无缓存时工具返回表；刷新抛错时 `isError` 且 code `SCHEMA_UNAVAILABLE`；过期快照刷新失败仍返回旧表并 `stale: true`。
-- [ ] **Step 2: 实现**：
+- [x] **Step 1: 写失败测试**：无缓存时工具返回表；刷新抛错时 `isError` 且 code `SCHEMA_UNAVAILABLE`；过期快照刷新失败仍返回旧表并 `stale: true`。
+- [x] **Step 2: 实现**：
 
 ```ts
 let entry = loadSchemaEntry(ctx.db, ctx.datasourceId);
@@ -89,8 +89,8 @@ if (!entry || expired) {
 ```
 
 需要按 id 查 datasource；`authorizeDatasourceAccess` 已保证存在，但服务签名要 `DatasourceRow`，用 `findDatasource`。
-- [ ] **Step 3: 扩展 `DbSchemaDetails` 增加 `stale?: boolean`，返回 details 同步。**
-- [ ] **Step 4: 跑测试并 Commit** `feat(server): refresh schema lazily from db_schema`。
+- [x] **Step 3: 扩展 `DbSchemaDetails` 增加 `stale?: boolean`，返回 details 同步。**
+- [x] **Step 4: 跑测试并 Commit** `feat(server): refresh schema lazily from db_schema`。
 
 ### Task 3: 重试数据模型与历史过滤
 
@@ -102,18 +102,18 @@ if (!entry || expired) {
 - Modify: `apps/server/src/services/conversation-service.ts`
 - Test: `apps/server/test/db.test.ts`、`apps/server/test/conversation-detail.test.ts`（新建）
 
-- [ ] **Step 1: 添加迁移与列**：
+- [x] **Step 1: 添加迁移与列**：
 
 ```sql
 ALTER TABLE `runs` ADD `retry_of_run_id` text;
 ```
 
 journal 追加 `{ idx: 8, version: "6", when: 1793945000000, tag: "0008_retry_of_run", breakpoints: true }`。
-- [ ] **Step 2: `runs` schema 增加 `retryOfRunId: text("retry_of_run_id")`；`CreateRunInput`/`createRun` 透传。**
-- [ ] **Step 3: 添加 `listRetriedRunIds(db, conversationId): Set<string>`（`isNotNull(runs.retryOfRunId)`）。**
-- [ ] **Step 4: `getConversationDetail` 跳过被重试的 group 与 artifacts。**
-- [ ] **Step 5: 测试迁移数量 8、旧 run 隐藏、artifact 过滤。**
-- [ ] **Step 6: Commit** `feat(server): link retried runs and hide replaced turns`。
+- [x] **Step 2: `runs` schema 增加 `retryOfRunId: text("retry_of_run_id")`；`CreateRunInput`/`createRun` 透传。**
+- [x] **Step 3: 添加 `listRetriedRunIds(db, conversationId): Set<string>`（`isNotNull(runs.retryOfRunId)`）。**
+- [x] **Step 4: `getConversationDetail` 跳过被重试的 group 与 artifacts。**
+- [x] **Step 5: 测试迁移数量 8、旧 run 隐藏、artifact 过滤。**
+- [x] **Step 6: Commit** `feat(server): link retried runs and hide replaced turns`。
 
 ### Task 4: 共用入队与重试接口
 
@@ -123,7 +123,7 @@ journal 追加 `{ idx: 8, version: "6", when: 1793945000000, tag: "0008_retry_of
 - Modify: `apps/server/src/routes/runs.ts`
 - Test: `apps/server/test/retry-api.test.ts`
 
-- [ ] **Step 1: 抽取 `enqueueRun`**：
+- [x] **Step 1: 抽取 `enqueueRun`**：
 
 ```ts
 export interface EnqueueRunInput {
@@ -147,8 +147,8 @@ export function enqueueRun(
 ```
 
 注意：现有发送路径 `await opts.runtime.getOrCreate` 之后才检查队列；helper 保留该顺序。入队失败时仍返回 runId（run 已标记 error）。
-- [ ] **Step 2: 会话路由改用 helper，行为不变。**
-- [ ] **Step 3: 重试路由**：
+- [x] **Step 2: 会话路由改用 helper，行为不变。**
+- [x] **Step 3: 重试路由**：
 
 ```ts
 app.post("/api/runs/:id/retry", { preHandler: app.authenticate }, async (request, reply) => {
@@ -168,8 +168,8 @@ app.post("/api/runs/:id/retry", { preHandler: app.authenticate }, async (request
 ```
 
 需要新增 `findUserMessageEvent(db, runId)` / `findRetryOf(db, runId)` 到 runs/run-events 仓库。
-- [ ] **Step 4: 测试**：成功、404、409 状态、409 重复、技能重组、旧轮次隐藏。
-- [ ] **Step 5: Commit** `feat(server): add retry endpoint for failed runs`。
+- [x] **Step 4: 测试**：成功、404、409 状态、409 重复、技能重组、旧轮次隐藏。
+- [x] **Step 5: Commit** `feat(server): add retry endpoint for failed runs`。
 
 ### Task 5: 前端重试操作条
 
@@ -181,12 +181,12 @@ app.post("/api/runs/:id/retry", { preHandler: app.authenticate }, async (request
 - Modify: `apps/web/src/pages/ChatPage.tsx`
 - Test: `apps/web/src/components/chat/RetryActions.test.tsx`、`MessageItem.test.tsx`
 
-- [ ] **Step 1: api 增加 `retryRun(runId)`。**
-- [ ] **Step 2: `RetryActions`**：重试按钮 + 模型选择（`Select` 或 Popover），`retrying` 禁用。
-- [ ] **Step 3: `MessageItem`** 在 error/aborted 时渲染操作条，即使有部分文本；传递 `models/onRetry/retrying`。
-- [ ] **Step 4: `MessageList` 透传新 props。**
-- [ ] **Step 5: `ChatPage` retryMutation**：可选先 PATCH 模型，再 retry；成功设置乐观消息与新 `activeRunId`，invalidate 详情；错误显示。
-- [ ] **Step 6: 测试并 Commit** `feat(web): add retry and model-switch actions`。
+- [x] **Step 1: api 增加 `retryRun(runId)`。**
+- [x] **Step 2: `RetryActions`**：重试按钮 + 模型选择（`Select` 或 Popover），`retrying` 禁用。
+- [x] **Step 3: `MessageItem`** 在 error/aborted 时渲染操作条，即使有部分文本；传递 `models/onRetry/retrying`。
+- [x] **Step 4: `MessageList` 透传新 props。**
+- [x] **Step 5: `ChatPage` retryMutation**：可选先 PATCH 模型，再 retry；成功设置乐观消息与新 `activeRunId`，invalidate 详情；错误显示。
+- [x] **Step 6: 测试并 Commit** `feat(web): add retry and model-switch actions`。
 
 ### Task 6: 空态新手引导与发送失败重试
 
@@ -196,20 +196,20 @@ app.post("/api/runs/:id/retry", { preHandler: app.authenticate }, async (request
 - Modify: `apps/web/src/pages/ChatPage.tsx`
 - Test: `apps/web/src/components/chat/MessageList.test.tsx`、`apps/web/src/pages/ChatPage.test.tsx`（新建）
 
-- [ ] **Step 1: `EmptyChat` 接收数据源/回调**，示例改成 3 个通用问题并可点击，无数据源时展示角色化引导。
-- [ ] **Step 2: `Composer` 支持 `placeholder`；空态 `conversationReady` 逻辑调整。**
-- [ ] **Step 3: `ChatPage` 启动流程**：`createConversation` → `sendMessage` → navigate；失败时尽力 `deleteConversation`；期间禁用并显示状态。
-- [ ] **Step 4: 发送失败横幅加重试**：保存 `lastSend`（content/skill），按钮再次 `sendMutation`。
-- [ ] **Step 5: 测试空态选择/示例、启动失败清理。**
-- [ ] **Step 6: Commit** `feat(web): start chats from the empty state`。
+- [x] **Step 1: `EmptyChat` 接收数据源/回调**，示例改成 3 个通用问题并可点击，无数据源时展示角色化引导。
+- [x] **Step 2: `Composer` 支持 `placeholder`；空态 `conversationReady` 逻辑调整。**
+- [x] **Step 3: `ChatPage` 启动流程**：`createConversation` → `sendMessage` → navigate；失败时尽力 `deleteConversation`；期间禁用并显示状态。
+- [x] **Step 4: 发送失败横幅加重试**：保存 `lastSend`（content/skill），按钮再次 `sendMutation`。
+- [x] **Step 5: 测试空态选择/示例、启动失败清理。**
+- [x] **Step 6: Commit** `feat(web): start chats from the empty state`。
 
 ### Task 7: 全量验证与手测
 
-- [ ] **Step 1:** `pnpm verify`（typecheck + 全部测试）。
-- [ ] **Step 2:** 构建并启动 dev server，手测：
+- [x] **Step 1:** `pnpm verify`（typecheck + 全部测试）。
+- [x] **Step 2:** 构建并启动 dev server，手测：
   - 无会话选数据源 → 点示例 → 自动建会话并回答。
   - 禁用模型制造失败 → 重试 → 旧轮次消失、新轮次成功。
   - 换模型重试。
   - 新数据源不刷新 schema 直接提问。
-- [ ] **Step 3:** 更新 README 功能说明（如涉及）。
-- [ ] **Step 4:** Commit 并 push。
+- [x] **Step 3:** 更新 README 功能说明（如涉及）。
+- [x] **Step 4:** Commit 并 push。
