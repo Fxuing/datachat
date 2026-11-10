@@ -235,3 +235,25 @@
     display: none !important;
   }
 }
+
+@keyframes minimap-panel {
+  from {
+    clip-path: inset(0 50% 0 50%);
+    opacity: 0;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+@keyframes minimap-reveal {
+  from {
+    clip-path: inset(0 50% 0 50%);
+    opacity: 0.35;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}

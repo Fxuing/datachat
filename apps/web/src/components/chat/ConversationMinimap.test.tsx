@@ -43,7 +43,8 @@ describe("ConversationMinimap", () => {
     const tick = screen.getByRole("button", { name: "跳到第 2 轮" });
     fireEvent.mouseEnter(tick);
     expect(screen.getByText("3 轮对话")).toBeInTheDocument();
-    const row = screen.getByRole("button", { name: /第二个问题/ });
+    expect(screen.queryByText("第二个回答")).not.toBeInTheDocument();
+    const row = screen.getByRole("button", { name: "跳到第 2 轮" });
     fireEvent.click(row);
     expect(scrollIntoView).toHaveBeenCalled();
   });
