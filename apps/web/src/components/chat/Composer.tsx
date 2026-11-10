@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { SendHorizontal, Sparkles, Square, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
@@ -46,6 +46,21 @@ export function Composer({
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useLayoutEffect(() => {
+    const element = textareaRef.current;
+    if (!element) return;
+    const fit = () => {
+      element.style.height = "auto";
+      if (element.scrollHeight > 0) {
+        element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
+      }
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [text]);
+
   const disabled = !conversationReady || active || submitting;
   const canType = conversationReady;
   const trimmed = text.trim();
@@ -186,11 +201,11 @@ export function Composer({
             </div>
           ) : null}
 
-          <div className="flex items-end gap-2 p-2">
+          <div className="flex items-end gap-1.5 px-2 pt-2">
             <Textarea
               ref={textareaRef}
               aria-label="输入问题"
-              rows={2}
+              rows={1}
               maxLength={MAX_LENGTH}
               value={text}
               disabled={!canType}
@@ -207,36 +222,40 @@ export function Composer({
                 setActiveIndex(0);
               }}
               onKeyDown={onKeyDown}
-              className="min-h-[52px] resize-none border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:border-0 focus-visible:ring-0"
-            />
-            <ModelPicker
-              models={models}
-              modelId={modelId}
-              thinkingLevel={thinkingLevel}
-              disabled={!conversationReady || modelPickerDisabled}
-              onModelChange={onModelChange}
-              onThinkingChange={onThinkingChange}
+              className="max-h-40 min-h-[28px] resize-none overflow-y-auto border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:border-0 focus-visible:ring-0"
             />
             {active && canStop ? (
-              <Button variant="outline" className="gap-2" onClick={onStop}>
+              <Button variant="outline" className="shrink-0 gap-2" onClick={onStop}>
                 <Square className="h-3.5 w-3.5 fill-current" />
                 停止
               </Button>
             ) : (
-              <Button type="submit" className="gap-2" disabled={disabled || !trimmed || menuOpen}>
+              <Button
+                type="submit"
+                className="shrink-0 gap-2"
+                disabled={disabled || !trimmed || menuOpen}
+              >
                 <SendHorizontal className="h-4 w-4" />
                 {submitting ? "发送中…" : "发送"}
               </Button>
             )}
           </div>
-          <div className="flex items-center justify-between px-3 pb-2 text-[11px] text-muted">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-1 text-[11px] text-muted">
+            <span className="truncate">Enter 发送，Shift + Enter 换行</span>
+            <div className="flex shrink-0 items-center gap-2">
+              {trimmed.length > MAX_LENGTH - 1_000 ? (
+                <span className="tabular-nums">{`${trimmed.length} / ${MAX_LENGTH}`}</span>
+              ) : null}
               <ContextRing usage={contextUsage ?? null} />
-              <span>Enter 发送，Shift + Enter 换行</span>
+              <ModelPicker
+                models={models}
+                modelId={modelId}
+                thinkingLevel={thinkingLevel}
+                disabled={!conversationReady || modelPickerDisabled}
+                onModelChange={onModelChange}
+                onThinkingChange={onThinkingChange}
+              />
             </div>
-            <span className="pr-1">
-              {trimmed.length > MAX_LENGTH - 1_000 ? `${trimmed.length} / ${MAX_LENGTH}` : null}
-            </span>
           </div>
         </div>
       </form>
