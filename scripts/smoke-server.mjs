@@ -137,7 +137,8 @@ async function main() {
       }
     } else {
       const whitelist = readModelWhitelist();
-      const ids = (catalog.models ?? []).map((model) => model.id);
+      // /api/models exposes composite `provider::model` ids; the whitelist is per provider.
+      const ids = (catalog.models ?? []).map((model) => model.modelId ?? model.id);
       if (catalog.configured !== true) fail("/api/models 未返回 configured:true");
       if (JSON.stringify(ids) !== JSON.stringify(whitelist)) {
         fail(`模型列表与 agent/models.json 不一致：${JSON.stringify(ids)}`);

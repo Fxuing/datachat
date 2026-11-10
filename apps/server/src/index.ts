@@ -18,6 +18,10 @@ fs.mkdirSync(config.dataDir, { recursive: true });
 const handle = createDb(config.dbPath);
 const { adminPassword: _adminPassword, ...appConfig } = config;
 
+// Migrations must run before buildApp: startup wiring (LLM provider seeding,
+// settings defaults) reads tables that a fresh database does not have yet.
+const appliedMigrations = migrateDb(handle.db);
+
 let app: FastifyInstance;
 try {
   const artifacts = new ArtifactStore(
@@ -72,7 +76,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 try {
-  migrateDb(handle.db, { logger: app.log });
+  app.log.info({ applied: appliedMigrations }, "drizzle migrations applied");
   seedSkills(handle.db, config.agentDir);
   const interrupted = reconcileInterruptedRuns(handle.db);
   if (interrupted > 0) {

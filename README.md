@@ -92,6 +92,9 @@ cp .env.example .env
 # 可选：ADMIN_USERNAME、APP_ORIGIN（浏览器访问的公开地址）
 docker compose up -d --build
 # 打开 http://localhost:8080
+
+# 8080 被占用时，同时改端口和 APP_ORIGIN（两者必须一致）
+WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 ```
 
 要点：
@@ -101,7 +104,8 @@ docker compose up -d --build
 - SSE 已在 `deploy/nginx.conf` 关闭缓冲并把读超时调到 3600s，长查询不会被 nginx 截断。
 - 生产环境务必把 `APP_ORIGIN` 设为实际访问地址（多个用逗号分隔），否则登录会被 CSRF 校验拒绝。
 - 镜像内保留完整 `node_modules`（含 devDependencies），优先保证 better-sqlite3 / argon2 原生模块可用；后续可用 `pnpm deploy` 裁剪体积。
-- 本仓库开发机没有 Docker，`docker compose config` 与镜像构建未实跑；文件按官方镜像与 compose 规范静态校验。
+- 首次启动会自动执行数据库迁移并创建管理员；`ADMIN_PASSWORD` 只在初始化空卷时生效，已有卷改密码请用用户管理。
+- 已在 Docker 29 + Compose v5 实跑：镜像构建、健康检查、nginx 反代、登录、重启与命名卷持久化均通过。
 
 ## 手动浏览器验收路径
 
@@ -147,7 +151,7 @@ docker compose up -d --build
 - [x] 报告可分享为匿名链接，撤销后返回 410，公开页最多展示 100 行。
 - [x] 审计页可查询登录、用户、数据源、授权、技能、MCP、查询、导出动作。
 - [x] 设置修改默认模型与查询上限后，新会话生效。
-- [ ] `docker compose up` 实跑（开发机无 Docker，仅做静态校验）。
+- [x] `docker compose up -d --build` 实跑：server healthy、SPA/SPA fallback、登录与卷重启持久化均通过。
 
 ## 已知限制
 
