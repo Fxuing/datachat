@@ -392,7 +392,13 @@ export async function deleteConversationFiles(
   artifactsStore: ArtifactStore,
   conversation: ConversationRow,
 ): Promise<void> {
-  for (const artifact of artifactsStore.list({ conversationId: conversation.id })) {
-    await artifactsStore.delete(artifact.id);
+  // The store lists at most 100 rows per call; keep draining so a conversation
+  // with many results does not leave files/rows behind.
+  for (;;) {
+    const batch = artifactsStore.list({ conversationId: conversation.id, limit: 100 });
+    if (batch.length === 0) return;
+    for (const artifact of batch) {
+      await artifactsStore.delete(artifact.id);
+    }
   }
 }
