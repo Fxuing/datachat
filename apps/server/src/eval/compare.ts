@@ -102,7 +102,7 @@ export function compareResultSets(
   }
 
   for (let index = 0; index < expectedRows.length; index += 1) {
-    if (rowKey(expectedRows[index]) !== rowKey(actualRows[index])) {
+    if (rowKey(expectedRows[index]!) !== rowKey(actualRows[index]!)) {
       return {
         equal: false,
         reason: "value_mismatch",
