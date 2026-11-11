@@ -36,6 +36,8 @@ const putBodySchema = z
     queryPreviewRows: settingValueSchemas.queryPreviewRows.nullable().optional(),
     queryTimeoutMs: settingValueSchemas.queryTimeoutMs.nullable().optional(),
     shareMaxDays: settingValueSchemas.shareMaxDays.nullable().optional(),
+    retentionConversationDays: settingValueSchemas.retentionConversationDays.nullable().optional(),
+    retentionAuditDays: settingValueSchemas.retentionAuditDays.nullable().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, { message: "至少修改一项设置" });

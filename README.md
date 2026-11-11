@@ -105,6 +105,15 @@ EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -
 
 基线（2026-11-11，`workbuddy-ai/deepseek-v4.1-flash-sg`，严格整表结果集比较）：MySQL 13/15（86.7%）、PostgreSQL 12/15（80.0%）。失败主要是模型多返回了未被问到的辅助列或 Top-N 行数，属于模型行为而非 harness 问题。
 
+## 运维与数据保留
+
+管理员左下角“管理”→“运维”（`/admin/ops`）：
+
+- **运行指标**：7/30/90 天成功率、P50/P95 耗时、token、每日运行数、Top 数据源与查询审计汇总（不含费用估算）。
+- **数据保留**：分别设置会话与审计日志保留天数（`0` 关闭，最大 3650）。先“预览影响”，确认后再执行；仍有未过期分享的会话、正在运行的会话会跳过。清理同时删除对应 reports/shares，并写入 `ops` 审计。
+- **定时清理**：设置 `RETENTION_SWEEP_HOURS`（默认 `0` 关闭）后，服务按间隔自动执行一次保留策略；也可只靠页面手动执行。
+- **备份**：`pnpm ops:backup` 生成 `DATA_DIR/backups/backup-*`，包含 SQLite、artifact、Pi 会话、技能与 agent 配置，不包含 `.env`；`pnpm ops:restore --from <dir> --yes` 恢复前会校验 DB 完整性，并保留同级 rollback 目录。恢复需使用相同 `APP_SECRET`，否则数据源密码与密钥无法解密。
+
 ## 模型服务与冒烟
 
 模型不再写死在 `agent/models.json`：管理员在“设置 → 模型服务”中维护多个 provider（OpenAI-compatible 或 Anthropic Messages），可测试 `/models`、启停、编辑上下文窗口和默认模型。运行时会把启用的 provider 同步到 `DATA_DIR/agent/models.json`，模型键为 `providerId::modelId`，旧裸模型 ID 仍兼容。
@@ -200,6 +209,8 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 - [x] 数据源 schema 缺失/过期时，`db_schema` 自动刷新并在失败时回退旧快照。
 - [x] NL2SQL 金标集可一键跑 MySQL/PostgreSQL 基线，低于阈值退出非零。
 - [x] GitHub Actions 覆盖 lint、typecheck、单测、构建与真库集成测试；金标集支持手动/夜间运行。
+- [x] 运维页可查看 7/30/90 天运行指标；保留策略可预览后清理，活跃分享/运行中会话自动跳过。
+- [x] `pnpm ops:backup` / `ops:restore` 可备份并恢复 SQLite 与 artifact，恢复前校验完整性并保留 rollback。
 
 完整实施状态、计划外能力和下一步候选见 [`docs/roadmap.md`](./docs/roadmap.md)。
 
@@ -212,7 +223,8 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 - MCP 的 `stdio` 服务器等同于在本机执行命令，仅应添加可信服务器。
 - 报告导出 PDF 依赖浏览器打印，不生成服务端 PDF 文件。
 - 数据库集成测试默认跳过；设置 `RUN_DB_TESTS=1` 并准备 Docker 后运行。
-- 尚无 Playwright E2E；artifact/审计/会话保留策略、运行指标聚合、备份恢复尚未实现，详见 `docs/roadmap.md`。
+- 尚无 Playwright E2E；运行指标、保留策略与备份恢复已实现，详见 `docs/roadmap.md`。
+- 备份为本地目录，不含 `.env`；异地/对象存储备份与恢复演练尚未实现。
 
 ## 上下文压缩与使用率
 

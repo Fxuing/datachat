@@ -141,6 +141,8 @@ describe("admin settings", () => {
       queryPreviewRows: testConfig.queryPreviewRows,
       queryTimeoutMs: testConfig.queryTimeoutMs,
       shareMaxDays: 365,
+      retentionConversationDays: 0,
+      retentionAuditDays: 0,
     });
   });
 

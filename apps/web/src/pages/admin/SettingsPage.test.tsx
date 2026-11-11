@@ -21,6 +21,8 @@ const settings: AdminSettings = {
   queryPreviewRows: 200,
   queryTimeoutMs: 5_000,
   shareMaxDays: 30,
+  retentionConversationDays: 0,
+  retentionAuditDays: 0,
 };
 
 function chatModel(modelId: string, name: string, contextWindow = 128_000, maxTokens = 8_192) {

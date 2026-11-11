@@ -659,11 +659,109 @@ export interface AdminSettings {
   queryPreviewRows: number;
   queryTimeoutMs: number;
   shareMaxDays: number;
+  retentionConversationDays: number;
+  retentionAuditDays: number;
 }
 
 export type AdminSettingsPatch = {
   [K in keyof AdminSettings]?: AdminSettings[K] | null;
 };
+
+
+export interface OpsMetrics {
+  range: { days: number; from: number; to: number };
+  totals: {
+    runs: number;
+    ok: number;
+    error: number;
+    aborted: number;
+    queuedOrRunning: number;
+    successRate: number;
+    p50Ms: number;
+    p95Ms: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    activeUsers: number;
+  };
+  daily: Array<{
+    date: string;
+    runs: number;
+    ok: number;
+    error: number;
+    aborted: number;
+    inputTokens: number;
+    outputTokens: number;
+  }>;
+  datasources: Array<{ datasourceId: string; name: string; runs: number; failed: number }>;
+  queries: {
+    total: number;
+    rejected: number;
+    error: number;
+    timeout: number;
+    averageRows: number | null;
+  };
+}
+
+export interface RetentionPreview {
+  conversationDays: number;
+  auditDays: number;
+  conversationCutoff: number | null;
+  auditCutoff: number | null;
+  conversations: {
+    eligible: number;
+    willDelete: number;
+    skippedActiveShares: number;
+    skippedBusy: number;
+    runs: number;
+    events: number;
+    artifacts: number;
+    artifactBytes: number;
+    reports: number;
+    shares: number;
+  };
+  auditRows: number;
+  oldestEligibleAt: number | null;
+  newestEligibleAt: number | null;
+}
+
+export interface RetentionRunResult {
+  deletedConversations: number;
+  deletedRuns: number;
+  deletedEvents: number;
+  deletedArtifacts: number;
+  deletedReports: number;
+  deletedShares: number;
+  deletedAuditRows: number;
+  skippedActiveShares: number;
+  skippedBusy: number;
+  errors: Array<{ conversationId: string; message: string }>;
+  durationMs: number;
+}
+
+export interface OpsBackup {
+  name: string;
+  createdAt: number;
+  files: number;
+  bytes: number;
+}
+
+export function getOpsMetrics(days: number): Promise<OpsMetrics> {
+  return apiRequest(`/api/admin/ops/metrics?days=${days}`);
+}
+
+export function getRetentionPreview(): Promise<RetentionPreview> {
+  return apiRequest("/api/admin/ops/retention");
+}
+
+export function runRetention(): Promise<RetentionRunResult> {
+  return apiRequest("/api/admin/ops/retention/run", { method: "POST" });
+}
+
+export function listOpsBackups(): Promise<OpsBackup[]> {
+  return apiRequest("/api/admin/ops/backups");
+}
 
 export function getAdminSettings(): Promise<{ settings: AdminSettings }> {
   return apiRequest("/api/admin/settings");

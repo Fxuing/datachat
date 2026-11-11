@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
+  Activity,
   BookOpen,
   Database,
   LogOut,
@@ -30,6 +31,7 @@ const adminLinks: { to: string; label: string; icon: LucideIcon }[] = [
   { to: "/admin/mcp", label: "MCP 服务器", icon: Plug },
   { to: "/admin/audit", label: "审计日志", icon: ScrollText },
   { to: "/admin/settings", label: "设置", icon: Settings },
+  { to: "/admin/ops", label: "运维", icon: Activity },
 ];
 
 export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {

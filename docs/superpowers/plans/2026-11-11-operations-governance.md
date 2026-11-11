@@ -1,6 +1,6 @@
 # 运行治理 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline) or superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline) or superpowers:subagent-driven-development. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 为 DataChat 增加可控的会话/审计保留、管理员运行指标页、以及可校验的 CLI 备份/恢复。
 
@@ -46,7 +46,7 @@
 - Modify: `apps/web/src/components/admin/AuditDetailDrawer.tsx`
 - Test: `apps/server/test/ops-settings.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -69,12 +69,12 @@ describe("retention settings", () => {
 });
 ```
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `pnpm vitest run apps/server/test/ops-settings.test.ts`
 Expected: FAIL，`retentionConversationDays` 不存在。
 
-- [ ] **Step 3: 实现设置**
+- [x] **Step 3: 实现设置**
 
 在 `SETTING_KEYS` 追加两个 key；在 `settingValueSchemas` 增加：
 
@@ -85,7 +85,7 @@ retentionAuditDays: z.number().int().min(0).max(3650),
 
 在 `AppSettings`/`defaultSettings`/`effectiveSettings` 增加同名字段（默认 0）。
 
-- [ ] **Step 4: 增加 ops 审计动作**
+- [x] **Step 4: 增加 ops 审计动作**
 
 - `apps/server/src/db/schema.ts` 的 `queryAudit.action.enum` 追加 `"ops"`。
 - `apps/server/src/services/audit.ts` 的 `AuditAction` 追加 `"ops"`。
@@ -94,7 +94,7 @@ retentionAuditDays: z.number().int().min(0).max(3650),
 
 无需 migration：`action` 列为 text，没有 DB CHECK。
 
-- [ ] **Step 5: 验证并提交**
+- [x] **Step 5: 验证并提交**
 
 Run: `pnpm vitest run apps/server/test/ops-settings.test.ts && pnpm --filter @datachat/server typecheck && pnpm --filter @datachat/web typecheck`
 Expected: PASS。
@@ -166,7 +166,7 @@ export function createRetentionService(input: {
 }): RetentionService;
 ```
 
-- [ ] **Step 1: 写服务测试**
+- [x] **Step 1: 写服务测试**
 
 在 `ops-retention.test.ts` 创建内存 DB、临时 `DATA_DIR`、user/datasource、两个会话（一个 40 天前、一个今天）、run/event/artifact 文件；配置 `retentionConversationDays=30`、`retentionAuditDays=30`。至少覆盖：
 
@@ -188,12 +188,12 @@ it("skips a busy conversation and counts it", async () => { /* runtime.isBusy ->
 it("deletes reports and shares with the conversation", async () => { /* assert rows gone */ });
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `pnpm vitest run apps/server/test/ops-retention.test.ts`
 Expected: FAIL，模块不存在。
 
-- [ ] **Step 3: 实现预览**
+- [x] **Step 3: 实现预览**
 
 1. `cutoff = now - days*86400000`；0 天返回 null 并跳过该类。
 2. 查 `conversations`：`coalesce(lastMessageAt, createdAt) < cutoff`。
@@ -210,7 +210,7 @@ Expected: FAIL，模块不存在。
 4. `runtime.isBusy(id)` 统计 busy；仅对 `willDelete` 统计 runs/events/artifacts/reports/shares。
 5. `artifactBytes`：`path.resolve(path.join(config.dataDir, "artifacts"), storagePath)`，必须在 root 内，`stat` 失败按 0。
 
-- [ ] **Step 4: 实现执行**
+- [x] **Step 4: 实现执行**
 
 ```ts
 async run(actorUserId) {
@@ -240,7 +240,7 @@ async run(actorUserId) {
 
 单个会话异常 push 到 `errors` 后继续；审计记录用 `recordAudit`。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `pnpm vitest run apps/server/test/ops-retention.test.ts`
 Expected: PASS。
@@ -272,11 +272,11 @@ git commit -m "feat(ops): preview and run retention cleanup"
 | POST | `/api/admin/ops/retention/run` | body `{confirm:true}` |
 | GET | `/api/admin/ops/backups` | 备份列表 |
 
-- [ ] **Step 1: 写路由测试**
+- [x] **Step 1: 写路由测试**
 
 使用 `buildApp` + admin/user cookie；断言：非管理员 403；PUT 非法值 400；两个天数都为 0 时 preview 400 `RETENTION_DISABLED`；`run` 缺 `confirm` 400；正常 preview 200；执行后审计出现 `action="ops"`。
 
-- [ ] **Step 2: 实现路由**
+- [x] **Step 2: 实现路由**
 
 ```ts
 export interface OpsRoutesOptions {
@@ -308,7 +308,7 @@ export async function opsRoutes(app: FastifyInstance, opts: OpsRoutesOptions) {
 }
 ```
 
-- [ ] **Step 3: 接入 app/index**
+- [x] **Step 3: 接入 app/index**
 
 - `BuildAppOptions` 增加 `retention?: RetentionService`；`buildApp` 默认用传入的 `agentRuntime`/`artifacts` 创建。
 - `index.ts` 创建 `retention`，传给 `buildApp`。
@@ -322,7 +322,7 @@ export async function opsRoutes(app: FastifyInstance, opts: OpsRoutesOptions) {
   ```
 - `config.ts` 增加 `retentionSweepHours`，从 `RETENTION_SWEEP_HOURS` 读取，默认 0。
 
-- [ ] **Step 4: 验证并提交**
+- [x] **Step 4: 验证并提交**
 
 Run: `pnpm vitest run apps/server/test/ops-api.test.ts && pnpm --filter @datachat/server typecheck`
 Expected: PASS。
@@ -341,11 +341,11 @@ git commit -m "feat(ops): expose retention api and optional sweep"
 - Modify: `apps/server/src/routes/ops.ts`
 - Test: `apps/server/test/ops-metrics.test.ts`
 
-- [ ] **Step 1: 写测试**
+- [x] **Step 1: 写测试**
 
 Seeded 3 runs：ok（1000ms，10/5 token）、error（3000ms）、aborted（2000ms），跨两天；断言 `runs=3`、`successRate=1/3`、`p50Ms=2000`、`p95Ms=3000`、token 汇总、daily 补零、top datasource。空 DB 断言 successRate 0、p50/p95 0。
 
-- [ ] **Step 2: 实现 `getOpsMetrics(db, days, now)`**
+- [x] **Step 2: 实现 `getOpsMetrics(db, days, now)`**
 
 按 spec 第 6 节返回结构；日桶用 UTC：
 
@@ -355,11 +355,11 @@ const day = new Date(run.createdAt).toISOString().slice(0, 10);
 
 耗时排序后 `Math.ceil(p * n) - 1`；`queries.averageRows` 仅 `status === "ok"` 且 `rowCount != null`。
 
-- [ ] **Step 3: 路由**
+- [x] **Step 3: 路由**
 
 `GET /api/admin/ops/metrics` 用 zod 校验 `days` 1–365，默认 30；返回 `{metrics: getOpsMetrics(...)}`。
 
-- [ ] **Step 4: 验证并提交**
+- [x] **Step 4: 验证并提交**
 
 Run: `pnpm vitest run apps/server/test/ops-metrics.test.ts apps/server/test/ops-api.test.ts`
 Expected: PASS。
@@ -411,11 +411,11 @@ export async function restoreBackup(input: {
 }): Promise<{ rollbackDir: string }>;
 ```
 
-- [ ] **Step 1: 写测试**
+- [x] **Step 1: 写测试**
 
 在临时目录创建 `datachat.db`（migrate + 插入 user）、`artifacts/a.txt`；`createBackup` 后断言 manifest/DB/文件存在；修改源 DB 和文件后 `restoreBackup`，断言恢复原值、源文件不存在；篡改 manifest hash 断言抛错；非空输出目录断言拒绝。
 
-- [ ] **Step 2: 实现备份**
+- [x] **Step 2: 实现备份**
 
 ```ts
 const dir = outputDir ?? path.join(dataDir, "backups", stamp);
@@ -429,11 +429,11 @@ const dbSha256 = await sha256File(path.join(dir, "datachat.db"));
 // 统计文件/字节，写 manifest.json
 ```
 
-- [ ] **Step 3: 实现恢复**
+- [x] **Step 3: 实现恢复**
 
 按 spec：校验 manifest/hash → `new Database(from/datachat.db,{readonly:true}).pragma("integrity_check")` → staging 到 `os.tmpdir()` → 当前内容移到同级 `restore-rollback-*` → 复制白名单 → 失败回滚。只复制白名单条目，路径必须位于 `from` 内。
 
-- [ ] **Step 4: CLI**
+- [x] **Step 4: CLI**
 
 `apps/server/scripts/ops-backup.ts`：解析 `--output`，`loadConfig`、`createDb`、`createBackup`、关闭、打印路径。
 `apps/server/scripts/ops-restore.ts`：必须 `--from` 与 `--yes`，否则退出 1；调用 restore。
@@ -451,7 +451,7 @@ server scripts：
 "ops:restore": "tsx --env-file-if-exists=../../.env scripts/ops-restore.ts"
 ```
 
-- [ ] **Step 5: 验证并提交**
+- [x] **Step 5: 验证并提交**
 
 Run: `pnpm vitest run apps/server/test/ops-backup.test.ts`
 Expected: PASS。
@@ -472,7 +472,7 @@ git commit -m "feat(ops): add verified backup and restore commands"
 - Modify: `apps/web/src/components/AppShell.tsx`
 - Test: `apps/web/src/pages/admin/OpsPage.test.tsx`
 
-- [ ] **Step 1: 写 API 类型/函数**
+- [x] **Step 1: 写 API 类型/函数**
 
 ```ts
 export interface OpsMetrics { /* 与 spec 第 6 节一致 */ }
@@ -488,11 +488,11 @@ export function runRetention(): Promise<RetentionRunResult>;
 export function listBackups(): Promise<{ backups: BackupInfo[] }>;
 ```
 
-- [ ] **Step 2: 写页面测试**
+- [x] **Step 2: 写页面测试**
 
 mock `../lib/api`；断言：渲染指标卡片；切换到 90 天调用 `getOpsMetrics(90)`；输入天数后“预览影响”显示会话/artifact/跳过数；“执行清理”先弹确认框，确认后调用 `runRetention`；备份列表展示最近备份；失败态显示错误而非 0。
 
-- [ ] **Step 3: 实现页面**
+- [x] **Step 3: 实现页面**
 
 区块：
 
@@ -500,12 +500,12 @@ mock `../lib/api`；断言：渲染指标卡片；切换到 90 天调用 `getOps
 2. 保留：`useQuery(["ops-retention"])`；两个 number 输入；保存 mutation；预览 mutation；确认 Dialog；结果摘要。
 3. 备份：`useQuery(["ops-backups"])`；代码块展示 `pnpm ops:backup` / `pnpm ops:restore --from <dir> --yes`；列表展示名称/时间/大小。
 
-- [ ] **Step 4: 路由与导航**
+- [x] **Step 4: 路由与导航**
 
 - `App.tsx` 懒加载 `OpsPage`，增加 `/admin/ops` + `RequireAdmin`。
 - `AppShell.tsx` adminLinks 增加 `{ to: "/admin/ops", label: "运维", icon: Wrench }`（`Wrench` 从 lucide-react 导入）。
 
-- [ ] **Step 5: 验证并提交**
+- [x] **Step 5: 验证并提交**
 
 Run: `pnpm --filter @datachat/web test -- OpsPage && pnpm --filter @datachat/web typecheck`
 Expected: PASS。
@@ -524,7 +524,7 @@ git commit -m "feat(web): add operations dashboard"
 - Modify: `docs/roadmap.md`
 - Modify: `.env.example`
 
-- [ ] **Step 1: 文档**
+- [x] **Step 1: 文档**
 
 README 增加：
 - 环境变量 `RETENTION_SWEEP_HOURS`（默认 0）。
@@ -538,18 +538,18 @@ RETENTION_SWEEP_HOURS=0
 
 roadmap 把“运行治理”勾为完成，记录测试与命令。
 
-- [ ] **Step 2: 全量验证**
+- [x] **Step 2: 全量验证**
 
 Run: `pnpm verify`
 Expected: typecheck/build 通过，server + web 测试全绿。
 
-- [ ] **Step 3: 手工冒烟**
+- [x] **Step 3: 手工冒烟**
 
 - 启动 dev，登录 `/admin/ops`：指标加载；设置保留天数并预览；不执行（避免删除真实数据）。
 - 在临时 `DATA_DIR` 上执行 `pnpm ops:backup`，检查 manifest；在另一个临时目录恢复并启动确认。
 - 验证非管理员访问 `/admin/ops` 跳转 `/chat`。
 
-- [ ] **Step 4: 提交与推送**
+- [x] **Step 4: 提交与推送**
 
 ```bash
 git add README.md docs/roadmap.md .env.example
