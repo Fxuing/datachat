@@ -1,5 +1,7 @@
 # DataChat Plan 2 — Pi Agent 运行时与聊天页
 
+> **实施状态：已交付。** 下方复选框保留为原始执行模板，未逐项回填；实际交付、计划外能力与差异见 [`docs/roadmap.md`](../../roadmap.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在已完成的 foundation（认证、数据源、SQL 守卫/执行器、artifact、审计）之上，接入 Pi SDK 与硅基流动模型，实现「多轮会话 + 流式回答 + 工具调用 + 结果表格」的可用 Web 聊天产品。

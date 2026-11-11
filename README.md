@@ -9,7 +9,9 @@
 | `apps/server` | Fastify + better-sqlite3（会话/审计/结果存储）+ Pi Agent 运行时 |
 | `apps/web` | React 19 + Vite + Tailwind 前端 |
 | `packages/shared` | 前后端共享类型与校验 |
-| `agent/models.json` | 模型白名单（`siliconflow` provider） |
+| `agent/models.json` | 模型目录模板；运行时由“设置 → 模型服务”生成到 `DATA_DIR/agent/models.json` |
+| `evals/nl2sql` | NL2SQL 金标集：fixture、15 条用例、本地评分报告 |
+| `docs/roadmap.md` | 实施状态、已知缺口与下一步路线 |
 | `scripts/smoke-*.mjs` | 手动冒烟脚本，测试不依赖网络 |
 
 ## 前置条件
@@ -64,6 +66,13 @@ pnpm typecheck
 
 测试使用内存 SQLite 与假模型，**不访问真实数据库或模型 API**，可离线运行。
 
+## 失败恢复与新手引导
+
+- `/chat` 空态可直接选择数据源，点击示例会立即创建会话并发送；已有会话的空态只显示标题与示例，数据源以顶栏为准，不再重复渲染数据源区块。
+- 运行失败、被停止的轮次会显示“重试 / 换模型重试”。重试会原地替换失败轮次（`runs.retry_of_run_id`），历史、分享和报告里不会出现重复问题；换模型会先更新会话模型再重试。
+- 模型或数据源加载失败时，空态与 Composer 会区分“加载中 / 加载失败 / 未配置”，并提供重试，而不是误报“未配置”。
+- 数据源没有 schema 缓存时，`db_schema` 会自动刷新；超过 24 小时刷新失败则回退旧快照并标记 `stale`。
+
 ## NL2SQL 金标集
 
 `evals/nl2sql/` 内置一套固定的电商 fixture（MySQL / PostgreSQL 各一份）和 15 条单轮问题，用真实 Agent 链路跑完后执行生成的 SQL，与金标 SQL 的结果集逐值比较（列数、行数、值；默认无序）。
@@ -86,15 +95,17 @@ EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -
 
 基线（2026-11-11，`workbuddy-ai/deepseek-v4.1-flash-sg`，严格整表结果集比较）：MySQL 13/15（86.7%）、PostgreSQL 12/15（80.0%）。失败主要是模型多返回了未被问到的辅助列或 Top-N 行数，属于模型行为而非 harness 问题。
 
-## 模型白名单策略
+## 模型服务与冒烟
 
-`agent/models.json` 是唯一模型来源，当前白名单 4 个模型。新增模型前必须先通过工具调用冒烟：
+模型不再写死在 `agent/models.json`：管理员在“设置 → 模型服务”中维护多个 provider（OpenAI-compatible 或 Anthropic Messages），可测试 `/models`、启停、编辑上下文窗口和默认模型。运行时会把启用的 provider 同步到 `DATA_DIR/agent/models.json`，模型键为 `providerId::modelId`，旧裸模型 ID 仍兼容。
+
+新增模型前建议先通过工具调用冒烟：
 
 ```bash
 node scripts/smoke-agent.mjs
 ```
 
-脚本对白名单中的每个模型发起一次带 `db_query` 工具的请求，断言 `finish_reason === "tool_calls"` 且工具名/参数合法；任一模型失败即退出非零。**只有全部通过才允许把新模型加入 `agent/models.json`。**
+脚本对白名单中的每个模型发起一次带 `db_query` 工具的请求，断言 `finish_reason === "tool_calls"` 且工具名/参数合法；任一模型失败即退出非零。**只有通过工具调用冒烟、确认支持 function calling 的模型才应加入 provider。**
 
 两个冒烟脚本都是手动的，会从 `.env` 读取密钥，**不会打印密钥**：
 
@@ -175,6 +186,11 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 - [x] 审计页可查询登录、用户、数据源、授权、技能、MCP、查询、导出动作。
 - [x] 设置修改默认模型与查询上限后，新会话生效。
 - [x] `docker compose up -d --build` 实跑：server healthy、SPA/SPA fallback、登录与卷重启持久化均通过。
+- [x] 空会话可选数据源、点示例直接开聊；失败/停止的轮次可原地重试或换模型。
+- [x] 数据源 schema 缺失/过期时，`db_schema` 自动刷新并在失败时回退旧快照。
+- [x] NL2SQL 金标集可一键跑 MySQL/PostgreSQL 基线，低于阈值退出非零。
+
+完整实施状态、计划外能力和下一步候选见 [`docs/roadmap.md`](./docs/roadmap.md)。
 
 ## 已知限制
 
@@ -185,6 +201,7 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 - MCP 的 `stdio` 服务器等同于在本机执行命令，仅应添加可信服务器。
 - 报告导出 PDF 依赖浏览器打印，不生成服务端 PDF 文件。
 - 数据库集成测试默认跳过；设置 `RUN_DB_TESTS=1` 并准备 Docker 后运行。
+- 尚无 CI、ESLint、Playwright E2E；artifact/审计/会话保留策略、运行指标聚合、备份恢复也尚未实现，详见 `docs/roadmap.md`。
 
 ## 上下文压缩与使用率
 

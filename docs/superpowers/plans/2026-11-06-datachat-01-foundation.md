@@ -1,5 +1,7 @@
 # DataChat Plan 1: Foundation, Auth, Datasources, SQL Core
 
+> **实施状态：已交付。** 下方复选框保留为原始执行模板，未逐项回填；实际交付、计划外能力与差异见 [`docs/roadmap.md`](../../roadmap.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 建立一个可运行的 Fastify + SQLite 后端骨架，完成登录、用户/授权、数据源管理与只读 SQL 核心（守卫、流式执行、结果落盘、审计），并用 Testcontainers 验证 MySQL/PostgreSQL 两条链路。

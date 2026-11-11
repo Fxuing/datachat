@@ -1,5 +1,7 @@
 # DataChat Plan 3 — 图表、导出、Skills 与 MCP 管理
 
+> **实施状态：已交付。** 下方复选框保留为原始执行模板，未逐项回填；实际交付、计划外能力与差异见 [`docs/roadmap.md`](../../roadmap.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** 在已完成的聊天链路上补齐「结果可视化 + 数据导出 + 语义层（Skills）+ 外部工具（MCP）」四块能力，形成可演示的分析产品。

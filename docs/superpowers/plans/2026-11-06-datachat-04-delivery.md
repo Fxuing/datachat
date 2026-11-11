@@ -1,5 +1,7 @@
 # DataChat 实现计划 04 — 交付与运营面
 
+> **实施状态：已交付。** 下方复选框保留为原始执行模板，未逐项回填；实际交付、计划外能力与差异见 [`docs/roadmap.md`](../../roadmap.md)。
+
 > 依据 `docs/superpowers/specs/2026-11-06-datachat-design.md` §7.2/§7.4/§11/§13/§14/§16。
 > 前置：Plan 1–3 已完成；分支 `feat/foundation`。
 > 执行方式：批量 worker，每个 Task 一个提交，最后统一评审。
