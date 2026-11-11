@@ -52,6 +52,9 @@ export interface MessageListProps {
   onRetryModels?: () => void;
   selectedDatasourceId?: string | null;
   onSelectDatasource?: (id: string) => void;
+  /** Set for an existing conversation: its datasource cannot be changed. */
+  datasourceLocked?: boolean;
+  boundDatasource?: DatasourceSummary | null;
   onExample?: (content: string) => void;
   starting?: boolean;
   isAdmin?: boolean;
@@ -93,6 +96,8 @@ function EmptyChat({
   onRetryModels,
   selectedDatasourceId = null,
   onSelectDatasource,
+  datasourceLocked = false,
+  boundDatasource = null,
   onExample,
   starting = false,
   isAdmin = false,
@@ -106,12 +111,15 @@ function EmptyChat({
   onRetryModels?: () => void;
   selectedDatasourceId?: string | null;
   onSelectDatasource?: (id: string) => void;
+  datasourceLocked?: boolean;
+  boundDatasource?: DatasourceSummary | null;
   onExample?: (content: string) => void;
   starting?: boolean;
   isAdmin?: boolean;
 }) {
+  const activeDatasourceId = datasourceLocked ? boundDatasource?.id : selectedDatasourceId;
   const canStart =
-    Boolean(selectedDatasourceId) &&
+    Boolean(activeDatasourceId) &&
     modelsStatus === "ready" &&
     modelsCount > 0 &&
     !starting;
@@ -122,9 +130,13 @@ function EmptyChat({
         <BrandMark size={60} className="rounded-[14px] shadow-card" />
       </div>
       <div>
-        <p className="text-lg font-semibold tracking-tight text-ink">开始新的对话</p>
+        <p className="text-lg font-semibold tracking-tight text-ink">
+          {datasourceLocked ? "开始提问" : "开始新的对话"}
+        </p>
         <p className="mt-1.5 text-sm text-muted">
-          选择一个数据源，然后直接提问或用下面的示例开始
+          {datasourceLocked
+            ? "当前对话已绑定数据源，直接提问或用下面的示例开始"
+            : "选择一个数据源，然后直接提问或用下面的示例开始"}
         </p>
       </div>
 
@@ -133,7 +145,23 @@ function EmptyChat({
           <label className="text-[11px] font-medium text-inksoft">数据源</label>
           <span className="text-[10px] text-muted">只会执行只读查询</span>
         </div>
-        {datasourcesError ? (
+        {datasourceLocked ? (
+          boundDatasource ? (
+            <div className="flex h-10 items-center justify-between gap-3 rounded-lg border border-line bg-subtle/40 px-3 text-xs">
+              <span className="truncate font-medium text-ink">
+                {boundDatasource.name} · {boundDatasource.type === "mysql" ? "MySQL" : "PostgreSQL"}
+              </span>
+              <span className="shrink-0 text-[10px] text-muted">当前对话已绑定</span>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-line bg-subtle/40 px-4 py-3 text-left">
+              <p className="text-xs font-medium text-ink">当前数据源不可用</p>
+              <p className="mt-1 text-[11px] leading-5 text-muted">
+                数据源可能已被删除，请新建对话或联系管理员。
+              </p>
+            </div>
+          )
+        ) : datasourcesError ? (
           <div className="rounded-lg border border-danger/20 bg-dangersoft px-4 py-3 text-left">
             <p className="text-xs font-medium text-danger">数据源加载失败</p>
             <p className="mt-1 text-[11px] leading-5 text-danger/80">{datasourcesError}</p>
@@ -251,7 +279,11 @@ function EmptyChat({
         ))}
       </div>
       <p className="text-[11px] text-muted/80">
-        {starting ? "正在创建会话…" : "点击示例会直接开始对话，也可以在下方输入框提问"}
+        {starting
+          ? datasourceLocked
+            ? "正在发送…"
+            : "正在创建会话…"
+          : "点击示例会直接开始对话，也可以在下方输入框提问"}
       </p>
     </div>
   );
@@ -279,6 +311,8 @@ export function MessageList({
   onRetryModels,
   selectedDatasourceId = null,
   onSelectDatasource,
+  datasourceLocked = false,
+  boundDatasource = null,
   onExample,
   starting = false,
   isAdmin = false,
@@ -363,6 +397,8 @@ export function MessageList({
             onRetryModels={onRetryModels}
             selectedDatasourceId={selectedDatasourceId}
             onSelectDatasource={onSelectDatasource}
+            datasourceLocked={datasourceLocked}
+            boundDatasource={boundDatasource}
             onExample={onExample}
             starting={starting}
             isAdmin={isAdmin}

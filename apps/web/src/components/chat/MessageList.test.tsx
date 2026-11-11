@@ -95,6 +95,46 @@ describe("MessageList charts", () => {
     expect(onExample).toHaveBeenCalledWith("这个库有哪些表？分别做什么？");
   });
 
+  it("uses the bound datasource for an empty existing conversation", async () => {
+    const user = userEvent.setup();
+    const onExample = vi.fn();
+    render(
+      <MemoryRouter>
+        <MessageList
+          messages={[]}
+          stream={initialRunStreamState}
+          showStream={false}
+          optimisticText={null}
+          datasourceLocked
+          boundDatasource={{
+            id: "ds-1",
+            name: "业务库",
+            type: "mysql",
+            host: "db.local",
+            port: 3306,
+            database: "biz",
+            username: "reader",
+            sslMode: "disable",
+            status: "ok",
+            readOnlyVerified: true,
+            allowWriteAccount: false,
+            lastCheckedAt: null,
+          }}
+          modelsStatus="ready"
+          modelsCount={1}
+          onExample={onExample}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("开始提问")).toBeInTheDocument();
+    expect(screen.getByText("业务库 · MySQL")).toBeInTheDocument();
+    expect(screen.queryByText("还没有可用的数据源")).not.toBeInTheDocument();
+    expect(screen.queryByText("尚未配置模型服务")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /先了解数据结构/ }));
+    expect(onExample).toHaveBeenCalledWith("这个库有哪些表？分别做什么？");
+  });
+
   it("shows model and datasource configuration problems instead of guessing", async () => {
     const user = userEvent.setup();
     const onRetryModels = vi.fn();

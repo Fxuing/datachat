@@ -377,6 +377,22 @@ export default function ChatPage() {
         models={models?.models ?? []}
         retryingRunId={retryingRunId}
         onRetry={handleRetry}
+        datasources={availableDatasources}
+        datasourcesLoading={datasourcesQuery.isPending}
+        datasourcesError={
+          datasourcesQuery.isError
+            ? errorMessage(datasourcesQuery.error, "数据源加载失败")
+            : null
+        }
+        onRetryDatasources={() => void datasourcesQuery.refetch()}
+        modelsStatus={modelsStatus}
+        modelsCount={modelCount}
+        onRetryModels={() => void modelsQuery.refetch()}
+        datasourceLocked
+        boundDatasource={datasource ?? null}
+        onExample={(content) => void handleSend(content)}
+        starting={sendMutation.isPending}
+        isAdmin={user.role === "admin"}
       />
     );
   }
