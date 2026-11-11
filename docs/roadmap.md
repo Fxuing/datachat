@@ -27,7 +27,7 @@
 - **结果与过程呈现**：SQL 与结果成对、执行过程默认折叠、结果弹窗、思考块、报告内联图表、右侧对话 minimap、全站 Radix Tooltip。
 - **工程与部署**：`WEB_PORT` / `PORT` 环境变量；Docker Compose 已在 Docker 29 + Compose v5 实跑并修复空库迁移顺序、构建 target、smoke 模型 ID 等问题。
 - **NL2SQL 金标集**：15 条单轮用例、MySQL/PostgreSQL fixture、真实 Agent 链路、结果集逐值比较、`--repeat`、JSON/Markdown 报告与阈值退出码；2026-11-11 基线 MySQL 13/15、PostgreSQL 12/15。
-- **CI 与 lint**：`.github/workflows/ci.yml` 覆盖 lint、typecheck、服务端/共享包测试、web 测试与构建；独立 job 用 Testcontainers 跑真库集成测试；手动/夜间 `eval:nl2sql` job 在配置 `EVAL_API_KEY` 后运行；根级 `pnpm lint` 使用 ESLint 9 + typescript-eslint flat config。
+- **CI 与 lint**：`.github/workflows/ci.yml` 覆盖 lint、typecheck、服务端/共享包测试、web 测试与构建；独立 job 用 Testcontainers 跑真库集成测试；手动/夜间 `eval:nl2sql` job 在配置 `EVAL_API_KEY` 后运行；根级 `pnpm lint` 使用 ESLint 9 + typescript-eslint flat config。首次 GitHub Actions 运行已通过（2026-11-11，含 7 项 MySQL/PostgreSQL 集成测试）。
 
 ## 已知缺口
 
