@@ -12,6 +12,7 @@
 | `agent/models.json` | 模型目录模板；运行时由“设置 → 模型服务”生成到 `DATA_DIR/agent/models.json` |
 | `evals/nl2sql` | NL2SQL 金标集：fixture、15 条用例、本地评分报告 |
 | `docs/roadmap.md` | 实施状态、已知缺口与下一步路线 |
+| `.github/workflows/ci.yml` | CI：lint/typecheck/测试/构建、真库集成测试、手动/夜间金标集 |
 | `scripts/smoke-*.mjs` | 手动冒烟脚本，测试不依赖网络 |
 
 ## 前置条件
@@ -58,7 +59,7 @@ pnpm --filter @datachat/web dev      # http://localhost:${WEB_PORT:-5173}，/api
 ## 验证
 
 ```bash
-pnpm verify                        # typecheck + 服务端/共享包测试 + web 测试 + 全量构建
+pnpm verify                        # lint + typecheck + 服务端/共享包测试 + web 测试 + 全量构建
 pnpm lint                          # ESLint 9 + typescript-eslint（0 error；少量 warning）
 pnpm test                          # 服务端与共享包测试（vitest）
 pnpm --filter @datachat/web test   # 前端组件测试（jsdom）
