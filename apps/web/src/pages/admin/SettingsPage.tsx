@@ -217,7 +217,7 @@ export default function SettingsPage() {
 
   const busy = saveMutation.isPending || resetMutation.isPending;
   const models = modelsQuery.data?.models ?? [];
-  const modelConfigured = modelsQuery.data?.configured ?? false;
+  const modelConfigured = models.length > 0;
 
   const updateDraft = (patch: Partial<Draft>) => {
     setDraft((current) => (current ? { ...current, ...patch } : current));
@@ -402,7 +402,7 @@ export default function SettingsPage() {
                           onValueChange={(value) =>
                             updateDraft({ defaultModelId: value === "__none__" ? "" : value })
                           }
-                          disabled={busy}
+                          disabled={busy || !modelConfigured}
                         >
                           <SelectTrigger id="default-model" aria-label="默认模型" className="mt-1.5">
                             <SelectValue />
@@ -430,9 +430,13 @@ export default function SettingsPage() {
                           </SelectContent>
                         </Select>
                         <p className="mt-1.5 text-xs text-muted">
-                          {modelConfigured
-                            ? "新会话会使用该模型；未设置时使用第一个可用模型。"
-                            : "尚未配置可用的模型服务，请先到「模型服务」添加。"}
+                          {modelsQuery.isPending
+                            ? "正在加载模型服务…"
+                            : modelsQuery.isError
+                              ? "模型列表加载失败，请稍后重试。"
+                              : modelConfigured
+                                ? "新会话会使用该模型；未设置时使用第一个可用模型。"
+                                : "尚未配置可用的模型服务，请先到「模型服务」添加。"}
                         </p>
                         {modelsQuery.isError ? (
                           <p role="alert" className="mt-1 text-xs text-danger">

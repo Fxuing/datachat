@@ -6,6 +6,7 @@ import {
   insertLlmProvider,
   listLlmProviders,
   parseProviderModels,
+  updateLlmProvider,
   type LlmProviderModel,
   type LlmProviderRow,
   type LlmProtocol,
@@ -164,7 +165,6 @@ export function decryptProviderKey(row: LlmProviderRow, appSecret: string): stri
 
 /** Seeds the legacy SiliconFlow config once so existing deployments keep working. */
 export function seedLegacyLlmProvider(db: Db, config: AppConfig): void {
-  if (listLlmProviders(db).length > 0) return;
   let legacy: unknown;
   try {
     legacy = JSON.parse(fs.readFileSync(path.join(config.agentDir, "models.json"), "utf8"));
@@ -182,12 +182,34 @@ export function seedLegacyLlmProvider(db: Db, config: AppConfig): void {
   if (models.length === 0) return;
   const baseUrl = typeof provider.baseUrl === "string" ? provider.baseUrl : "";
   if (!baseUrl) return;
+  const id = legacyId.slice(0, 64) || "siliconflow";
+  const apiKey = config.siliconflowApiKey?.trim() ?? "";
+  const existing = listLlmProviders(db);
+
+  if (existing.length > 0) {
+    // Earlier builds seeded the legacy provider even when the environment had no
+    // key. Adopt a key that was added later instead of leaving a permanently
+    // "unconfigured" provider behind.
+    if (!apiKey) return;
+    const seeded = existing.find((row) => row.id === id);
+    if (seeded && decryptProviderKey(seeded, config.appSecret).length === 0) {
+      updateLlmProvider(db, seeded.id, {
+        apiKeyCipher: encryptSecret(apiKey, deriveSecretKey(config.appSecret)),
+        now: Date.now(),
+      });
+    }
+    return;
+  }
+
+  // Do not create an empty placeholder: it would block a later seed from picking
+  // up SILICONFLOW_API_KEY and make the UI report "未配置模型".
+  if (!apiKey) return;
   insertLlmProvider(db, {
-    id: legacyId.slice(0, 64) || "siliconflow",
+    id,
     name: typeof provider.name === "string" && provider.name.trim() ? provider.name : legacyId,
     protocol,
     baseUrl: normalizeBaseUrl(baseUrl),
-    apiKeyCipher: encryptSecret(config.siliconflowApiKey ?? "", deriveSecretKey(config.appSecret)),
+    apiKeyCipher: encryptSecret(apiKey, deriveSecretKey(config.appSecret)),
     models,
     enabled: true,
     now: Date.now(),
@@ -223,7 +245,10 @@ export function syncModelCatalog(db: Db, config: AppConfig): ModelCatalog {
   for (const provider of providers) {
     const models = parseProviderModels(provider);
     const key = decryptProviderKey(provider, config.appSecret);
-    if (key) keys.set(provider.id, key);
+    // A provider without a key cannot answer requests; leaving it in the
+    // catalog only produces models that fail on first use.
+    if (!key) continue;
+    keys.set(provider.id, key);
     catalog.providers[provider.id] = {
       name: provider.name,
       baseUrl: provider.baseUrl,

@@ -9,6 +9,7 @@ import type {
 } from "../../lib/api";
 import type { RunStreamState } from "../../lib/run-events";
 import { PageSpinner } from "../ui/spinner";
+import { Button } from "../ui/button";
 import { BrandMark } from "../BrandMark";
 import { ChartCard, chartOptionFromSpec } from "./ChartCard";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
@@ -21,6 +22,7 @@ import { ConversationMinimap } from "./ConversationMinimap";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { ResultCard } from "./ResultCard";
 import { parseReportMarkdown } from "../../lib/report-markdown";
+import type { ModelPickerStatus } from "./ModelPicker";
 
 export interface MessageListProps {
   messages: ChatMessage[];
@@ -43,6 +45,11 @@ export interface MessageListProps {
   /** Datasources offered on the empty state so a new chat can start in place. */
   datasources?: DatasourceSummary[];
   datasourcesLoading?: boolean;
+  datasourcesError?: string | null;
+  onRetryDatasources?: () => void;
+  modelsStatus?: ModelPickerStatus;
+  modelsCount?: number;
+  onRetryModels?: () => void;
   selectedDatasourceId?: string | null;
   onSelectDatasource?: (id: string) => void;
   onExample?: (content: string) => void;
@@ -79,6 +86,11 @@ const examples = [
 function EmptyChat({
   datasources = [],
   datasourcesLoading = false,
+  datasourcesError = null,
+  onRetryDatasources,
+  modelsStatus = "ready",
+  modelsCount = 0,
+  onRetryModels,
   selectedDatasourceId = null,
   onSelectDatasource,
   onExample,
@@ -87,13 +99,22 @@ function EmptyChat({
 }: {
   datasources?: DatasourceSummary[];
   datasourcesLoading?: boolean;
+  datasourcesError?: string | null;
+  onRetryDatasources?: () => void;
+  modelsStatus?: ModelPickerStatus;
+  modelsCount?: number;
+  onRetryModels?: () => void;
   selectedDatasourceId?: string | null;
   onSelectDatasource?: (id: string) => void;
   onExample?: (content: string) => void;
   starting?: boolean;
   isAdmin?: boolean;
 }) {
-  const canStart = Boolean(selectedDatasourceId) && !starting;
+  const canStart =
+    Boolean(selectedDatasourceId) &&
+    modelsStatus === "ready" &&
+    modelsCount > 0 &&
+    !starting;
   return (
     <div className="flex flex-col items-center justify-center gap-7 py-20 text-center">
       <div className="relative">
@@ -112,7 +133,21 @@ function EmptyChat({
           <label className="text-[11px] font-medium text-inksoft">数据源</label>
           <span className="text-[10px] text-muted">只会执行只读查询</span>
         </div>
-        {datasourcesLoading ? (
+        {datasourcesError ? (
+          <div className="rounded-lg border border-danger/20 bg-dangersoft px-4 py-3 text-left">
+            <p className="text-xs font-medium text-danger">数据源加载失败</p>
+            <p className="mt-1 text-[11px] leading-5 text-danger/80">{datasourcesError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 h-7"
+              onClick={onRetryDatasources}
+            >
+              重试
+            </Button>
+          </div>
+        ) : datasourcesLoading ? (
           <div className="flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs text-muted">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             正在加载数据源…
@@ -153,6 +188,51 @@ function EmptyChat({
         )}
       </div>
 
+      {modelsStatus !== "ready" || modelsCount === 0 ? (
+        <div className="w-full max-w-md rounded-lg border border-line bg-subtle/40 px-4 py-3 text-left">
+          {modelsStatus === "loading" ? (
+            <p className="flex items-center gap-2 text-xs text-muted">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              正在加载模型服务…
+            </p>
+          ) : modelsStatus === "error" ? (
+            <>
+              <p className="text-xs font-medium text-danger">模型列表加载失败</p>
+              <p className="mt-1 text-[11px] leading-5 text-muted">
+                无法确认模型服务是否可用，请重试。
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 h-7"
+                onClick={onRetryModels}
+              >
+                重试
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-xs font-medium text-ink">尚未配置模型服务</p>
+              <p className="mt-1 text-[11px] leading-5 text-muted">
+                {isAdmin
+                  ? "请先在「设置 → 模型服务」添加一个可用的模型服务。"
+                  : "请联系管理员配置模型服务后再开始提问。"}
+              </p>
+              {isAdmin ? (
+                <Link
+                  to="/admin/settings"
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-brand hover:underline"
+                >
+                  去配置模型服务
+                  <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
+
       <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-3">
         {examples.map((example) => (
           <button
@@ -192,6 +272,11 @@ export function MessageList({
   onRetry,
   datasources = [],
   datasourcesLoading = false,
+  datasourcesError = null,
+  onRetryDatasources,
+  modelsStatus = "ready",
+  modelsCount = 0,
+  onRetryModels,
   selectedDatasourceId = null,
   onSelectDatasource,
   onExample,
@@ -271,6 +356,11 @@ export function MessageList({
           <EmptyChat
             datasources={datasources}
             datasourcesLoading={datasourcesLoading}
+            datasourcesError={datasourcesError}
+            onRetryDatasources={onRetryDatasources}
+            modelsStatus={modelsStatus}
+            modelsCount={modelsCount}
+            onRetryModels={onRetryModels}
             selectedDatasourceId={selectedDatasourceId}
             onSelectDatasource={onSelectDatasource}
             onExample={onExample}

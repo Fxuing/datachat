@@ -57,6 +57,6 @@ export async function modelsRoutes(
       storedDefault && models.some((model) => model.id === storedDefault)
         ? storedDefault
         : (models[0]?.id ?? null);
-    return { configured: true, models, defaultId };
+    return { configured: models.length > 0, models, defaultId };
   });
 }

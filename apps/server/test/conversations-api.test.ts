@@ -112,6 +112,8 @@ function config(overrides: Partial<typeof testConfig> = {}) {
   return {
     ...testConfig,
     dataDir: root,
+    // A configured legacy provider is required for model-id validation.
+    siliconflowApiKey: "sk-test",
     agentAuthPath: path.join(root, "agent", "auth.json"),
     ...overrides,
   };

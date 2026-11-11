@@ -7,6 +7,7 @@ import { Composer } from "../components/chat/Composer";
 import { QuestionCard } from "../components/chat/QuestionCard";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { MessageList } from "../components/chat/MessageList";
+import type { ModelPickerStatus } from "../components/chat/ModelPicker";
 import { ShareDialog } from "../components/ShareDialog";
 import { PageSpinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
@@ -227,8 +228,16 @@ export default function ChatPage() {
 
   const availableDatasources = datasourcesQuery.data?.datasources ?? [];
   useEffect(() => {
-    if (draftDatasourceId || availableDatasources.length === 0) return;
-    setDraftDatasourceId(availableDatasources[0]!.id);
+    if (availableDatasources.length === 0) {
+      if (draftDatasourceId) setDraftDatasourceId(null);
+      return;
+    }
+    if (
+      !draftDatasourceId ||
+      !availableDatasources.some((item) => item.id === draftDatasourceId)
+    ) {
+      setDraftDatasourceId(availableDatasources[0]!.id);
+    }
   }, [availableDatasources, draftDatasourceId]);
 
   // Reattach to a run that was still queued/running when the page was (re)loaded.
@@ -247,6 +256,10 @@ export default function ChatPage() {
     if (!conversationId) {
       if (!draftDatasourceId) {
         setSendError("请先选择一个数据源");
+        return;
+      }
+      if (modelsStatus !== "ready" || modelCount === 0) {
+        setSendError("模型服务尚未就绪，请稍后重试");
         return;
       }
       setSendError(null);
@@ -271,6 +284,12 @@ export default function ChatPage() {
   const showStream = !activeRunPersisted && (activeRunId !== null || optimisticText !== null);
   const active = sendMutation.isPending || startMutation.isPending || stream.active;
   const models = modelsQuery.data;
+  const modelCount = models?.models.length ?? 0;
+  const modelsStatus: ModelPickerStatus = modelsQuery.isPending
+    ? "loading"
+    : modelsQuery.isError
+      ? "error"
+      : "ready";
   const currentModelId = conversation?.modelId ?? models?.defaultId ?? "";
   const topbar = (
     <>
@@ -309,6 +328,15 @@ export default function ChatPage() {
         optimisticText={null}
         datasources={availableDatasources}
         datasourcesLoading={datasourcesQuery.isPending}
+        datasourcesError={
+          datasourcesQuery.isError
+            ? errorMessage(datasourcesQuery.error, "数据源加载失败")
+            : null
+        }
+        onRetryDatasources={() => void datasourcesQuery.refetch()}
+        modelsStatus={modelsStatus}
+        modelsCount={modelCount}
+        onRetryModels={() => void modelsQuery.refetch()}
         selectedDatasourceId={draftDatasourceId}
         onSelectDatasource={setDraftDatasourceId}
         onExample={(content) => void handleSend(content)}
@@ -393,12 +421,15 @@ export default function ChatPage() {
         ) : null}
         <Composer
           conversationReady={
-            conversationId ? Boolean(conversation) : Boolean(draftDatasourceId)
+            conversationId
+              ? Boolean(conversation)
+              : Boolean(draftDatasourceId) && modelsStatus === "ready" && modelCount > 0
           }
           active={active}
           canStop={activeRunId !== null}
           models={models?.models ?? []}
           modelId={currentModelId}
+          modelsStatus={modelsStatus}
           modelPickerDisabled={
             modelsQuery.isPending || modelMutation.isPending || !conversation
           }

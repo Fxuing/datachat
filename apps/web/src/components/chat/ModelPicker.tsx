@@ -26,11 +26,14 @@ function groupByProvider(models: ChatModelInfo[]): Array<[string, ChatModelInfo[
   return [...groups.entries()];
 }
 
+export type ModelPickerStatus = "loading" | "error" | "ready";
+
 export interface ModelPickerProps {
   models: ChatModelInfo[];
   modelId: string;
   thinkingLevel: string;
   disabled: boolean;
+  status?: ModelPickerStatus;
   onModelChange: (modelId: string) => void;
   onThinkingChange: (level: string) => void;
 }
@@ -44,6 +47,7 @@ export function ModelPicker({
   modelId,
   thinkingLevel,
   disabled,
+  status = "ready",
   onModelChange,
   onThinkingChange,
 }: ModelPickerProps) {
@@ -53,7 +57,13 @@ export function ModelPicker({
     models.find((model) => model.modelId === modelId);
   const thinkingLabel =
     THINKING_LEVELS.find((level) => level.value === thinkingLevel)?.label ?? "关闭";
-  const label = selected?.name ?? (models.length > 0 ? "选择模型" : "未配置模型");
+  const label =
+    status === "loading"
+      ? "加载模型…"
+      : status === "error"
+        ? "模型加载失败"
+        : (selected?.name ?? (models.length > 0 ? "选择模型" : "未配置模型"));
+  const unavailable = status !== "ready" || models.length === 0;
 
   return (
     <Tooltip>
@@ -64,7 +74,7 @@ export function ModelPicker({
           type="button"
           variant="ghost"
           size="sm"
-          disabled={disabled || models.length === 0}
+          disabled={disabled || unavailable}
           aria-label="选择模型与思考等级"
           className="h-8 max-w-[15rem] shrink-0 gap-1 rounded-lg px-2 text-[11px] font-normal text-inksoft"
         >
@@ -137,7 +147,15 @@ export function ModelPicker({
         </div>
       </PopoverContent>
       </Popover>
-      <TooltipContent side="top" align="start">模型与思考等级（对下一次提问生效）</TooltipContent>
+      <TooltipContent side="top" align="start">
+        {status === "loading"
+          ? "正在加载模型列表…"
+          : status === "error"
+            ? "模型列表加载失败，请稍后重试"
+            : models.length === 0
+              ? "尚未配置可用的模型服务"
+              : "模型与思考等级（对下一次提问生效）"}
+      </TooltipContent>
     </Tooltip>
   );
 }

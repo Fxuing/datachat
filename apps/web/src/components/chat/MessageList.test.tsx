@@ -83,6 +83,8 @@ describe("MessageList charts", () => {
             },
           ]}
           selectedDatasourceId="ds-1"
+          modelsStatus="ready"
+          modelsCount={1}
           onExample={onExample}
         />
       </MemoryRouter>,
@@ -91,6 +93,70 @@ describe("MessageList charts", () => {
     expect(screen.getByLabelText("选择数据源")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /先了解数据结构/ }));
     expect(onExample).toHaveBeenCalledWith("这个库有哪些表？分别做什么？");
+  });
+
+  it("shows model and datasource configuration problems instead of guessing", async () => {
+    const user = userEvent.setup();
+    const onRetryModels = vi.fn();
+    const onRetryDatasources = vi.fn();
+    render(
+      <MemoryRouter>
+        <MessageList
+          messages={[]}
+          stream={initialRunStreamState}
+          showStream={false}
+          optimisticText={null}
+          datasources={[]}
+          datasourcesError="网络错误"
+          onRetryDatasources={onRetryDatasources}
+          modelsStatus="error"
+          modelsCount={0}
+          onRetryModels={onRetryModels}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("数据源加载失败")).toBeInTheDocument();
+    expect(screen.getByText("模型列表加载失败")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "重试" })[0]!);
+    expect(onRetryDatasources).toHaveBeenCalled();
+    expect(onRetryModels).not.toHaveBeenCalled();
+  });
+
+  it("renders a loading model state and a configuration hint when no models exist", () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <MessageList
+          messages={[]}
+          stream={initialRunStreamState}
+          showStream={false}
+          optimisticText={null}
+          modelsStatus="loading"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("正在加载模型服务…")).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <MessageList
+          messages={[]}
+          stream={initialRunStreamState}
+          showStream={false}
+          optimisticText={null}
+          modelsStatus="ready"
+          modelsCount={0}
+          isAdmin
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("尚未配置模型服务")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /去配置模型服务/ })).toHaveAttribute(
+      "href",
+      "/admin/settings",
+    );
   });
 
   it("waits for the run to finish before showing charts", () => {

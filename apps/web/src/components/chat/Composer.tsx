@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { SendHorizontal, Sparkles, Square, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
-import { ModelPicker } from "./ModelPicker";
+import { ModelPicker, type ModelPickerStatus } from "./ModelPicker";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import type { ChatModelInfo, ConversationSkill } from "../../lib/api";
 import { cn } from "../../lib/utils";
@@ -16,6 +16,7 @@ export interface ComposerProps {
   models: ChatModelInfo[];
   modelId: string;
   modelPickerDisabled: boolean;
+  modelsStatus?: ModelPickerStatus;
   thinkingLevel: string;
   skills: ConversationSkill[];
   contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null } | null;
@@ -32,6 +33,7 @@ export function Composer({
   models,
   modelId,
   modelPickerDisabled,
+  modelsStatus = "ready",
   thinkingLevel,
   skills,
   contextUsage,
@@ -237,6 +239,7 @@ export function Composer({
                 modelId={modelId}
                 thinkingLevel={thinkingLevel}
                 disabled={!conversationReady || modelPickerDisabled}
+                status={modelsStatus}
                 onModelChange={onModelChange}
                 onThinkingChange={onThinkingChange}
               />
