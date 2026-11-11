@@ -18,6 +18,8 @@ export const SETTING_KEYS = [
   "queryPreviewRows",
   "queryTimeoutMs",
   "shareMaxDays",
+  "retentionConversationDays",
+  "retentionAuditDays",
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];
@@ -28,6 +30,8 @@ export const settingValueSchemas = {
   queryPreviewRows: z.number().int().min(1).max(1_000),
   queryTimeoutMs: z.number().int().min(1_000).max(300_000),
   shareMaxDays: z.number().int().min(1).max(365),
+  retentionConversationDays: z.number().int().min(0).max(3650),
+  retentionAuditDays: z.number().int().min(0).max(3650),
 } satisfies Record<SettingKey, z.ZodType<unknown>>;
 
 /** Hard upper bounds applied to query limits, whatever their source (env or settings). */
@@ -49,6 +53,8 @@ export interface AppSettings {
   queryPreviewRows: number;
   queryTimeoutMs: number;
   shareMaxDays: number;
+  retentionConversationDays: number;
+  retentionAuditDays: number;
 }
 
 /** Values used when a key has never been saved (or was reset). */
@@ -59,6 +65,8 @@ export function defaultSettings(config: AppConfig): AppSettings {
     queryPreviewRows: config.queryPreviewRows,
     queryTimeoutMs: config.queryTimeoutMs,
     shareMaxDays: SHARE_MAX_EXPIRES_IN_DAYS,
+    retentionConversationDays: 0,
+    retentionAuditDays: 0,
   };
 }
 
@@ -113,6 +121,14 @@ export function effectiveSettings(db: Db, config: AppConfig): AppSettings {
     shareMaxDays:
       parseStored(rows.get("shareMaxDays"), settingValueSchemas.shareMaxDays) ??
       defaults.shareMaxDays,
+    retentionConversationDays:
+      parseStored(
+        rows.get("retentionConversationDays"),
+        settingValueSchemas.retentionConversationDays,
+      ) ?? defaults.retentionConversationDays,
+    retentionAuditDays:
+      parseStored(rows.get("retentionAuditDays"), settingValueSchemas.retentionAuditDays) ??
+      defaults.retentionAuditDays,
   };
 }
 

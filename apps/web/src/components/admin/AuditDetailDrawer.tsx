@@ -25,6 +25,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditEntry["action"], string> = {
   grant_update: "更新授权",
   skill_change: "技能变更",
   mcp_change: "MCP 变更",
+  ops: "运维操作",
 };
 
 export const AUDIT_STATUS_LABELS: Record<AuditEntry["status"], string> = {

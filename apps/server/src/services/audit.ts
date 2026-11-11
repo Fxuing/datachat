@@ -16,7 +16,8 @@ export type AuditAction =
   | "datasource_delete"
   | "grant_update"
   | "skill_change"
-  | "mcp_change";
+  | "mcp_change"
+  | "ops";
 
 export interface AuditInput {
   runId: string | null;

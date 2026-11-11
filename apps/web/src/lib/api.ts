@@ -520,7 +520,8 @@ export type AuditActionValue =
   | "datasource_delete"
   | "grant_update"
   | "skill_change"
-  | "mcp_change";
+  | "mcp_change"
+  | "ops";
 
 export type AuditStatusValue = "ok" | "rejected" | "error" | "timeout";
 
