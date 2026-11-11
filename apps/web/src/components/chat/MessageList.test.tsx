@@ -128,7 +128,8 @@ describe("MessageList charts", () => {
     );
 
     expect(screen.getByText("开始提问")).toBeInTheDocument();
-    expect(screen.getByText("业务库 · MySQL")).toBeInTheDocument();
+    expect(screen.queryByLabelText("选择数据源")).not.toBeInTheDocument();
+    expect(screen.queryByText("业务库 · MySQL")).not.toBeInTheDocument();
     expect(screen.queryByText("还没有可用的数据源")).not.toBeInTheDocument();
     expect(screen.queryByText("尚未配置模型服务")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /先了解数据结构/ }));

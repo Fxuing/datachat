@@ -135,86 +135,71 @@ function EmptyChat({
         </p>
         <p className="mt-1.5 text-sm text-muted">
           {datasourceLocked
-            ? "当前对话已绑定数据源，直接提问或用下面的示例开始"
+            ? "直接提问或用下面的示例开始"
             : "选择一个数据源，然后直接提问或用下面的示例开始"}
         </p>
       </div>
 
-      <div className="w-full max-w-md text-left">
-        <div className="mb-1.5 flex items-baseline justify-between gap-3">
-          <label className="text-[11px] font-medium text-inksoft">数据源</label>
-          <span className="text-[10px] text-muted">只会执行只读查询</span>
-        </div>
-        {datasourceLocked ? (
-          boundDatasource ? (
-            <div className="flex h-10 items-center justify-between gap-3 rounded-lg border border-line bg-subtle/40 px-3 text-xs">
-              <span className="truncate font-medium text-ink">
-                {boundDatasource.name} · {boundDatasource.type === "mysql" ? "MySQL" : "PostgreSQL"}
-              </span>
-              <span className="shrink-0 text-[10px] text-muted">当前对话已绑定</span>
+      {!datasourceLocked ? (
+        <div className="w-full max-w-md text-left">
+          <div className="mb-1.5">
+            <label className="text-[11px] font-medium text-inksoft">数据源</label>
+          </div>
+          {datasourcesError ? (
+            <div className="rounded-lg border border-danger/20 bg-dangersoft px-4 py-3 text-left">
+              <p className="text-xs font-medium text-danger">数据源加载失败</p>
+              <p className="mt-1 text-[11px] leading-5 text-danger/80">{datasourcesError}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 h-7"
+                onClick={onRetryDatasources}
+              >
+                重试
+              </Button>
             </div>
+          ) : datasourcesLoading ? (
+            <div className="flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs text-muted">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              正在加载数据源…
+            </div>
+          ) : datasources.length > 0 ? (
+            <Select
+              value={selectedDatasourceId ?? undefined}
+              onValueChange={onSelectDatasource}
+              disabled={starting}
+            >
+              <SelectTrigger aria-label="选择数据源" className="h-10 bg-surface">
+                <SelectValue placeholder="选择一个数据源" />
+              </SelectTrigger>
+              <SelectContent>
+                {datasources.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name} · {item.type === "mysql" ? "MySQL" : "PostgreSQL"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <div className="rounded-lg border border-dashed border-line bg-subtle/40 px-4 py-3 text-left">
-              <p className="text-xs font-medium text-ink">当前数据源不可用</p>
+              <p className="text-xs font-medium text-ink">还没有可用的数据源</p>
               <p className="mt-1 text-[11px] leading-5 text-muted">
-                数据源可能已被删除，请新建对话或联系管理员。
+                请联系管理员完成数据库连接配置并授权给你。
               </p>
+              {isAdmin ? (
+                <Link
+                  to="/admin/datasources"
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-brand hover:underline"
+                >
+                  去添加数据源
+                  <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              ) : null}
             </div>
-          )
-        ) : datasourcesError ? (
-          <div className="rounded-lg border border-danger/20 bg-dangersoft px-4 py-3 text-left">
-            <p className="text-xs font-medium text-danger">数据源加载失败</p>
-            <p className="mt-1 text-[11px] leading-5 text-danger/80">{datasourcesError}</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-2 h-7"
-              onClick={onRetryDatasources}
-            >
-              重试
-            </Button>
-          </div>
-        ) : datasourcesLoading ? (
-          <div className="flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs text-muted">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            正在加载数据源…
-          </div>
-        ) : datasources.length > 0 ? (
-          <Select
-            value={selectedDatasourceId ?? undefined}
-            onValueChange={onSelectDatasource}
-            disabled={starting}
-          >
-            <SelectTrigger aria-label="选择数据源" className="h-10 bg-surface">
-              <SelectValue placeholder="选择一个数据源" />
-            </SelectTrigger>
-            <SelectContent>
-              {datasources.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
-                  {item.name} · {item.type === "mysql" ? "MySQL" : "PostgreSQL"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <div className="rounded-lg border border-dashed border-line bg-subtle/40 px-4 py-3 text-left">
-            <p className="text-xs font-medium text-ink">还没有可用的数据源</p>
-            <p className="mt-1 text-[11px] leading-5 text-muted">
-              请联系管理员完成数据库连接配置并授权给你。
-            </p>
-            {isAdmin ? (
-              <Link
-                to="/admin/datasources"
-                className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-brand hover:underline"
-              >
-                去添加数据源
-                <ArrowUpRight className="h-3 w-3" />
-              </Link>
-            ) : null}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      ) : null}
 
       {modelsStatus !== "ready" || modelsCount === 0 ? (
         <div className="w-full max-w-md rounded-lg border border-line bg-subtle/40 px-4 py-3 text-left">
