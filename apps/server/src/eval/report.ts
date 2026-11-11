@@ -40,14 +40,21 @@ export function renderEvalMarkdown(report: EvalReport): string {
   lines.push(`- 阈值：${percent(meta.threshold)} → ${summary.passRate >= meta.threshold ? "通过" : "未通过"}`);
   if (meta.note) lines.push(`- 说明：${meta.note}`);
   lines.push("");
-  lines.push("| 用例 | 结果 | 耗时 | 原因 | 生成 SQL |");
-  lines.push("| --- | --- | ---: | --- | --- |");
+  const showsAttempts = summary.cases.some((item) => (item.attempts?.length ?? 1) > 1);
+  lines.push(
+    showsAttempts
+      ? "| 用例 | 结果 | 尝试 | 耗时 | 原因 | 生成 SQL |"
+      : "| 用例 | 结果 | 耗时 | 原因 | 生成 SQL |",
+  );
+  lines.push(showsAttempts ? "| --- | --- | ---: | ---: | --- | --- |" : "| --- | --- | ---: | --- | --- |");
   for (const item of summary.cases) {
     const status = item.passed ? "✅" : "❌";
     const reason = item.reason ?? "";
     const sql = item.generatedSql ? `\`${cell(item.generatedSql)}\`` : "";
+    const attempts = item.attempts?.length ?? 1;
+    const attemptCell = showsAttempts ? ` ${attempts} |` : "";
     lines.push(
-      `| ${cell(item.id)} | ${status} | ${(item.durationMs / 1000).toFixed(1)}s | ${reason} | ${sql} |`,
+      `| ${cell(item.id)} | ${status} |${attemptCell} ${(item.durationMs / 1000).toFixed(1)}s | ${reason} | ${sql} |`,
     );
   }
 
@@ -64,6 +71,15 @@ export function renderEvalMarkdown(report: EvalReport): string {
       if (item.expectedSql) lines.push(`\n期望 SQL：\n\n\`\`\`sql\n${item.expectedSql}\n\`\`\``);
       if (item.generatedSql) {
         lines.push(`\n生成 SQL：\n\n\`\`\`sql\n${item.generatedSql}\n\`\`\``);
+      }
+      if (item.attempts && item.attempts.length > 1) {
+        lines.push("");
+        lines.push("逐次尝试：");
+        item.attempts.forEach((attempt, index) => {
+          const outcome = attempt.passed ? "✅" : `❌ ${attempt.reason ?? ""}`;
+          const detail = attempt.error ? `：${attempt.error}` : "";
+          lines.push(`${index + 1}. ${outcome}${detail}`);
+        });
       }
       if (item.comparison && !item.comparison.equal) {
         lines.push(`\n比较：${item.comparison.detail}`);

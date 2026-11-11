@@ -105,6 +105,38 @@ describe("runEvalCases", () => {
     expect(seen).toEqual(["one", "ordered"]);
   });
 
+  it("passes a case when any repeated attempt succeeds", async () => {
+    let calls = 0;
+    const summary = await runEvalCases({
+      dialect: "mysql",
+      cases: [cases[0]!],
+      repeat: 3,
+      runAgent: async () => {
+        calls += 1;
+        return { sql: calls === 3 ? "SELECT COUNT(*) AS n FROM t" : "SELECT 3 AS n", durationMs: 1 };
+      },
+      executeSql: async (sql) =>
+        sql === "SELECT 3 AS n" ? { columns: ["n"], rows: [[3]] } : rows.get(sql)!,
+    });
+    expect(calls).toBe(3);
+    expect(summary.cases[0]).toMatchObject({ passed: true, generatedSql: "SELECT COUNT(*) AS n FROM t" });
+    expect(summary.cases[0]!.attempts).toHaveLength(3);
+    expect(summary.cases[0]!.attempts!.map((attempt) => attempt.passed)).toEqual([false, false, true]);
+  });
+
+  it("fails a case only after all repeated attempts fail", async () => {
+    const summary = await runEvalCases({
+      dialect: "mysql",
+      cases: [cases[0]!],
+      repeat: 2,
+      runAgent: async () => ({ sql: "SELECT 3 AS n", durationMs: 1 }),
+      executeSql: async (sql) =>
+        sql === "SELECT 3 AS n" ? { columns: ["n"], rows: [[3]] } : rows.get(sql)!,
+    });
+    expect(summary.cases[0]).toMatchObject({ passed: false, reason: "mismatch" });
+    expect(summary.cases[0]!.attempts).toHaveLength(2);
+  });
+
   it("stops before running more cases when cancelled", async () => {
     const controller = new AbortController();
     controller.abort();

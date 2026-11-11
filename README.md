@@ -81,7 +81,7 @@ EVAL_MYSQL_URL='mysql://root:pass@127.0.0.1:3306/nl2sql_eval' EVAL_PG_URL='postg
 EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -- --model 'workbuddy-ai/deepseek-v4.1-flash-sg'
 ```
 
-参数：`--dialect mysql|postgres|both`、`--case <id>`（可重复）、`--model <id>`、`--threshold 0.8`、`--timeout 120`（秒）、`--output <dir>`。报告写入 `evals/nl2sql/reports/`（已 gitignore），低于阈值时退出码为 1。
+参数：`--dialect mysql|postgres|both`、`--case <id>`（可重复）、`--model <id>`、`--repeat <n>`（默认 1）、`--threshold 0.8`、`--timeout 120`（秒）、`--output <dir>`。报告写入 `evals/nl2sql/reports/`（已 gitignore），低于阈值时退出码为 1。
 
 基线（2026-11-11，`workbuddy-ai/deepseek-v4.1-flash-sg`，严格整表结果集比较）：MySQL 13/15（86.7%）、PostgreSQL 12/15（80.0%）。失败主要是模型多返回了未被问到的辅助列或 Top-N 行数，属于模型行为而非 harness 问题。
 

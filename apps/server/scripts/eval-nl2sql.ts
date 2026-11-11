@@ -47,6 +47,7 @@ interface CliOptions {
   caseIds: string[];
   threshold: number;
   timeoutMs: number;
+  repeat: number;
   outputDir: string;
 }
 
@@ -76,12 +77,17 @@ function parseOptions(args: string[]): CliOptions {
   if (!Number.isFinite(timeoutRaw) || timeoutRaw <= 0) {
     throw new Error("--timeout 必须是正数（秒）");
   }
+  const repeatRaw = Number(argValue(args, "--repeat") ?? 1);
+  if (!Number.isInteger(repeatRaw) || repeatRaw < 1) {
+    throw new Error("--repeat 必须是大于 0 的整数");
+  }
   return {
     dialects: dialect === "both" ? ["mysql", "postgres"] : [dialect],
     modelId: argValue(args, "--model") ?? process.env.EVAL_MODEL ?? "siliconflow::deepseek-ai/DeepSeek-V3.2",
     caseIds: argValues(args, "--case"),
     threshold: thresholdRaw,
     timeoutMs: timeoutRaw * 1000,
+    repeat: repeatRaw,
     outputDir: path.resolve(argValue(args, "--output") ?? DEFAULT_REPORT_DIR),
   };
 }
@@ -332,6 +338,7 @@ async function evaluateDialect(
         timeoutMs: options.timeoutMs,
       }),
       executeSql: (sql, dialect) => queryFixture({ dialect, pool: target.pool }, sql),
+      repeat: options.repeat,
       onProgress: (result, index, total) => {
         const mark = result.passed ? "✓" : "✗";
         const suffix = result.passed ? "" : ` (${result.reason}: ${result.error ?? result.generatedSql ?? "结果不一致"})`;
@@ -385,7 +392,7 @@ async function main(): Promise<void> {
             threshold: options.threshold,
             startedAt,
             finishedAt: Date.now(),
-            note: `${summary.total} 个用例，超时 ${options.timeoutMs / 1000}s`,
+            note: `${summary.total} 个用例 × ${options.repeat} 次，超时 ${options.timeoutMs / 1000}s`,
           },
           summary,
         },
