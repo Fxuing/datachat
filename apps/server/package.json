@@ -7,7 +7,9 @@
     "dev": "pnpm --filter @datachat/shared build && tsx watch --env-file-if-exists=../../.env src/index.ts",
     "build": "tsc -p tsconfig.json && node scripts/copy-drizzle.mjs",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
-    "eval:nl2sql": "tsx --env-file-if-exists=../../.env scripts/eval-nl2sql.ts"
+    "eval:nl2sql": "tsx --env-file-if-exists=../../.env scripts/eval-nl2sql.ts",
+    "ops:backup": "tsx --env-file-if-exists=../../.env scripts/ops-backup.ts",
+    "ops:restore": "tsx --env-file-if-exists=../../.env scripts/ops-restore.ts"
   },
   "dependencies": {
     "@datachat/shared": "workspace:*",

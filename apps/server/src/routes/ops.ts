@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/client.js";
+import { listBackups } from "../services/ops-backup.js";
 import { getOpsMetrics } from "../services/ops-metrics.js";
 import type { RetentionService, OpsError } from "../services/ops-retention.js";
 
 interface OpsRoutesOptions {
   db: Db;
+  dataDir: string;
   retention: RetentionService;
 }
 
@@ -24,6 +26,12 @@ export async function opsRoutes(app: FastifyInstance, opts: OpsRoutesOptions): P
     "/api/admin/ops/retention",
     { preHandler: app.requireAdmin },
     async () => opts.retention.preview(),
+  );
+
+  app.get(
+    "/api/admin/ops/backups",
+    { preHandler: app.requireAdmin },
+    async () => listBackups(opts.dataDir),
   );
 
   app.get(
