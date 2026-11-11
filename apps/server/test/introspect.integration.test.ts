@@ -26,12 +26,14 @@ describe.skipIf(!run)("schema introspection", () => {
           CREATE TABLE users (
             id INT PRIMARY KEY,
             name VARCHAR(50) NOT NULL COMMENT '姓名'
-          );
+          )
+        `);
+        await pool.query(`
           CREATE TABLE orders (
             id INT PRIMARY KEY,
             user_id INT NOT NULL,
             CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id)
-          );
+          )
         `);
 
         const snapshot = await introspectMysql(pool, container.getDatabase());
