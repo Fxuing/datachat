@@ -59,12 +59,21 @@ pnpm --filter @datachat/web dev      # http://localhost:${WEB_PORT:-5173}，/api
 
 ```bash
 pnpm verify                        # typecheck + 服务端/共享包测试 + web 测试 + 全量构建
+pnpm lint                          # ESLint 9 + typescript-eslint（0 error；少量 warning）
 pnpm test                          # 服务端与共享包测试（vitest）
 pnpm --filter @datachat/web test   # 前端组件测试（jsdom）
 pnpm typecheck
 ```
 
 测试使用内存 SQLite 与假模型，**不访问真实数据库或模型 API**，可离线运行。
+
+### 持续集成
+
+`.github/workflows/ci.yml` 在 push / PR 到 `main` 时执行：
+
+- `quality`：`pnpm lint`、`pnpm typecheck`、服务端/共享包测试、web 测试、全量构建。
+- `integration`：`RUN_DB_TESTS=1`，通过 Testcontainers 启动 MySQL 8 / PostgreSQL 16，跑真库集成测试。
+- `eval`：手动触发或每天 18:00 UTC 跑 NL2SQL 金标集；仓库需配置 Secret `EVAL_API_KEY`（未配置时自动跳过），报告作为 artifact 上传。
 
 ## 失败恢复与新手引导
 
@@ -189,6 +198,7 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 - [x] 空会话可选数据源、点示例直接开聊；失败/停止的轮次可原地重试或换模型。
 - [x] 数据源 schema 缺失/过期时，`db_schema` 自动刷新并在失败时回退旧快照。
 - [x] NL2SQL 金标集可一键跑 MySQL/PostgreSQL 基线，低于阈值退出非零。
+- [x] GitHub Actions 覆盖 lint、typecheck、单测、构建与真库集成测试；金标集支持手动/夜间运行。
 
 完整实施状态、计划外能力和下一步候选见 [`docs/roadmap.md`](./docs/roadmap.md)。
 
@@ -201,7 +211,7 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 - MCP 的 `stdio` 服务器等同于在本机执行命令，仅应添加可信服务器。
 - 报告导出 PDF 依赖浏览器打印，不生成服务端 PDF 文件。
 - 数据库集成测试默认跳过；设置 `RUN_DB_TESTS=1` 并准备 Docker 后运行。
-- 尚无 CI、ESLint、Playwright E2E；artifact/审计/会话保留策略、运行指标聚合、备份恢复也尚未实现，详见 `docs/roadmap.md`。
+- 尚无 Playwright E2E；artifact/审计/会话保留策略、运行指标聚合、备份恢复尚未实现，详见 `docs/roadmap.md`。
 
 ## 上下文压缩与使用率
 

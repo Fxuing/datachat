@@ -141,6 +141,7 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
       let finished = false;
       const buffered: LiveRunEvent[] = [];
       let unsubscribe: () => void = () => undefined;
+      // eslint-disable-next-line prefer-const -- cleanup can run before the interval starts
       let heartbeat: NodeJS.Timeout | undefined;
 
       const cleanup = (): void => {

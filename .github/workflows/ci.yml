@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Typecheck, lint, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter @datachat/web test
+      - run: pnpm -r build
+
+  integration:
+    name: MySQL/PostgreSQL integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUN_DB_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec vitest run apps/server/test --reporter=verbose
+
+  eval:
+    name: NL2SQL golden set
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EVAL_API_KEY: ${{ secrets.EVAL_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Skip when EVAL_API_KEY is not configured
+        if: env.EVAL_API_KEY == ''
+        run: echo "::notice::EVAL_API_KEY secret is not configured; skipping the NL2SQL golden set."
+      - name: Run golden set
+        if: env.EVAL_API_KEY != ''
+        env:
+          EVAL_MODEL: ${{ vars.EVAL_MODEL || 'deepseek-ai/DeepSeek-V3.2' }}
+          EVAL_BASE_URL: ${{ vars.EVAL_BASE_URL }}
+        run: |
+          pnpm eval:nl2sql -- --dialect both --threshold 0.8 --timeout 180
+      - name: Upload reports
+        if: env.EVAL_API_KEY != '' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nl2sql-reports
+          path: evals/nl2sql/reports/
+          if-no-files-found: ignore
+          retention-days: 14

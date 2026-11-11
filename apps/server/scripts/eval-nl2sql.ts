@@ -179,7 +179,7 @@ function setupProvider(db: Db, config: AppConfig, modelId: string): string {
     id: "eval",
     name: "Eval",
     protocol: "openai-completions",
-    baseUrl: (process.env.EVAL_BASE_URL ?? config.siliconflowBaseUrl).replace(/\/+$/, ""),
+    baseUrl: (process.env.EVAL_BASE_URL?.trim() || config.siliconflowBaseUrl).replace(/\/+$/, ""),
     apiKeyCipher: encryptSecret(evalKey, deriveSecretKey(config.appSecret)),
     models: [{ id: bare, name: bare, contextWindow: 128_000, maxTokens: 8_192 }],
     enabled: true,

@@ -314,8 +314,7 @@ export class ArtifactStore {
     conversationId?: string | null;
     runId: string | null;
   }): ResultWriter {
-    let writer: ResultWriter;
-    writer = new ResultWriter(
+    const writer = new ResultWriter(
       this.db,
       this.rootDir,
       {

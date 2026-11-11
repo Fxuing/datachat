@@ -163,7 +163,6 @@ async function streamMysql(
   let connection: MysqlConnection | null = null;
   let destroyed = false;
   let timedOut = false;
-  let timer: NodeJS.Timeout | undefined;
   let rejectAcquisitionTimeout: ((error: Error) => void) | undefined;
 
   const destroy = () => {
@@ -177,7 +176,7 @@ async function streamMysql(
 
   // The timeout starts before pool acquisition: waiting for a free connection is
   // part of the query budget, not an unbounded prelude to it.
-  timer = setTimeout(() => {
+  const timer = setTimeout(() => {
     timedOut = true;
     destroy();
     rejectAcquisitionTimeout?.(new SqlTimeoutError());
@@ -278,7 +277,6 @@ async function streamPostgres(
   let released = false;
   let timedOut = false;
   let cursor: Cursor | null = null;
-  let timer: NodeJS.Timeout | undefined;
   let rejectAcquisitionTimeout: ((error: Error) => void) | undefined;
 
   const release = (destroy: boolean) => {
@@ -299,7 +297,7 @@ async function streamPostgres(
     rejectAcquisitionTimeout?.(new SqlAbortedError());
   };
 
-  timer = setTimeout(() => {
+  const timer = setTimeout(() => {
     timedOut = true;
     destroy();
     rejectAcquisitionTimeout?.(new SqlTimeoutError());

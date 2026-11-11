@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { init, use, type EChartsType } from "echarts/core";
+import { init, use as setupECharts, type EChartsType } from "echarts/core";
 import { BarChart, LineChart, PieChart, ScatterChart } from "echarts/charts";
 import {
   GridComponent,
@@ -12,7 +12,7 @@ import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
 
 // Only the chart types and components the server-side engine emits are bundled.
-use([
+setupECharts([
   BarChart,
   LineChart,
   PieChart,
