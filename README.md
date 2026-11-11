@@ -63,6 +63,28 @@ pnpm typecheck
 
 测试使用内存 SQLite 与假模型，**不访问真实数据库或模型 API**，可离线运行。
 
+## NL2SQL 金标集
+
+`evals/nl2sql/` 内置一套固定的电商 fixture（MySQL / PostgreSQL 各一份）和 15 条单轮问题，用真实 Agent 链路跑完后执行生成的 SQL，与金标 SQL 的结果集逐值比较（列数、行数、值；默认无序）。
+
+```bash
+# 默认启动两个 Testcontainers，需要 Docker
+pnpm eval:nl2sql
+
+# 复用已有数据库（会自动重置 fixture 的 4 张表，不要指向生产库）
+EVAL_MYSQL_URL='mysql://root:pass@127.0.0.1:3306/nl2sql_eval' EVAL_PG_URL='postgresql://user:pass@127.0.0.1:5432/nl2sql_eval' pnpm eval:nl2sql -- --dialect both --threshold 0.8
+```
+
+模型通过 `EVAL_API_KEY` 临时注册为 `eval` provider；也可以用 `EVAL_BASE_URL` 指向本地网关（例如 Magpie），此时不消耗外部额度：
+
+```bash
+EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -- --model 'workbuddy-ai/deepseek-v4.1-flash-sg'
+```
+
+参数：`--dialect mysql|postgres|both`、`--case <id>`（可重复）、`--model <id>`、`--threshold 0.8`、`--timeout 120`（秒）、`--output <dir>`。报告写入 `evals/nl2sql/reports/`（已 gitignore），低于阈值时退出码为 1。
+
+基线（2026-11-11，`workbuddy-ai/deepseek-v4.1-flash-sg`，严格整表结果集比较）：MySQL 13/15（86.7%）、PostgreSQL 12/15（80.0%）。失败主要是模型多返回了未被问到的辅助列或 Top-N 行数，属于模型行为而非 harness 问题。
+
 ## 模型白名单策略
 
 `agent/models.json` 是唯一模型来源，当前白名单 4 个模型。新增模型前必须先通过工具调用冒烟：

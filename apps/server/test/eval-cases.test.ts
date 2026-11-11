@@ -44,14 +44,14 @@ describe("golden cases", () => {
   });
 
   it("defaults tags and ordered", () => {
-    const [parsed] = parseEvalCases([
+    const parsed = parseEvalCases([
       {
         id: "minimal",
         question: "问题",
         mysql: "SELECT 1",
         postgres: "SELECT 1",
       },
-    ]);
+    ])[0]!;
     expect(parsed.ordered).toBe(false);
     expect(parsed.tags).toEqual([]);
   });
