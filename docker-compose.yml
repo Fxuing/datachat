@@ -12,7 +12,7 @@ services:
       PORT: "8080"
       DATA_DIR: /data
       # Public origin users open in the browser (comma separated for several).
-      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8080}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
       TRUST_PROXY: "true"
     volumes:
       - datachat-data:/data
@@ -27,7 +27,7 @@ services:
       server:
         condition: service_healthy
     ports:
-      - "${WEB_PORT:-8080}:80"
+      - "${WEB_PORT:-5173}:80"
     restart: unless-stopped
 
 volumes:

@@ -29,7 +29,8 @@ cp .env.example .env
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
 | `APP_SECRET` | 是 | 会话签名密钥，≥ 32 字符 |
-| `PORT` | 否 | 服务端口，默认 `8080` |
+| `PORT` | 否 | 后端服务端口，默认 `8080` |
+| `WEB_PORT` | 否 | 前端端口，默认 `5173`；Docker 下同时作为对外映射端口 |
 | `DATA_DIR` | 否 | 数据目录，默认 `./data`（SQLite、结果文件、agent 认证缓存） |
 | `LOG_LEVEL` | 否 | 日志级别，默认 `info` |
 | `SILICONFLOW_API_KEY` | 否 | 模型密钥；缺失时 `/api/models` 返回 `configured:false` |
@@ -46,11 +47,11 @@ pnpm install
 pnpm -r build
 
 # 两个终端分别启动
-pnpm --filter @datachat/server dev   # http://localhost:8080
-pnpm --filter @datachat/web dev      # http://localhost:5173，/api 代理到 8080
+pnpm --filter @datachat/server dev   # http://localhost:${PORT:-8080}
+pnpm --filter @datachat/web dev      # http://localhost:${WEB_PORT:-5173}，/api 代理到 PORT
 ```
 
-或 `pnpm dev` 同时启动。访问 `http://localhost:5173`。
+或 `pnpm dev` 同时启动。端口在根目录 `.env` 中通过 `PORT` / `WEB_PORT` 指定，默认 8080 / 5173；修改 `WEB_PORT` 时记得同步 `APP_ORIGIN`。
 
 ## 验证
 
@@ -113,16 +114,16 @@ cp .env.example .env
 # 必填：APP_SECRET（>=32 字符）、ADMIN_PASSWORD（>=8 字符）、SILICONFLOW_API_KEY
 # 可选：ADMIN_USERNAME、APP_ORIGIN（浏览器访问的公开地址）
 docker compose up -d --build
-# 打开 http://localhost:8080
+# 打开 http://localhost:5173
 
-# 8080 被占用时，同时改端口和 APP_ORIGIN（两者必须一致）
+# 5173 被占用时，同时改端口和 APP_ORIGIN（两者必须一致）
 WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 ```
 
 要点：
 
 - 数据（SQLite、artifact、skills、会话）保存在命名卷 `datachat-data`，挂载到容器 `/data`。
-- `web` 对外暴露 80，默认映射到主机 `8080`（`WEB_PORT` 可改）；`server` 不直接暴露，由 nginx 反代。
+- `web` 对外暴露 80，默认映射到主机 `5173`（`WEB_PORT` 可改）；`server` 不直接暴露，由 nginx 反代。
 - SSE 已在 `deploy/nginx.conf` 关闭缓冲并把读超时调到 3600s，长查询不会被 nginx 截断。
 - 生产环境务必把 `APP_ORIGIN` 设为实际访问地址（多个用逗号分隔），否则登录会被 CSRF 校验拒绝。
 - 镜像内保留完整 `node_modules`（含 devDependencies），优先保证 better-sqlite3 / argon2 原生模块可用；后续可用 `pnpm deploy` 裁剪体积。
