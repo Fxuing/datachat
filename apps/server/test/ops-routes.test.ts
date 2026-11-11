@@ -98,6 +98,28 @@ describe("ops routes", () => {
     }
   });
 
+  it("returns metrics for admins and validates days", async () => {
+    const app = await appFor();
+    try {
+      const ok = await app.inject({
+        method: "GET",
+        url: "/api/admin/ops/metrics?days=7",
+        headers: { cookie: `dc_session=${adminCookie}` },
+      });
+      expect(ok.statusCode).toBe(200);
+      expect(ok.json()).toMatchObject({ range: { days: 7 } });
+
+      const bad = await app.inject({
+        method: "GET",
+        url: "/api/admin/ops/metrics?days=999",
+        headers: { cookie: `dc_session=${adminCookie}` },
+      });
+      expect(bad.statusCode).toBe(400);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("rejects non-admin users", async () => {
     const app = await appFor();
     try {

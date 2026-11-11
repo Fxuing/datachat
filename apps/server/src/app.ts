@@ -161,7 +161,7 @@ export async function buildApp({
   await app.register(reportRoutes, { db, artifacts });
   await app.register(shareRoutes, { db, artifacts, config });
   await app.register(runRoutes, { db, runtime: agentRuntime });
-  await app.register(opsRoutes, { retention });
+  await app.register(opsRoutes, { db, retention });
   app.addHook("onClose", async () => {
     await agentRuntime.shutdown();
     await artifacts.close();

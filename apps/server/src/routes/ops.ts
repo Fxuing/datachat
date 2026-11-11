@@ -1,7 +1,10 @@
 import type { FastifyInstance } from "fastify";
+import type { Db } from "../db/client.js";
+import { getOpsMetrics } from "../services/ops-metrics.js";
 import type { RetentionService, OpsError } from "../services/ops-retention.js";
 
 interface OpsRoutesOptions {
+  db: Db;
   retention: RetentionService;
 }
 
@@ -21,6 +24,29 @@ export async function opsRoutes(app: FastifyInstance, opts: OpsRoutesOptions): P
     "/api/admin/ops/retention",
     { preHandler: app.requireAdmin },
     async () => opts.retention.preview(),
+  );
+
+  app.get(
+    "/api/admin/ops/metrics",
+    {
+      preHandler: app.requireAdmin,
+      schema: {
+        querystring: {
+          type: "object",
+          properties: { days: { type: "integer", minimum: 1, maximum: 365 } },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const days = Number((request.query as { days?: number }).days ?? 7);
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        return reply
+          .code(400)
+          .send({ error: { code: "INVALID_DAYS", message: "days 必须是 1–365 的整数" } });
+      }
+      return getOpsMetrics({ db: opts.db, days });
+    },
   );
 
   app.post(

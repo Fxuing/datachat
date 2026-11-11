@@ -65,6 +65,7 @@ if (appConfig.retentionSweepHours > 0) {
       app.log.error({ err: error }, "scheduled retention sweep failed");
     });
   }, intervalMs);
+  sweepTimer.unref();
   app.log.info(
     { hours: appConfig.retentionSweepHours },
     "scheduled retention sweep enabled",
