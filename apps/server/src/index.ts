@@ -11,6 +11,7 @@ import { migrateDb } from "./db/migrate.js";
 import { bootstrapAdmin } from "./auth/bootstrap.js";
 import { seedSkills } from "./agent/skills.js";
 import { reconcileInterruptedRuns } from "./services/startup.js";
+import { createRetentionService } from "./services/ops-retention.js";
 
 const config = loadConfig();
 fs.mkdirSync(config.dataDir, { recursive: true });
@@ -23,6 +24,7 @@ const { adminPassword: _adminPassword, ...appConfig } = config;
 const appliedMigrations = migrateDb(handle.db);
 
 let app: FastifyInstance;
+let retention: ReturnType<typeof createRetentionService>;
 try {
   const artifacts = new ArtifactStore(
     handle.db,
@@ -36,19 +38,41 @@ try {
     pools,
     artifacts,
   });
+  retention = createRetentionService({
+    db: handle.db,
+    config: appConfig,
+    runtime: agentRuntime,
+    artifacts,
+  });
   app = await buildApp({
     config: appConfig,
     db: handle.db,
     artifacts,
     pools,
     agentRuntime,
+    retention,
   });
 } catch (error) {
   handle.sqlite.close();
   throw error;
 }
 
+let sweepTimer: NodeJS.Timeout | undefined;
+if (appConfig.retentionSweepHours > 0) {
+  const intervalMs = appConfig.retentionSweepHours * 3_600_000;
+  sweepTimer = setInterval(() => {
+    void retention.run(null).catch((error: unknown) => {
+      app.log.error({ err: error }, "scheduled retention sweep failed");
+    });
+  }, intervalMs);
+  app.log.info(
+    { hours: appConfig.retentionSweepHours },
+    "scheduled retention sweep enabled",
+  );
+}
+
 app.addHook("onClose", () => {
+  if (sweepTimer) clearInterval(sweepTimer);
   handle.sqlite.close();
 });
 

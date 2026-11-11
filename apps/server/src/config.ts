@@ -51,6 +51,11 @@ const envSchema = z
       emptyToUndefined,
       z.coerce.number().int().positive().default(30_000),
     ),
+    /** Background retention sweep interval; 0 disables it (manual runs remain). */
+    RETENTION_SWEEP_HOURS: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(0).max(8760).default(0),
+    ),
     /** Allow MCP http(s) endpoints on loopback/private/metadata addresses (tests only). */
     /** Trust X-Forwarded-* headers; enable only behind the bundled nginx. */
     TRUST_PROXY: z.preprocess(
@@ -108,6 +113,8 @@ export interface AppConfig {
   queryMaxRows: number;
   queryPreviewRows: number;
   queryTimeoutMs: number;
+  /** Hours between automatic retention sweeps; 0 means manual-only. */
+  retentionSweepHours: number;
   /** Whether MCP http(s) urls may target loopback/link-local/RFC1918 addresses. */
   mcpAllowPrivateHosts: boolean;
   trustProxy: boolean;
@@ -153,6 +160,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     queryMaxRows: parsed.QUERY_MAX_ROWS,
     queryPreviewRows: parsed.QUERY_PREVIEW_ROWS,
     queryTimeoutMs: parsed.QUERY_TIMEOUT_MS,
+    retentionSweepHours: parsed.RETENTION_SWEEP_HOURS,
     mcpAllowPrivateHosts: parsed.MCP_ALLOW_PRIVATE_HOSTS,
     trustProxy: parsed.TRUST_PROXY,
   };

@@ -23,6 +23,8 @@ import { RuntimeManager } from "./agent/runtime.js";
 import { ModelRuntimeManager } from "./agent/model-runtime.js";
 import { seedLegacyLlmProvider } from "./services/llm-catalog.js";
 import { llmProviderRoutes } from "./routes/admin-llm-providers.js";
+import { opsRoutes } from "./routes/ops.js";
+import { createRetentionService, type RetentionService } from "./services/ops-retention.js";
 import { ArtifactStore } from "./services/artifacts.js";
 import type { AppConfig } from "./config.js";
 import type { Db } from "./db/client.js";
@@ -39,6 +41,8 @@ export interface BuildAppOptions {
   pools?: PoolRegistry;
   /** Test seam; shortens the MCP connection test timeout. */
   mcpTestTimeoutMs?: number;
+  /** Reuse the retention service so the scheduler and routes share one lock. */
+  retention?: RetentionService;
 }
 
 export function normalizeOrigin(value: string): string | null {
@@ -75,6 +79,7 @@ export async function buildApp({
   artifacts: injectedArtifacts,
   pools: injectedPools,
   mcpTestTimeoutMs,
+  retention: injectedRetention,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: config.logLevel },
@@ -138,6 +143,9 @@ export async function buildApp({
       artifacts,
       getModelRuntime: () => modelRuntime.get(),
     });
+  const retention =
+    injectedRetention ??
+    createRetentionService({ db, config, runtime: agentRuntime, artifacts });
   await app.register(datasourceRoutes, { config, db, pools });
   await app.register(datasourceSchemaRoutes, { config, db, pools });
   await app.register(modelsRoutes, { config, db, getRuntime: () => modelRuntime.get() });
@@ -153,6 +161,7 @@ export async function buildApp({
   await app.register(reportRoutes, { db, artifacts });
   await app.register(shareRoutes, { db, artifacts, config });
   await app.register(runRoutes, { db, runtime: agentRuntime });
+  await app.register(opsRoutes, { retention });
   app.addHook("onClose", async () => {
     await agentRuntime.shutdown();
     await artifacts.close();
