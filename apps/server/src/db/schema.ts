@@ -172,6 +172,7 @@ export const queryAudit = sqliteTable(
         "grant_update",
         "skill_change",
         "mcp_change",
+        "role_change",
         "ops",
       ],
     })

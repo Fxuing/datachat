@@ -521,6 +521,7 @@ export type AuditActionValue =
   | "grant_update"
   | "skill_change"
   | "mcp_change"
+  | "role_change"
   | "ops";
 
 export type AuditStatusValue = "ok" | "rejected" | "error" | "timeout";

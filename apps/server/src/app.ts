@@ -5,6 +5,7 @@ import { authRoutes } from "./routes/auth.js";
 import { registerAuthGuards } from "./auth/guard.js";
 import { createSessionSigner } from "./auth/jwt.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
+import { adminRoleRoutes } from "./routes/admin-roles.js";
 import { adminSkillRoutes } from "./routes/admin-skills.js";
 import { adminMcpRoutes } from "./routes/admin-mcp.js";
 import { adminAuditRoutes } from "./routes/admin-audit.js";
@@ -124,6 +125,7 @@ export async function buildApp({
   await app.register(healthRoutes, { db });
   await app.register(authRoutes, { config, db, signer });
   await app.register(adminUserRoutes, { db });
+  await app.register(adminRoleRoutes, { db });
   await app.register(adminSkillRoutes, { db, agentDir: config.agentDir });
   await app.register(adminMcpRoutes, { db, config, mcpTestTimeoutMs });
   await app.register(adminAuditRoutes, { db });

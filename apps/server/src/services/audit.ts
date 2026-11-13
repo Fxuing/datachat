@@ -17,6 +17,7 @@ export type AuditAction =
   | "grant_update"
   | "skill_change"
   | "mcp_change"
+  | "role_change"
   | "ops";
 
 export interface AuditInput {
@@ -71,6 +72,8 @@ export interface AuditEventInput {
   targetUserId?: string | null;
   datasourceId?: string | null;
   ip?: string | null;
+  /** Audit trail label; role changes use `role:<name>` instead of SQL. */
+  sqlText?: string;
   detail?: Record<string, unknown> | null;
 }
 
@@ -82,7 +85,7 @@ export function recordAuditEvent(db: Db, input: AuditEventInput): string {
     userId: input.actorUserId,
     datasourceId: input.datasourceId ?? null,
     action: input.action,
-    sqlText: "",
+    sqlText: input.sqlText ?? "",
     status: input.status ?? "ok",
     detail: {
       ...(input.targetUserId ? { targetUserId: input.targetUserId } : {}),
