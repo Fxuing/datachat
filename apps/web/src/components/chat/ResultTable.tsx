@@ -19,6 +19,8 @@ export interface ResultTableProps {
   embedded?: boolean;
   /** Height cap for the scrolling body; dialogs pass a taller value. */
   maxBodyHeightClass?: string;
+  /** Downloads are disabled when the user lacks `export.data`. */
+  canExport?: boolean;
 }
 
 function isNumeric(column: Column): boolean {
@@ -47,6 +49,7 @@ export function ResultTable({
   onCreateReport,
   embedded = false,
   maxBodyHeightClass = "max-h-80",
+  canExport = true,
 }: ResultTableProps) {
   const [extraRows, setExtraRows] = useState<unknown[][]>([]);
 
@@ -140,6 +143,7 @@ export function ResultTable({
             artifactId={artifactId}
             rowCount={rowCount}
             shownRows={displayRows.length}
+            canExport={canExport}
             onRowsAppended={(rows) => setExtraRows((previous) => [...previous, ...rows])}
           />
         </div>

@@ -14,10 +14,12 @@ export function QueryPairList({
   sqls,
   results,
   onCreateReport,
+  canExport = true,
 }: {
   sqls: ChatSql[];
   results: ChatResult[];
   onCreateReport?: (artifactId: string) => void;
+  canExport?: boolean;
 }) {
   const unmatched = [...results];
   const pairs = sqls.map((sql) => {
@@ -40,7 +42,13 @@ export function QueryPairList({
           <SqlCard sql={sql} flat />
           {result ? (
             <div className="border-t border-line">
-              <ResultCard {...result} sql={undefined} flat onCreateReport={onCreateReport} />
+              <ResultCard
+                {...result}
+                sql={undefined}
+                flat
+                onCreateReport={onCreateReport}
+                canExport={canExport}
+              />
             </div>
           ) : null}
         </div>
@@ -52,6 +60,7 @@ export function QueryPairList({
           flat
           index={unmatched.length > 1 ? index + 1 : undefined}
           onCreateReport={onCreateReport}
+          canExport={canExport}
         />
       ))}
     </div>

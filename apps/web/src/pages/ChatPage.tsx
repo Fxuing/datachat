@@ -12,6 +12,7 @@ import { ShareDialog } from "../components/ShareDialog";
 import { PageSpinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
 import { useRunStream } from "../hooks/useRunStream";
+import { useCan } from "../hooks/use-access";
 import {
   ApiError,
   createConversation,
@@ -51,6 +52,11 @@ export default function ChatPage() {
   const location = useLocation();
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
+  const canUseChat = useCan("chat.use");
+  const canUseSkills = useCan("skill.use");
+  const canReport = useCan("report.create");
+  const canShare = useCan("share.create");
+  const canExport = useCan("export.data");
   const datasourcesQuery = useQuery({
     queryKey: queryKeys.datasources,
     queryFn: listDatasources,
@@ -67,7 +73,7 @@ export default function ChatPage() {
   const skillsQuery = useQuery({
     queryKey: queryKeys.conversationSkills(conversationId ?? ""),
     queryFn: () => listConversationSkills(conversationId as string),
-    enabled: Boolean(conversationId),
+    enabled: Boolean(conversationId) && canUseSkills,
     staleTime: 60_000,
   });
 
@@ -178,9 +184,10 @@ export default function ChatPage() {
     onError: (error) =>
       setSendError(errorMessage(error, "生成报告失败，请稍后重试")),
   });
-  const handleCreateReport = conversationId
-    ? (artifactId: string) => reportMutation.mutate(artifactId)
-    : undefined;
+  const handleCreateReport =
+    conversationId && canReport
+      ? (artifactId: string) => reportMutation.mutate(artifactId)
+      : undefined;
 
   // Once the persisted history contains the finished run, drop the optimistic block
   // so the same message is not rendered twice. A still-running persisted group does
@@ -253,6 +260,7 @@ export default function ChatPage() {
   }, [activeRunId, activeRunFromServer, messages]);
 
   const handleSend = async (content: string, skill?: string) => {
+    if (!canUseChat) return;
     if (!conversationId) {
       if (!draftDatasourceId) {
         setSendError("请先选择一个数据源");
@@ -273,8 +281,13 @@ export default function ChatPage() {
   };
 
   const handleRetry = (message: ChatMessage, modelId?: string) => {
+    if (!canUseChat) return;
     retryMutation.mutate(modelId ? { message, modelId } : { message });
   };
+
+  const handleExample = canUseChat
+    ? (content: string) => void handleSend(content)
+    : undefined;
 
   const user = meQuery.data?.user;
   if (!user) {
@@ -304,16 +317,18 @@ export default function ChatPage() {
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          disabled={!conversationId || !conversation}
-          onClick={() => setShareOpen(true)}
-        >
-          <Share2 className="h-3.5 w-3.5" />
-          分享
-        </Button>
+        {canShare ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={!conversationId || !conversation}
+            onClick={() => setShareOpen(true)}
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            分享
+          </Button>
+        ) : null}
       </div>
     </>
   );
@@ -339,9 +354,10 @@ export default function ChatPage() {
         onRetryModels={() => void modelsQuery.refetch()}
         selectedDatasourceId={draftDatasourceId}
         onSelectDatasource={setDraftDatasourceId}
-        onExample={(content) => void handleSend(content)}
+        onExample={handleExample}
         starting={startMutation.isPending}
         isAdmin={user.role === "admin"}
+        canExport={canExport}
       />
     );
   } else if (conversationQuery.isPending) {
@@ -390,9 +406,10 @@ export default function ChatPage() {
         onRetryModels={() => void modelsQuery.refetch()}
         datasourceLocked
         boundDatasource={datasource ?? null}
-        onExample={(content) => void handleSend(content)}
+        onExample={handleExample}
         starting={sendMutation.isPending}
         isAdmin={user.role === "admin"}
+        canExport={canExport}
       />
     );
   }
@@ -447,10 +464,11 @@ export default function ChatPage() {
           modelId={currentModelId}
           modelsStatus={modelsStatus}
           modelPickerDisabled={
-            modelsQuery.isPending || modelMutation.isPending || !conversation
+            modelsQuery.isPending || modelMutation.isPending || !conversation || !canUseChat
           }
           thinkingLevel={conversation?.thinkingLevel ?? "off"}
-          skills={skillsQuery.data?.skills ?? []}
+          skills={canUseSkills ? skillsQuery.data?.skills ?? [] : []}
+          readOnlyReason={canUseChat ? undefined : "当前角色没有对话权限，请联系管理员"}
           contextUsage={stream.state.contextUsage ?? conversationQuery.data?.contextUsage ?? null}
           onModelChange={(modelId) => modelMutation.mutate(modelId)}
           onThinkingChange={(level) => thinkingMutation.mutate(level)}
@@ -458,7 +476,7 @@ export default function ChatPage() {
           onStop={stream.stop}
         />
       </div>
-      {shareOpen && conversationId ? (
+      {canShare && shareOpen && conversationId ? (
         <ShareDialog
           target={{
             conversationId,

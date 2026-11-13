@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Download } from "lucide-react";
 import { ApiError, getArtifactRows } from "../../lib/api";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 export const LOAD_MORE_LIMIT = 100;
 
@@ -22,6 +23,8 @@ export interface ArtifactActionsProps {
   shownRows: number;
   /** When provided, a “加载更多” button pages rows until `rowCount` is reached. */
   onRowsAppended?: (rows: unknown[][]) => void;
+  /** Disabled when the user lacks `export.data`. */
+  canExport?: boolean;
 }
 
 export function ArtifactActions({
@@ -29,6 +32,7 @@ export function ArtifactActions({
   rowCount,
   shownRows,
   onRowsAppended,
+  canExport = true,
 }: ArtifactActionsProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,22 +67,18 @@ export function ArtifactActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <a
-        href={artifactDownloadUrl(artifactId, "csv")}
-        download
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-linestrong bg-surface px-3 text-xs font-medium text-inksoft transition-colors hover:bg-subtle"
-      >
-        <Download className="h-3.5 w-3.5" />
-        下载 CSV
-      </a>
-      <a
-        href={artifactDownloadUrl(artifactId, "xlsx")}
-        download
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-linestrong bg-surface px-3 text-xs font-medium text-inksoft transition-colors hover:bg-subtle"
-      >
-        <Download className="h-3.5 w-3.5" />
-        下载 Excel
-      </a>
+      <DownloadAction
+        artifactId={artifactId}
+        format="csv"
+        label="下载 CSV"
+        canExport={canExport}
+      />
+      <DownloadAction
+        artifactId={artifactId}
+        format="xlsx"
+        label="下载 Excel"
+        canExport={canExport}
+      />
       {canLoadMore ? (
         <Button variant="outline" size="sm" disabled={loading} onClick={() => void loadMore()}>
           {loading ? "加载中…" : "加载更多"}
@@ -90,5 +90,43 @@ export function ArtifactActions({
         </span>
       ) : null}
     </div>
+  );
+}
+
+function DownloadAction({
+  artifactId,
+  format,
+  label,
+  canExport,
+}: {
+  artifactId: string;
+  format: ArtifactDownloadFormat;
+  label: string;
+  canExport: boolean;
+}) {
+  if (!canExport) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span tabIndex={0} className="inline-flex">
+            <Button variant="outline" size="sm" disabled>
+              <Download className="h-3.5 w-3.5" />
+              {label}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">没有导出权限</TooltipContent>
+      </Tooltip>
+    );
+  }
+  return (
+    <a
+      href={artifactDownloadUrl(artifactId, format)}
+      download
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-linestrong bg-surface px-3 text-xs font-medium text-inksoft transition-colors hover:bg-subtle"
+    >
+      <Download className="h-3.5 w-3.5" />
+      {label}
+    </a>
   );
 }

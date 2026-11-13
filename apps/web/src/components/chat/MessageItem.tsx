@@ -147,15 +147,17 @@ function InlineArtifact({
   results,
   charts,
   onCreateReport,
+  canExport,
 }: {
   artifactId: string;
   results: ChatResult[];
   charts: ChatArtifact[];
   onCreateReport?: (artifactId: string) => void;
+  canExport?: boolean;
 }) {
   const result = results.find((item) => item.artifactId === artifactId);
   if (result) {
-    return <ResultCard {...result} onCreateReport={onCreateReport} />;
+    return <ResultCard {...result} onCreateReport={onCreateReport} canExport={canExport} />;
   }
   const chart = charts.find((item) => item.id === artifactId);
   if (chart) {
@@ -174,6 +176,7 @@ export function MessageItem({
   models = [],
   retrying = false,
   onCreateReport,
+  canExport = true,
   onRetry,
 }: {
   message: ChatMessage;
@@ -181,6 +184,7 @@ export function MessageItem({
   models?: ChatModelInfo[];
   retrying?: boolean;
   onCreateReport?: (artifactId: string) => void;
+  canExport?: boolean;
   onRetry?: (message: ChatMessage, modelId?: string) => void;
 }) {
   const assistantText = message.assistant?.content ?? "";
@@ -242,6 +246,7 @@ export function MessageItem({
                   results={message.results}
                   charts={charts}
                   onCreateReport={onCreateReport}
+                  canExport={canExport}
                 />
               );
             })}
@@ -295,6 +300,7 @@ export function MessageItem({
               sqls={message.sqls}
               results={standaloneResults}
               onCreateReport={onCreateReport}
+              canExport={canExport}
             />
           ) : null}
           {detailTools.length > 0 ? (

@@ -127,6 +127,24 @@ describe("ResultTable", () => {
     expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
   });
 
+  it("disables downloads when export permission is missing", () => {
+    render(
+      <ResultTable
+        artifactId="artifact-1"
+        columns={columns}
+        rows={[["alice", 42]]}
+        rowCount={1}
+        truncated={false}
+        canExport={false}
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: "下载 CSV" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载 CSV" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下载 Excel" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "生成报告" })).not.toBeInTheDocument();
+  });
+
   it("offers report creation when a callback is provided", async () => {
     const onCreateReport = vi.fn();
     render(

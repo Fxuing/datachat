@@ -58,6 +58,8 @@ export interface MessageListProps {
   onExample?: (content: string) => void;
   starting?: boolean;
   isAdmin?: boolean;
+  /** Downloads are disabled when the user lacks `export.data`. */
+  canExport?: boolean;
 }
 
 function AssistantHeader() {
@@ -301,6 +303,7 @@ export function MessageList({
   onExample,
   starting = false,
   isAdmin = false,
+  canExport = true,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -398,6 +401,7 @@ export function MessageList({
               models={models}
               retrying={retryingRunId === message.runId}
               onCreateReport={onCreateReport}
+              canExport={canExport}
               onRetry={onRetry}
             />
           </div>
@@ -432,7 +436,7 @@ export function MessageList({
                     (item) => item.artifactId === segment.artifactId,
                   );
                   return result ? (
-                    <ResultCard key={`result-${index}`} {...result} />
+                    <ResultCard key={`result-${index}`} {...result} canExport={canExport} />
                   ) : null;
                 }
                 if (!chartsReady) return null;
@@ -481,6 +485,7 @@ export function MessageList({
                     sqls={stream.sqls}
                     results={stream.results}
                     onCreateReport={onCreateReport}
+                    canExport={canExport}
                   />
                 ) : null}
                 {stream.tools.some(

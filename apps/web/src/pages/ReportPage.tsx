@@ -22,6 +22,7 @@ import {
 } from "../lib/api";
 import { describeApiError } from "../lib/errors";
 import { queryKeys } from "../lib/query";
+import { useCan } from "../hooks/use-access";
 import { parseReportMarkdown } from "../lib/report-markdown";
 import { cn, formatCount } from "../lib/utils";
 
@@ -218,6 +219,7 @@ export default function ReportPage() {
   const queryClient = useQueryClient();
   const [shareOpen, setShareOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const canShare = useCan("share.create");
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const reportQuery = useQuery({
@@ -285,15 +287,17 @@ export default function ReportPage() {
           <Printer className="h-3.5 w-3.5" />
           打印
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShareOpen(true)}
-          disabled={!report}
-        >
-          <Share2 className="h-3.5 w-3.5" />
-          分享
-        </Button>
+        {canShare ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShareOpen(true)}
+            disabled={!report}
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            分享
+          </Button>
+        ) : null}
         <Button
           variant="outline"
           size="sm"
@@ -390,7 +394,7 @@ export default function ReportPage() {
           onCancel={() => setDeleteOpen(false)}
         />
       ) : null}
-      {shareOpen && report ? (
+      {canShare && shareOpen && report ? (
         <ShareDialog
           target={{ reportId: report.id, label: report.title }}
           onClose={() => setShareOpen(false)}

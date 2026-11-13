@@ -19,6 +19,8 @@ export interface ComposerProps {
   modelsStatus?: ModelPickerStatus;
   thinkingLevel: string;
   skills: ConversationSkill[];
+  /** When set, the composer is locked and shows this placeholder. */
+  readOnlyReason?: string;
   contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null } | null;
   onModelChange: (modelId: string) => void;
   onThinkingChange: (level: string) => void;
@@ -36,6 +38,7 @@ export function Composer({
   modelsStatus = "ready",
   thinkingLevel,
   skills,
+  readOnlyReason,
   contextUsage,
   onModelChange,
   onThinkingChange,
@@ -63,8 +66,9 @@ export function Composer({
     return () => window.removeEventListener("resize", fit);
   }, [text]);
 
-  const disabled = !conversationReady || active || submitting;
-  const canType = conversationReady;
+  const readOnly = Boolean(readOnlyReason);
+  const disabled = readOnly || !conversationReady || active || submitting;
+  const canType = conversationReady && !readOnly;
   const trimmed = text.trim();
 
   const slashMatch = /^\/([^\s]*)$/.exec(text);
@@ -212,7 +216,9 @@ export function Composer({
               value={text}
               disabled={!canType}
               placeholder={
-                conversationReady
+                readOnly && readOnlyReason
+                  ? readOnlyReason
+                  : conversationReady
                   ? skills.length > 0
                     ? "输入问题，输入 / 选择技能"
                     : "输入问题，例如：users 表有多少行？"
@@ -238,7 +244,7 @@ export function Composer({
                 models={models}
                 modelId={modelId}
                 thinkingLevel={thinkingLevel}
-                disabled={!conversationReady || modelPickerDisabled}
+                disabled={!conversationReady || modelPickerDisabled || readOnly}
                 status={modelsStatus}
                 onModelChange={onModelChange}
                 onThinkingChange={onThinkingChange}
