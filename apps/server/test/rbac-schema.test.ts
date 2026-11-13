@@ -1,6 +1,32 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createDb } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
+import { insertUser } from "../src/db/repositories/users.js";
+
+const SOURCE_MIGRATIONS_DIR = fileURLToPath(new URL("../drizzle", import.meta.url));
+const JOURNAL_PATH = path.join(SOURCE_MIGRATIONS_DIR, "meta", "_journal.json");
+
+/** Copies migrations up to 0009 so a legacy DB can be seeded before RBAC exists. */
+function makePreRbacMigrationsDir(root: string): string {
+  const folder = path.join(root, "drizzle-pre-rbac");
+  fs.mkdirSync(path.join(folder, "meta"), { recursive: true });
+  const journal = JSON.parse(fs.readFileSync(JOURNAL_PATH, "utf8")) as {
+    entries: Array<{ idx: number; tag: string }>;
+  };
+  journal.entries = journal.entries.filter((entry) => entry.idx <= 9);
+  for (const entry of journal.entries) {
+    fs.copyFileSync(
+      path.join(SOURCE_MIGRATIONS_DIR, `${entry.tag}.sql`),
+      path.join(folder, `${entry.tag}.sql`),
+    );
+  }
+  fs.writeFileSync(path.join(folder, "meta", "_journal.json"), JSON.stringify(journal));
+  return folder;
+}
 
 describe("rbac schema", () => {
   it("seeds the built-in member role with all functional permissions", () => {
@@ -22,6 +48,52 @@ describe("rbac schema", () => {
       "skill.use",
     ]);
     handle.sqlite.close();
+  });
+
+  it("backfills role_member for legacy users and leaves admins alone", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "datachat-rbac-backfill-"));
+    const handle = createDb(":memory:");
+    try {
+      migrateDb(handle.db, { migrationsFolder: makePreRbacMigrationsDir(root) });
+      insertUser(handle.db, {
+        id: "user-legacy-member",
+        username: "legacy-member",
+        passwordHash: "$argon2id$fake",
+        role: "user",
+        createdAt: Date.now(),
+      });
+      insertUser(handle.db, {
+        id: "user-legacy-admin",
+        username: "legacy-admin",
+        passwordHash: "$argon2id$fake",
+        role: "admin",
+        createdAt: Date.now(),
+      });
+
+      migrateDb(handle.db, { migrationsFolder: SOURCE_MIGRATIONS_DIR });
+
+      const memberRoles = handle.sqlite
+        .prepare("SELECT user_id FROM user_roles WHERE role_id = 'role_member' ORDER BY user_id")
+        .all() as Array<{ user_id: string }>;
+      expect(memberRoles.map((row) => row.user_id)).toEqual(["user-legacy-member"]);
+
+      const permissions = handle.sqlite
+        .prepare(
+          "SELECT permission FROM role_permissions WHERE role_id = 'role_member' ORDER BY permission",
+        )
+        .all() as Array<{ permission: string }>;
+      expect(permissions.map((row) => row.permission)).toEqual([
+        "chat.use",
+        "export.data",
+        "mcp.use",
+        "report.create",
+        "share.create",
+        "skill.use",
+      ]);
+    } finally {
+      handle.sqlite.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("adds role_change to the audit action check", () => {
