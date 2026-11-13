@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable(
   "users",
@@ -299,3 +299,49 @@ export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   valueJson: text("value_json").notNull(),
 });
+
+export const roles = sqliteTable(
+  "roles",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    builtin: integer("builtin").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("roles_name_unique").on(t.name)],
+);
+
+export const rolePermissions = sqliteTable(
+  "role_permissions",
+  {
+    roleId: text("role_id").notNull(),
+    permission: text("permission").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.roleId, t.permission] })],
+);
+
+export const userRoles = sqliteTable(
+  "user_roles",
+  {
+    userId: text("user_id").notNull(),
+    roleId: text("role_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.roleId] }),
+    index("user_roles_role_idx").on(t.roleId),
+  ],
+);
+
+export const roleDatasourceGrants = sqliteTable(
+  "role_datasource_grants",
+  {
+    roleId: text("role_id").notNull(),
+    datasourceId: text("datasource_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.roleId, t.datasourceId] }),
+    index("role_datasource_grants_datasource_idx").on(t.datasourceId),
+  ],
+);

@@ -32,12 +32,16 @@ const APP_TABLES = [
   "mcp_servers",
   "query_audit",
   "reports",
+  "role_datasource_grants",
+  "role_permissions",
+  "roles",
   "run_feedback",
   "run_events",
   "runs",
   "settings",
   "shares",
   "skills",
+  "user_roles",
   "users",
 ];
 
@@ -53,6 +57,9 @@ const INTEGRITY_INDEXES: Record<string, string[]> = {
     "query_audit_datasource_created_idx",
     "query_audit_created_idx",
   ],
+  role_datasource_grants: ["role_datasource_grants_datasource_idx"],
+  roles: ["roles_name_unique"],
+  user_roles: ["user_roles_role_idx"],
   run_events: ["run_events_conversation_seq_idx", "run_events_run_seq_unique"],
   runs: ["runs_conversation_idx", "runs_conversation_created_idx"],
   users: ["users_username_nocase_unique"],
@@ -238,8 +245,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(10);
-    expect(migrateDb(handle.db)).toBe(10);
+    expect(migrateDb(handle.db)).toBe(12);
+    expect(migrateDb(handle.db)).toBe(12);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");
