@@ -30,6 +30,7 @@ const APP_TABLES = [
   "datasources",
   "llm_providers",
   "mcp_servers",
+  "notifications",
   "query_audit",
   "reports",
   "role_datasource_grants",
@@ -38,6 +39,8 @@ const APP_TABLES = [
   "run_feedback",
   "run_events",
   "runs",
+  "scheduled_task_runs",
+  "scheduled_tasks",
   "settings",
   "shares",
   "skills",
@@ -179,6 +182,7 @@ describe("database lifecycle", () => {
       expect.arrayContaining(["user_id", "conversation_id"]),
     );
     expect(columnNames(sqlite, "runs")).toContain("retry_of_run_id");
+    expect(columnNames(sqlite, "conversations")).toContain("kind");
     expect(columnNames(sqlite, "query_audit")).toEqual(
       expect.arrayContaining(["detail_json", "user_id", "datasource_id"]),
     );
@@ -245,8 +249,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(12);
-    expect(migrateDb(handle.db)).toBe(12);
+    expect(migrateDb(handle.db)).toBe(13);
+    expect(migrateDb(handle.db)).toBe(13);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

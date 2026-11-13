@@ -79,6 +79,7 @@ export const conversations = sqliteTable(
     title: text("title"),
     modelId: text("model_id"),
     thinkingLevel: text("thinking_level").notNull().default("off"),
+    kind: text("kind", { enum: ["chat", "scheduled"] }).notNull().default("chat"),
     piSessionFile: text("pi_session_file"),
     status: text("status").notNull().default("active"),
     createdAt: integer("created_at").notNull(),
@@ -344,5 +345,73 @@ export const roleDatasourceGrants = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.roleId, t.datasourceId] }),
     index("role_datasource_grants_datasource_idx").on(t.datasourceId),
+  ],
+);
+
+export const scheduledTasks = sqliteTable(
+  "scheduled_tasks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    name: text("name").notNull(),
+    prompt: text("prompt").notNull(),
+    datasourceId: text("datasource_id").notNull(),
+    modelId: text("model_id"),
+    cronExpression: text("cron_expression").notNull(),
+    timezone: text("timezone").notNull(),
+    enabled: integer("enabled").notNull().default(1),
+    nextRunAt: integer("next_run_at").notNull(),
+    lastRunAt: integer("last_run_at"),
+    lastStatus: text("last_status", { enum: ["success", "failed", "skipped"] }),
+    lastError: text("last_error"),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    index("scheduled_tasks_due_idx").on(t.enabled, t.nextRunAt),
+    index("scheduled_tasks_user_idx").on(t.userId),
+  ],
+);
+
+export const scheduledTaskRuns = sqliteTable(
+  "scheduled_task_runs",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id").notNull(),
+    trigger: text("trigger", { enum: ["schedule", "manual"] }).notNull(),
+    status: text("status", {
+      enum: ["running", "success", "failed", "skipped"],
+    }).notNull(),
+    error: text("error"),
+    conversationId: text("conversation_id"),
+    reportId: text("report_id"),
+    startedAt: integer("started_at"),
+    finishedAt: integer("finished_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("scheduled_task_runs_task_idx").on(t.taskId),
+    index("scheduled_task_runs_created_idx").on(t.createdAt),
+  ],
+);
+
+export const notifications = sqliteTable(
+  "notifications",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    type: text("type", {
+      enum: ["task_success", "task_failed", "task_disabled"],
+    }).notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    href: text("href"),
+    readAt: integer("read_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("notifications_user_idx").on(t.userId),
+    index("notifications_unread_idx").on(t.userId, t.readAt),
   ],
 );
