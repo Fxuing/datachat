@@ -105,6 +105,19 @@ EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -
 
 基线（2026-11-11，`workbuddy-ai/deepseek-v4.1-flash-sg`，严格整表结果集比较）：MySQL 13/15（86.7%）、PostgreSQL 12/15（80.0%）。失败主要是模型多返回了未被问到的辅助列或 Top-N 行数，属于模型行为而非 harness 问题。
 
+## 角色与权限
+
+管理员在“管理 → 角色”和“管理 → 用户”中维护 RBAC：
+
+- **权限**：6 个功能权限（`chat.use`、`skill.use`、`mcp.use`、`report.create`、`share.create`、`export.data`）和 8 个系统权限（`admin.users`、`admin.roles`、`admin.datasources`、`admin.skills`、`admin.mcp`、`admin.settings`、`admin.audit`、`admin.ops`）。
+- **管理员**：`admin` 账号拥有全部功能权限与全部数据源，不受角色限制；系统管理权限只对管理员开放。
+- **内置成员**：现有非管理员迁移后自动获得“成员”角色（全部功能权限、无数据源），可改权限与数据源，不可改名或删除；新用户默认分配成员角色。
+- **自定义角色**：功能权限 + 数据源授权；可多角色，权限与数据源取并集，并与原有的按用户直授 `datasource_grants` 取并集。
+- **即时性**：角色/权限修改对 HTTP 接口和界面立即生效；已打开的 Agent 会话在**下一次新建会话**时应用新的 Skills / MCP 权限。
+- **撤销语义**：撤销 `report.create` / `share.create` / `export.data` 只阻止新建；已有报告仍可查看/删除，已有分享仍可撤销。
+
+迁移会用 `role_member` 回填现有 `role=user` 用户；升级前建议先执行 `pnpm ops:backup`。
+
 ## 运维与数据保留
 
 管理员左下角“管理”→“运维”（`/admin/ops`）：
@@ -210,6 +223,7 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 - [x] NL2SQL 金标集可一键跑 MySQL/PostgreSQL 基线，低于阈值退出非零。
 - [x] GitHub Actions 覆盖 lint、typecheck、单测、构建与真库集成测试；金标集支持手动/夜间运行。
 - [x] 运维页可查看 7/30/90 天运行指标；保留策略可预览后清理，活跃分享/运行中会话自动跳过。
+- [x] 角色/用户管理可配置功能权限、数据源授权与系统管理员；HTTP、Skills/MCP 与聊天 UI 均按权限门禁。
 - [x] `pnpm ops:backup` / `ops:restore` 可备份并恢复 SQLite 与 artifact，恢复前校验完整性并保留 rollback。
 
 完整实施状态、计划外能力和下一步候选见 [`docs/roadmap.md`](./docs/roadmap.md)。
@@ -225,6 +239,7 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 - 数据库集成测试默认跳过；设置 `RUN_DB_TESTS=1` 并准备 Docker 后运行。
 - 尚无 Playwright E2E；运行指标、保留策略与备份恢复已实现，详见 `docs/roadmap.md`。
 - 备份为本地目录，不含 `.env`；异地/对象存储备份与恢复演练尚未实现。
+- RBAC 仅到角色与数据源级；行级/列级数据权限尚未实现。
 
 ## 上下文压缩与使用率
 

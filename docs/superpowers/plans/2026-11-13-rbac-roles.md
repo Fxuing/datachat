@@ -49,7 +49,7 @@
 - Test: `apps/server/test/rbac-schema.test.ts`
 - Modify: `apps/server/test/db.test.ts`
 
-- [ ] **Step 1: Write the failing schema test**
+- [x] **Step 1: Write the failing schema test**
 
 `apps/server/test/rbac-schema.test.ts`:
 
@@ -94,12 +94,12 @@ describe("rbac schema", () => {
 
 Update `apps/server/test/db.test.ts` migration count from `10` to `12`, and assert `roles`, `role_permissions`, `user_roles`, `role_datasource_grants` exist.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `pnpm --filter @datachat/server exec vitest run test/rbac-schema.test.ts test/db.test.ts`
 Expected: FAIL — no `roles` table / migration count still 10.
 
-- [ ] **Step 3: Add the shared permission catalog**
+- [x] **Step 3: Add the shared permission catalog**
 
 `packages/shared/src/permissions.ts`:
 
@@ -177,7 +177,7 @@ export function isSystemPermission(value: string): value is SystemPermission {
 
 Add `export * from "./permissions.js";` to `packages/shared/src/index.ts`.
 
-- [ ] **Step 4: Add Drizzle tables**
+- [x] **Step 4: Add Drizzle tables**
 
 In `apps/server/src/db/schema.ts`, import `primaryKey` from `drizzle-orm/sqlite-core`, then add:
 
@@ -229,7 +229,7 @@ export const roleDatasourceGrants = sqliteTable(
 );
 ```
 
-- [ ] **Step 5: Write migration 0010**
+- [x] **Step 5: Write migration 0010**
 
 `apps/server/drizzle/0010_rbac.sql`:
 
@@ -282,7 +282,7 @@ INSERT OR IGNORE INTO `user_roles` (`user_id`,`role_id`)
 SELECT `id`, 'role_member' FROM `users` WHERE `role` = 'user';
 ```
 
-- [ ] **Step 6: Write migration 0011**
+- [x] **Step 6: Write migration 0011**
 
 `apps/server/drizzle/0011_role_audit.sql`:
 
@@ -337,12 +337,12 @@ Add journal entries:
 { "idx": 11, "version": "6", "when": 1794001000000, "tag": "0011_role_audit", "breakpoints": true }
 ```
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 Run: `pnpm --filter @datachat/server exec vitest run test/rbac-schema.test.ts test/db.test.ts`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add packages/shared/src/permissions.ts packages/shared/src/index.ts apps/server/src/db/schema.ts apps/server/drizzle/0010_rbac.sql apps/server/drizzle/0011_role_audit.sql apps/server/drizzle/meta/_journal.json apps/server/test/rbac-schema.test.ts apps/server/test/db.test.ts
@@ -361,7 +361,7 @@ git commit -m "feat(rbac): add roles and permission tables"
 - Test: `apps/server/test/access.test.ts`
 - Test: `apps/server/test/auth-me.test.ts`
 
-- [ ] **Step 1: Write the failing access test**
+- [x] **Step 1: Write the failing access test**
 
 `apps/server/test/access.test.ts`:
 
@@ -441,12 +441,12 @@ describe("resolveUserAccess", () => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm --filter @datachat/server exec vitest run test/access.test.ts`
 Expected: FAIL — cannot resolve `../src/auth/access.js`.
 
-- [ ] **Step 3: Implement `resolveUserAccess`**
+- [x] **Step 3: Implement `resolveUserAccess`**
 
 `apps/server/src/auth/access.ts`:
 
@@ -504,7 +504,7 @@ export function canAccessDatasource(access: UserAccess, datasourceId: string): b
 
 `permissionsForUserRoles` and `datasourceIdsForUserRoles` are added in Task 3; for this task, add them to `roles.ts` now with the minimal implementation shown in Task 3 Step 3.
 
-- [ ] **Step 4: Wire access into the guard**
+- [x] **Step 4: Wire access into the guard**
 
 In `guard.ts`:
 
@@ -550,7 +550,7 @@ interface FastifyInstance {
 }
 ```
 
-- [ ] **Step 5: Extend `/api/auth/me`**
+- [x] **Step 5: Extend `/api/auth/me`**
 
 In `routes/auth.ts`:
 
@@ -566,16 +566,16 @@ return {
 };
 ```
 
-- [ ] **Step 6: Write `/api/auth/me` test**
+- [x] **Step 6: Write `/api/auth/me` test**
 
 `apps/server/test/auth-me.test.ts`: insert a member-assigned user, log in, GET `/api/auth/me`, expect `permissions` contains `chat.use`, `roles` contains `{ id: "role_member", name: "成员" }`.
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 Run: `pnpm --filter @datachat/server exec vitest run test/access.test.ts test/auth-me.test.ts`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/server/src/auth/access.ts apps/server/src/auth/guard.ts apps/server/src/types/fastify.d.ts apps/server/src/routes/auth.ts apps/server/test/access.test.ts apps/server/test/auth-me.test.ts
@@ -596,7 +596,7 @@ git commit -m "feat(rbac): resolve user permissions per request"
 - Test: `apps/server/test/admin-roles.test.ts`
 - Test: `apps/server/test/roles-repo.test.ts`
 
-- [ ] **Step 1: Write the failing repo test**
+- [x] **Step 1: Write the failing repo test**
 
 `apps/server/test/roles-repo.test.ts`:
 
@@ -626,7 +626,7 @@ describe("roles repository", () => {
 });
 ```
 
-- [ ] **Step 2: Implement `roles.ts`**
+- [x] **Step 2: Implement `roles.ts`**
 
 Exports:
 
@@ -721,11 +721,11 @@ export function replaceRolePermissions(db: Db, roleId: string, permissions: stri
 
 `listRolesForUser` joins `roles` through `userRoles` and returns role rows ordered by name.
 
-- [ ] **Step 3: Add audit action**
+- [x] **Step 3: Add audit action**
 
 In `services/audit.ts` add `"role_change"` to `AuditAction`; in `db/schema.ts` add to the `queryAudit.action` enum; in `apps/web/src/lib/api.ts` add to `AuditActionValue`; in `components/admin/AuditDetailDrawer.tsx` add label `role_change: "角色变更"`.
 
-- [ ] **Step 4: Add admin role routes**
+- [x] **Step 4: Add admin role routes**
 
 `apps/server/src/routes/admin-roles.ts`:
 
@@ -771,7 +771,7 @@ app.post("/api/admin/roles", { preHandler: app.requirePermission("admin.roles") 
 
 Register in `app.ts`: `await adminRoleRoutes(app, { db });` after adminUserRoutes.
 
-- [ ] **Step 5: Write route tests**
+- [x] **Step 5: Write route tests**
 
 `apps/server/test/admin-roles.test.ts`:
 - admin creates role with `chat.use`, `export.data`, one datasource → 201
@@ -782,12 +782,12 @@ Register in `app.ts`: `await adminRoleRoutes(app, { db });` after adminUserRoute
 - DELETE role assigned to user → 200 and assignment gone
 - audit row `action = "role_change"` exists.
 
-- [ ] **Step 6: Run tests and typecheck**
+- [x] **Step 6: Run tests and typecheck**
 
 Run: `pnpm --filter @datachat/server exec vitest run test/roles-repo.test.ts test/admin-roles.test.ts && pnpm --filter @datachat/server typecheck`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/server/src/db/repositories/roles.ts apps/server/src/routes/admin-roles.ts apps/server/src/services/audit.ts apps/server/src/db/schema.ts apps/server/src/app.ts apps/web/src/lib/api.ts apps/web/src/components/admin/AuditDetailDrawer.tsx apps/server/test/roles-repo.test.ts apps/server/test/admin-roles.test.ts
@@ -804,7 +804,7 @@ git commit -m "feat(rbac): add role management api"
 - Modify: `apps/server/src/db/repositories/users.ts` (only if a public-user helper is needed)
 - Test: `apps/server/test/admin-users-roles.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `apps/server/test/admin-users-roles.test.ts`:
 
@@ -833,7 +833,7 @@ it("assigns multiple roles and does not assign the member role twice", async () 
 });
 ```
 
-- [ ] **Step 2: Extend API schemas**
+- [x] **Step 2: Extend API schemas**
 
 `createUserSchema` adds `roleIds: z.array(z.string()).max(20).optional()`.
 `updateUserSchema` adds the same.
@@ -854,16 +854,16 @@ On create with no `roleIds`, use `["role_member"]`; on create with `roleIds`, va
 
 Create/update responses include the same fields.
 
-- [ ] **Step 3: Audit assignments**
+- [x] **Step 3: Audit assignments**
 
 For create and update, include `roleIds: listRoleIdsForUser(db, row.id)` in the `user_create` / `user_update` audit detail.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `pnpm --filter @datachat/server exec vitest run test/admin-users-roles.test.ts test/admin-users.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/server/src/routes/admin-users.ts apps/server/src/db/repositories/roles.ts apps/server/test/admin-users-roles.test.ts
@@ -887,7 +887,7 @@ git commit -m "feat(rbac): assign roles to users"
 - Modify: `apps/server/src/routes/admin-*.ts`, `ops.ts`, `audit.ts`
 - Test: `apps/server/test/rbac-routes.test.ts`
 
-- [ ] **Step 1: Write failing route tests**
+- [x] **Step 1: Write failing route tests**
 
 `apps/server/test/rbac-routes.test.ts`: seed a role with only `chat.use` and one datasource; assign to user; assert:
 
@@ -901,7 +901,7 @@ expect((await get("/api/admin/roles")).statusCode).toBe(403);
 
 Add a second case: user without `chat.use` gets 403 on `/api/conversations` and `/api/conversations/:id/messages`.
 
-- [ ] **Step 2: Replace datasource list filter**
+- [x] **Step 2: Replace datasource list filter**
 
 `listDatasourcesForUser(db, access: UserAccess)`:
 
@@ -914,13 +914,13 @@ return db.select().from(datasources).where(inArray(datasources.id, ids)).all();
 
 Update `routes/datasources.ts` to `listDatasourcesForUser(db, request.access!)`. Update all `userCanAccess` call sites to `canAccessDatasource(request.access!, id)`; remove `role === "admin"` checks for datasource access.
 
-- [ ] **Step 3: Gate conversation routes**
+- [x] **Step 3: Gate conversation routes**
 
 In `routes/conversations.ts`, replace `preHandler: app.authenticate` with `preHandler: app.requirePermission("chat.use")` on all user-facing routes (list, create, detail, patch title/model/thinking, delete, message, retry, abort). In the message handler, if `body.skill` is present and the user lacks `skill.use`, return 403.
 
 In `routes/questions.ts`, use `chat.use`.
 
-- [ ] **Step 4: Gate reports, shares, artifacts**
+- [x] **Step 4: Gate reports, shares, artifacts**
 
 - `POST /api/reports`: `report.create`
 - `GET/DELETE /api/reports/:id`: keep `authenticate` + owner/admin
@@ -931,7 +931,7 @@ In `routes/questions.ts`, use `chat.use`.
 
 For `report.create`, also verify the referenced artifact belongs to the user/conversation, as today.
 
-- [ ] **Step 5: Gate admin routes**
+- [x] **Step 5: Gate admin routes**
 
 Replace `app.requireAdmin` with:
 
@@ -948,12 +948,12 @@ Replace `app.requireAdmin` with:
 
 `admin-users.ts` grant routes must use `admin.datasources`, not `admin.users`.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `pnpm --filter @datachat/server exec vitest run test/rbac-routes.test.ts test/conversations-api.test.ts test/reports-api.test.ts test/shares-api.test.ts test/artifacts-api.test.ts test/admin-users.test.ts`
 Expected: PASS; fix tests that assumed any logged-in user could access a route.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/server/src/db/repositories/datasources.ts apps/server/src/routes apps/server/test/rbac-routes.test.ts
@@ -972,7 +972,7 @@ git commit -m "feat(rbac): enforce permissions on http routes"
 - Test: `apps/server/test/rbac-agent.test.ts`
 - Modify: `apps/server/test/helpers/*` to assign the member role to test users by default
 
-- [ ] **Step 1: Write the failing agent test**
+- [x] **Step 1: Write the failing agent test**
 
 `apps/server/test/rbac-agent.test.ts`:
 
@@ -997,7 +997,7 @@ describe("agent resource settings", () => {
 });
 ```
 
-- [ ] **Step 2: Make resources conditional**
+- [x] **Step 2: Make resources conditional**
 
 `ConversationResourcesInput` adds `skillsDir?: string; canUseSkills: boolean; canUseMcp: boolean`.
 Export a pure helper used by `createConversationResources`:
@@ -1052,7 +1052,7 @@ const loader = new DefaultResourceLoader({
 
 `CreateConversationSessionInput.skillsDir` becomes `skillsDir?: string`.
 
-- [ ] **Step 3: Resolve access in RuntimeManager**
+- [x] **Step 3: Resolve access in RuntimeManager**
 
 In the default `createSession` factory:
 
@@ -1069,17 +1069,17 @@ return createConversationSession({ ..., skillsDir, canUseSkills, canUseMcp, ... 
 
 Pass booleans through to `createConversationResources`.
 
-- [ ] **Step 4: Gate the skills list and skill sends**
+- [x] **Step 4: Gate the skills list and skill sends**
 
 `GET /api/conversations/:id/skills`: if no `skill.use`, return `{ skills: [] }`.
 `POST /messages` with `skill`: require `skill.use` (Task 5) and reject unknown skills as today.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `pnpm --filter @datachat/server exec vitest run test/rbac-agent.test.ts test/agent-e2e.test.ts test/skills.test.ts`
 Expected: PASS. Update test user helpers to assign `role_member` so existing tests keep skills/MCP.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/server/src/agent apps/server/src/routes/conversations.ts apps/server/test apps/server/src/db/repositories/roles.ts
@@ -1101,7 +1101,7 @@ git commit -m "feat(rbac): gate agent skills and mcp by permission"
 - Test: `apps/web/src/pages/admin/RolesPage.test.tsx`
 - Test: `apps/web/src/pages/admin/UsersPage.test.tsx`
 
-- [ ] **Step 1: Extend API types**
+- [x] **Step 1: Extend API types**
 
 ```ts
 export interface MeResponse {
@@ -1126,7 +1126,7 @@ export function deleteAdminRole(id: string): Promise<{ ok: true }>
 
 Add `roles: queryKeys.adminRoles`, `role: (id) => ...`.
 
-- [ ] **Step 2: Add `useCan`**
+- [x] **Step 2: Add `useCan`**
 
 `apps/web/src/lib/use-can.ts`:
 
@@ -1147,7 +1147,7 @@ export function usePermissions(): Set<Permission> {
 }
 ```
 
-- [ ] **Step 3: Add admin routes and nav**
+- [x] **Step 3: Add admin routes and nav**
 
 `App.tsx` adds lazy routes `/admin/roles` and `/admin/users`, both under `RequireAdmin` (the page itself calls admin APIs; system permissions remain admin-only).
 `AppShell` adds links:
@@ -1160,7 +1160,7 @@ before 数据源.
 - 角色管理 → `/admin/roles` (`ShieldCheck` icon)
 before 数据源.
 
-- [ ] **Step 4: Build `RolesPage`**
+- [x] **Step 4: Build `RolesPage`**
 
 Layout:
 - header + “新建角色”
@@ -1174,7 +1174,7 @@ Layout:
 
 No placeholder UI: every checkbox toggles state, `onSubmit` sends `{ name, description, permissions, datasourceIds }`.
 
-- [ ] **Step 5: Build `UsersPage`**
+- [x] **Step 5: Build `UsersPage`**
 
 - table: username, displayName, role badge, roles, status
 - create dialog: username/password/displayName/role (`user`/`admin`)/roleIds
@@ -1183,7 +1183,7 @@ No placeholder UI: every checkbox toggles state, `onSubmit` sends `{ name, descr
 - preserve last-admin error display
 - link to datasource grant editing remains on data source page
 
-- [ ] **Step 6: Web tests**
+- [x] **Step 6: Web tests**
 
 `RolesPage.test.tsx`: render with mocked `listAdminRoles`/`listDatasources`; assert system permission is disabled; create sends checked functional permissions and datasource IDs.
 `UsersPage.test.tsx`: assert roleIds from API render checked; save sends selected roleIds.
@@ -1191,7 +1191,7 @@ No placeholder UI: every checkbox toggles state, `onSubmit` sends `{ name, descr
 Run: `pnpm --filter @datachat/web test -- RolesPage UsersPage`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/web/src/lib apps/web/src/App.tsx apps/web/src/components/AppShell.tsx apps/web/src/pages/admin/RolesPage.tsx apps/web/src/pages/admin/UsersPage.tsx apps/web/src/pages/admin/RolesPage.test.tsx apps/web/src/pages/admin/UsersPage.test.tsx apps/web/src/pages/admin/UsersPage.tsx
@@ -1211,13 +1211,13 @@ git commit -m "feat(web): add role and user administration"
 - Test: `apps/web/src/pages/ChatPage.test.tsx`
 - Test: `apps/web/src/components/chat/MessageItem.test.tsx`
 
-- [ ] **Step 1: Write failing UI tests**
+- [x] **Step 1: Write failing UI tests**
 
 In `MessageItem.test.tsx`, render a result with `canCreateReport={false}` and `canExport={false}`; expect no “生成报告” and no “下载 CSV”. Render with true; expect both.
 
 In `ChatPage.test.tsx`, mock `fetchMe` with only `["chat.use"]`; expect the share button absent and skills query not requested.
 
-- [ ] **Step 2: Pass flags from ChatPage**
+- [x] **Step 2: Pass flags from ChatPage**
 
 Compute:
 
@@ -1233,19 +1233,19 @@ Pass `canReport`, `canExport` through `MessageList` → `MessageItem` → result
 Pass `canShare` to the topbar share button (render only when true).
 Set `skillsQuery.enabled = Boolean(conversationId) && canUseSkills`; pass `skills={canUseSkills ? skills : []}`.
 
-- [ ] **Step 3: Gate actions**
+- [x] **Step 3: Gate actions**
 
 - Share button: `{canShare && <Button ...>分享</Button>}`
 - Result actions: hide “生成报告” when `!canReport`; hide download buttons when `!canExport`.
 - Composer `/` menu naturally disappears with empty skills.
 - If `permissions` lacks `chat.use`, render a centered “当前角色没有对话权限，请联系管理员” page instead of the composer.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `pnpm --filter @datachat/web test -- ChatPage MessageItem`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/src/pages/ChatPage.tsx apps/web/src/components/chat/MessageList.tsx apps/web/src/components/chat/MessageItem.tsx apps/web/src/components/chat/ResultTable.tsx apps/web/src/components/chat/ShareDialog.tsx apps/web/src/pages/ChatPage.test.tsx apps/web/src/components/chat/MessageItem.test.tsx
@@ -1263,7 +1263,7 @@ git commit -m "feat(web): honor role permissions in chat ui"
 - Modify: `docs/superpowers/specs/2026-11-13-rbac-roles-design.md` (status → 已实现)
 - Modify: `docs/superpowers/plans/2026-11-13-rbac-roles.md` (check boxes)
 
-- [ ] **Step 1: Document**
+- [x] **Step 1: Document**
 
 README add “角色与权限”:
 - 14 permissions table (or link spec)
@@ -1275,7 +1275,7 @@ README add “角色与权限”:
 
 Roadmap mark RBAC delivered and move scheduled tasks to next.
 
-- [ ] **Step 2: Run full verification**
+- [x] **Step 2: Run full verification**
 
 ```bash
 pnpm lint
@@ -1284,11 +1284,11 @@ pnpm verify
 
 Expected: lint 0 errors, all tests pass, build succeeds. Fix any snapshots/tests affected by new `/api/auth/me` fields and route guards.
 
-- [ ] **Step 3: Browser smoke**
+- [x] **Step 3: Browser smoke**
 
 Login as admin → create role “财务” with `chat.use` + one datasource → create user with that role → login as user → only that datasource visible → chat works → report/share/export buttons absent → direct API calls 403. Revoke `chat.use` → chat page shows no-permission.
 
-- [ ] **Step 4: Commit and push**
+- [x] **Step 4: Commit and push**
 
 ```bash
 git add README.md docs/roadmap.md docs/feature-map.md docs/superpowers/specs/2026-11-13-rbac-roles-design.md docs/superpowers/plans/2026-11-13-rbac-roles.md
