@@ -54,7 +54,7 @@ interface MockOptions {
 function stubFetch(options: MockOptions = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
-    if (url === "/api/auth/me") return jsonResponse({ user });
+    if (url === "/api/auth/me") return jsonResponse({ user, permissions: [], roles: [] });
     if (url === "/api/conversations") {
       return jsonResponse({ items: [], nextCursor: null });
     }
@@ -143,7 +143,7 @@ describe("ReportPage", () => {
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url === "/api/auth/me") return jsonResponse({ user });
+      if (url === "/api/auth/me") return jsonResponse({ user, permissions: [], roles: [] });
       if (url === "/api/conversations") return jsonResponse({ items: [], nextCursor: null });
       if (url === "/api/reports/r-1") return jsonResponse({ report: unknownReport });
       throw new Error(`unexpected request: ${url}`);

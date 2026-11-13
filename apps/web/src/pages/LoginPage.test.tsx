@@ -41,7 +41,7 @@ function mockFetch(loginResponse: () => Response) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     if (url === "/api/auth/login") return loginResponse();
-    if (url === "/api/auth/me") return jsonResponse({ user });
+    if (url === "/api/auth/me") return jsonResponse({ user, permissions: [], roles: [] });
     throw new Error(`unexpected request: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -50,7 +50,7 @@ function mockFetch(loginResponse: () => Response) {
 
 describe("LoginPage", () => {
   it("logs in, loads the session and redirects to /chat", async () => {
-    const fetchMock = mockFetch(() => jsonResponse({ user }));
+    const fetchMock = mockFetch(() => jsonResponse({ user, permissions: [], roles: [] }));
     const browser = userEvent.setup();
 
     renderLoginPage();
@@ -83,7 +83,7 @@ describe("LoginPage", () => {
   });
 
   it("validates empty fields without calling the server", async () => {
-    const fetchMock = mockFetch(() => jsonResponse({ user }));
+    const fetchMock = mockFetch(() => jsonResponse({ user, permissions: [], roles: [] }));
     const browser = userEvent.setup();
 
     renderLoginPage();

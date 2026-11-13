@@ -99,7 +99,7 @@ function stubApi(override?: Override) {
     const custom = override?.(url, method);
     if (custom) return custom;
 
-    if (url === "/api/auth/me") return jsonResponse({ user: admin });
+    if (url === "/api/auth/me") return jsonResponse({ user: admin, permissions: [], roles: [] });
     if (url === "/api/datasources" && method === "GET") {
       return jsonResponse({ datasources: [healthy, broken] });
     }

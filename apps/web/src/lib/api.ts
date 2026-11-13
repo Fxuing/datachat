@@ -1,8 +1,10 @@
-import type {
-  Column,
-  DatasourceInput,
-  ReportDetail,
-  ReportSummary,
+import {
+  isPermission,
+  type Column,
+  type DatasourceInput,
+  type Permission,
+  type ReportDetail,
+  type ReportSummary,
 } from "@datachat/shared";
 
 export class ApiError extends Error {
@@ -76,6 +78,12 @@ export interface SessionUser {
   displayName: string | null;
   role: "admin" | "user";
   status: "active" | "disabled";
+}
+
+export interface MeResponse {
+  user: SessionUser;
+  permissions: Permission[];
+  roles: { id: string; name: string }[];
 }
 
 export interface Conversation {
@@ -302,7 +310,7 @@ export function login(input: { username: string; password: string }): Promise<{ 
   });
 }
 
-export function fetchMe(): Promise<{ user: SessionUser }> {
+export function fetchMe(): Promise<MeResponse> {
   return apiRequest("/api/auth/me");
 }
 
@@ -505,6 +513,96 @@ export function replaceDatasourceGrants(
 
 export function listAdminUsers(): Promise<{ users: SessionUser[] }> {
   return apiRequest("/api/admin/users");
+}
+
+/** Role list row; the API returns counts instead of the permission/id arrays. */
+export interface RoleSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  builtin: boolean;
+  permissionCount: number;
+  datasourceCount: number;
+  userCount: number;
+}
+
+export interface RoleDetail extends RoleSummary {
+  permissions: Permission[];
+  datasourceIds: string[];
+}
+
+export interface RoleInput {
+  name: string;
+  description?: string | null;
+  permissions: Permission[];
+  datasourceIds: string[];
+}
+
+/** The API exposes `isBuiltin` alongside numeric `builtin`; normalize both. */
+interface RawRole {
+  id: string;
+  name: string;
+  description: string | null;
+  builtin?: boolean | number;
+  isBuiltin?: boolean;
+  userCount?: number;
+  permissionCount?: number;
+  datasourceCount?: number;
+  permissions?: string[];
+  datasourceIds?: string[];
+}
+
+function toRoleSummary(raw: RawRole): RoleSummary {
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description,
+    builtin: raw.isBuiltin ?? (raw.builtin === true || raw.builtin === 1),
+    permissionCount: raw.permissionCount ?? 0,
+    datasourceCount: raw.datasourceCount ?? 0,
+    userCount: raw.userCount ?? 0,
+  };
+}
+
+function toRoleDetail(raw: RawRole): RoleDetail {
+  return {
+    ...toRoleSummary(raw),
+    permissions: (raw.permissions ?? []).filter(isPermission),
+    datasourceIds: raw.datasourceIds ?? [],
+  };
+}
+
+export async function listRoles(): Promise<{ roles: RoleSummary[] }> {
+  const response = await apiRequest<{ roles: RawRole[] }>("/api/admin/roles");
+  return { roles: response.roles.map(toRoleSummary) };
+}
+
+export async function getRole(id: string): Promise<{ role: RoleDetail }> {
+  const response = await apiRequest<{ role: RawRole }>(`/api/admin/roles/${id}`);
+  return { role: toRoleDetail(response.role) };
+}
+
+export async function createRole(input: RoleInput): Promise<{ role: RoleDetail }> {
+  const response = await apiRequest<{ role: RawRole }>("/api/admin/roles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return { role: toRoleDetail(response.role) };
+}
+
+export async function updateRole(
+  id: string,
+  input: Partial<RoleInput>,
+): Promise<{ role: RoleDetail }> {
+  const response = await apiRequest<{ role: RawRole }>(`/api/admin/roles/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return { role: toRoleDetail(response.role) };
+}
+
+export function deleteRole(id: string): Promise<{ ok: true }> {
+  return apiRequest(`/api/admin/roles/${id}`, { method: "DELETE" });
 }
 
 export type AuditActionValue =

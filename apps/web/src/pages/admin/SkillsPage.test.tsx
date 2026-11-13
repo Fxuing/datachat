@@ -77,7 +77,7 @@ function stubApi(override?: Override) {
     const custom = override?.(url, method);
     if (custom) return custom;
 
-    if (url === "/api/auth/me") return jsonResponse({ user: admin });
+    if (url === "/api/auth/me") return jsonResponse({ user: admin, permissions: [], roles: [] });
     if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
     if (url === "/api/admin/skills" && method === "GET") {
       return jsonResponse({ skills: [globalSkill, datasourceSkill] });

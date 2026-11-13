@@ -27,6 +27,8 @@ export const queryKeys = {
   datasourceSchemaAll: (id: string) => ["datasourceSchema", id] as const,
   datasourceGrants: (id: string) => ["datasourceGrants", id] as const,
   adminUsers: ["adminUsers"] as const,
+  roles: ["roles"] as const,
+  role: (id: string) => ["role", id] as const,
   audit: (filters: Record<string, unknown>) => ["audit", filters] as const,
   models: ["models"] as const,
   adminSettings: ["admin-settings"] as const,

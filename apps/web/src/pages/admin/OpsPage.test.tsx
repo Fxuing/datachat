@@ -97,7 +97,7 @@ function stubApi() {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     const method = init?.method ?? "GET";
-    if (url === "/api/auth/me") return jsonResponse({ user: admin });
+    if (url === "/api/auth/me") return jsonResponse({ user: admin, permissions: [], roles: [] });
     if (url === "/api/admin/settings" && method === "GET") return jsonResponse({ settings });
     if (url.startsWith("/api/admin/ops/metrics")) {
       const days = Number(new URL(url, "http://localhost").searchParams.get("days") ?? 7);

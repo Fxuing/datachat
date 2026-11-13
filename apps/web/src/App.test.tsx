@@ -82,7 +82,7 @@ describe("app routes", () => {
   it("creates a conversation, lands on /chat/:id and resumes its active run", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url === "/api/auth/me") return jsonResponse({ user });
+      if (url === "/api/auth/me") return jsonResponse({ user, permissions: [], roles: [] });
       if (url === "/api/models") {
         return jsonResponse({ configured: false, models: [], defaultId: null });
       }

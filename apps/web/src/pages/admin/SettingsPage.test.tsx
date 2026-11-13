@@ -60,7 +60,7 @@ function stubApi(override?: Override) {
     const custom = override?.(url, method);
     if (custom) return custom;
 
-    if (url === "/api/auth/me") return jsonResponse({ user: admin });
+    if (url === "/api/auth/me") return jsonResponse({ user: admin, permissions: [], roles: [] });
     if (url === "/api/models") {
       return jsonResponse({ configured: true, models, defaultId: settings.defaultModelId });
     }
