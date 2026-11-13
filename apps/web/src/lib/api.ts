@@ -86,6 +86,27 @@ export interface MeResponse {
   roles: { id: string; name: string }[];
 }
 
+/** Admin user row; `role` stays the system-admin flag, `roles` are assigned custom roles. */
+export interface AdminUser extends SessionUser {
+  roleIds: string[];
+  roles: { id: string; name: string }[];
+  createdAt: number;
+}
+
+export interface CreateAdminUserInput {
+  username: string;
+  password: string;
+  displayName?: string;
+  roleIds?: string[];
+}
+
+export interface UpdateAdminUserInput {
+  displayName?: string | null;
+  password?: string;
+  status?: "active" | "disabled";
+  roleIds?: string[];
+}
+
 export interface Conversation {
   id: string;
   datasourceId: string;
@@ -511,8 +532,25 @@ export function replaceDatasourceGrants(
   });
 }
 
-export function listAdminUsers(): Promise<{ users: SessionUser[] }> {
+export function listAdminUsers(): Promise<{ users: AdminUser[] }> {
   return apiRequest("/api/admin/users");
+}
+
+export function createAdminUser(input: CreateAdminUserInput): Promise<{ user: AdminUser }> {
+  return apiRequest("/api/admin/users", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateAdminUser(
+  id: string,
+  input: UpdateAdminUserInput,
+): Promise<{ user: AdminUser }> {
+  return apiRequest(`/api/admin/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }
 
 /** Role list row; the API returns counts instead of the permission/id arrays. */

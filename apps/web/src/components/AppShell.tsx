@@ -10,6 +10,7 @@ import {
   ScrollText,
   Settings,
   Shield,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { logout, type SessionUser } from "../lib/api";
@@ -27,6 +28,7 @@ export interface AppShellProps {
 }
 
 const adminLinks: { to: string; label: string; icon: LucideIcon }[] = [
+  { to: "/admin/users", label: "用户", icon: Users },
   { to: "/admin/roles", label: "角色", icon: Shield },
   { to: "/admin/datasources", label: "数据源", icon: Database },
   { to: "/admin/skills", label: "技能管理", icon: BookOpen },

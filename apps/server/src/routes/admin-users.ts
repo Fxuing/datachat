@@ -61,6 +61,7 @@ function roleAssignmentError(
 function toAdminUser(db: Db, row: UserRow) {
   return {
     ...toPublicUser(row),
+    createdAt: row.createdAt,
     roleIds: listRoleIdsForUser(db, row.id),
     roles: listRolesForUser(db, row.id).map((role) => ({ id: role.id, name: role.name })),
   };
