@@ -29,6 +29,7 @@ export interface CreateConversationInput {
   datasourceId: string;
   title?: string | null;
   modelId?: string | null;
+  kind?: "chat" | "scheduled";
 }
 
 export function createConversation(db: Db, input: CreateConversationInput): ConversationRow {
@@ -41,6 +42,7 @@ export function createConversation(db: Db, input: CreateConversationInput): Conv
       datasourceId: input.datasourceId,
       title: input.title ?? null,
       modelId: input.modelId ?? null,
+      kind: input.kind ?? "chat",
       createdAt: now,
       updatedAt: now,
       lastMessageAt: null,
@@ -63,6 +65,7 @@ export function listConversations(
   const where = opts.before
     ? and(
         eq(conversations.userId, userId),
+        eq(conversations.kind, "chat"),
         or(
           lt(sortTime, opts.before.sortTime),
           and(eq(sortTime, opts.before.sortTime), lt(conversations.id, opts.before.id)),
@@ -73,7 +76,7 @@ export function listConversations(
   return db
     .select()
     .from(conversations)
-    .where(where)
+    .where(and(where, eq(conversations.kind, "chat")))
     .orderBy(desc(sortTime), desc(conversations.id))
     .limit(opts.limit ?? 50)
     .all();
