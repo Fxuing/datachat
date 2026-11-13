@@ -26,6 +26,9 @@ import { seedLegacyLlmProvider } from "./services/llm-catalog.js";
 import { llmProviderRoutes } from "./routes/admin-llm-providers.js";
 import { opsRoutes } from "./routes/ops.js";
 import { createRetentionService, type RetentionService } from "./services/ops-retention.js";
+import { scheduledTaskRoutes } from "./routes/scheduled-tasks.js";
+import { notificationRoutes } from "./routes/notifications.js";
+import { createScheduledTaskService, type ScheduledTaskService } from "./services/scheduled-tasks.js";
 import { ArtifactStore } from "./services/artifacts.js";
 import type { AppConfig } from "./config.js";
 import type { Db } from "./db/client.js";
@@ -44,6 +47,8 @@ export interface BuildAppOptions {
   mcpTestTimeoutMs?: number;
   /** Reuse the retention service so the scheduler and routes share one lock. */
   retention?: RetentionService;
+  /** Reuse the scheduled task service so the scheduler and routes share one instance. */
+  scheduledTasks?: ScheduledTaskService;
 }
 
 export function normalizeOrigin(value: string): string | null {
@@ -81,6 +86,7 @@ export async function buildApp({
   pools: injectedPools,
   mcpTestTimeoutMs,
   retention: injectedRetention,
+  scheduledTasks: injectedScheduledTasks,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: config.logLevel },
@@ -148,6 +154,9 @@ export async function buildApp({
   const retention =
     injectedRetention ??
     createRetentionService({ db, config, runtime: agentRuntime, artifacts });
+  const scheduledTasks =
+    injectedScheduledTasks ??
+    createScheduledTaskService({ db, config, pools, artifacts, runtime: agentRuntime });
   await app.register(datasourceRoutes, { config, db, pools });
   await app.register(datasourceSchemaRoutes, { config, db, pools });
   await app.register(modelsRoutes, { config, db, getRuntime: () => modelRuntime.get() });
@@ -164,7 +173,10 @@ export async function buildApp({
   await app.register(shareRoutes, { db, artifacts, config });
   await app.register(runRoutes, { db, runtime: agentRuntime });
   await app.register(opsRoutes, { db, dataDir: config.dataDir, retention });
+  await app.register(scheduledTaskRoutes, { db, scheduledTasks });
+  await app.register(notificationRoutes, { db });
   app.addHook("onClose", async () => {
+    await scheduledTasks.shutdown();
     await agentRuntime.shutdown();
     await artifacts.close();
     await pools.closeAll();

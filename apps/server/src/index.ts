@@ -12,6 +12,9 @@ import { bootstrapAdmin } from "./auth/bootstrap.js";
 import { seedSkills } from "./agent/skills.js";
 import { reconcileInterruptedRuns } from "./services/startup.js";
 import { createRetentionService } from "./services/ops-retention.js";
+import { createScheduledTaskService } from "./services/scheduled-tasks.js";
+import { startScheduledTaskSweeper } from "./agent/scheduler.js";
+import { failInterruptedScheduledRuns } from "./db/repositories/scheduled-tasks.js";
 
 const config = loadConfig();
 fs.mkdirSync(config.dataDir, { recursive: true });
@@ -25,6 +28,7 @@ const appliedMigrations = migrateDb(handle.db);
 
 let app: FastifyInstance;
 let retention: ReturnType<typeof createRetentionService>;
+let scheduledTasks: ReturnType<typeof createScheduledTaskService>;
 try {
   const artifacts = new ArtifactStore(
     handle.db,
@@ -44,6 +48,13 @@ try {
     runtime: agentRuntime,
     artifacts,
   });
+  scheduledTasks = createScheduledTaskService({
+    db: handle.db,
+    config: appConfig,
+    pools,
+    artifacts,
+    runtime: agentRuntime,
+  });
   app = await buildApp({
     config: appConfig,
     db: handle.db,
@@ -51,11 +62,15 @@ try {
     pools,
     agentRuntime,
     retention,
+    scheduledTasks,
   });
 } catch (error) {
   handle.sqlite.close();
   throw error;
 }
+
+failInterruptedScheduledRuns(handle.db, Date.now());
+const scheduledSweeper = startScheduledTaskSweeper(scheduledTasks, app.log);
 
 let sweepTimer: NodeJS.Timeout | undefined;
 if (appConfig.retentionSweepHours > 0) {
@@ -73,6 +88,7 @@ if (appConfig.retentionSweepHours > 0) {
 }
 
 app.addHook("onClose", () => {
+  scheduledSweeper.stop();
   if (sweepTimer) clearInterval(sweepTimer);
   handle.sqlite.close();
 });
