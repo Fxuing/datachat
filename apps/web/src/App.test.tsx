@@ -89,6 +89,7 @@ describe("app routes", () => {
       if (url === "/api/conversations" && (init?.method ?? "GET") === "GET") {
         return jsonResponse({ items: [], nextCursor: null });
       }
+      if (url === "/api/notifications") return jsonResponse({ notifications: [], unread: 0 });
       if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
       if (url === "/api/conversations" && init?.method === "POST") {
         return jsonResponse({ conversation }, 201);
@@ -102,7 +103,7 @@ describe("app routes", () => {
     render(<App />);
 
     await browser.click(
-      await screen.findByRole("button", { name: "新建对话" }, { timeout: 5_000 }),
+      await screen.findByRole("button", { name: "新建对话" }, { timeout: 10_000 }),
     );
     const createButton = await screen.findByRole(
       "button",

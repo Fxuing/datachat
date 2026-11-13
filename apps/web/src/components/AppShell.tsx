@@ -20,6 +20,7 @@ import { BrandMark } from "./BrandMark";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { NotificationBell } from "./NotificationBell";
 
 export interface AppShellProps {
   user: SessionUser;
@@ -67,6 +68,9 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
               数据工作台
             </span>
           </span>
+          <div className="ml-auto">
+            <NotificationBell />
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">{sidebar}</div>
