@@ -69,6 +69,13 @@ describe("rbac schema", () => {
         role: "admin",
         createdAt: Date.now(),
       });
+      handle.sqlite
+        .prepare(
+          `INSERT INTO query_audit
+            (id, action, sql_text, sql_hash, status, row_count, created_at)
+           VALUES ('audit-legacy', 'query', 'SELECT 1', 'hash-legacy', 'ok', 1, 1)`,
+        )
+        .run();
 
       migrateDb(handle.db, { migrationsFolder: SOURCE_MIGRATIONS_DIR });
 
@@ -90,6 +97,19 @@ describe("rbac schema", () => {
         "share.create",
         "skill.use",
       ]);
+
+      // 0011 rebuilds query_audit; existing rows must survive verbatim.
+      const audit = handle.sqlite
+        .prepare("SELECT id, action, sql_text, sql_hash, status, row_count FROM query_audit WHERE id = 'audit-legacy'")
+        .get();
+      expect(audit).toEqual({
+        id: "audit-legacy",
+        action: "query",
+        sql_text: "SELECT 1",
+        sql_hash: "hash-legacy",
+        status: "ok",
+        row_count: 1,
+      });
     } finally {
       handle.sqlite.close();
       fs.rmSync(root, { recursive: true, force: true });
