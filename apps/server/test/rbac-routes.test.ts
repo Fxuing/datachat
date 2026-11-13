@@ -254,8 +254,9 @@ describe("rbac http gates", () => {
     const retry = await inject(noChatCookie, "POST", `/api/runs/${randomUUID()}/retry`);
     expect(retry.statusCode).toBe(403);
 
+    // Model listing is login-only, not chat-gated.
     const models = await inject(noChatCookie, "GET", "/api/models");
-    expect(models.statusCode).toBe(403);
+    expect(models.statusCode).toBe(200);
   });
 
   it("requires skill.use only when the message sends a skill", async () => {
