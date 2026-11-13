@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Check, Copy, Link2 } from "lucide-react";
 import { createShare, revokeShare, type CreatedShare } from "../lib/api";
+import { copyToClipboard } from "../lib/clipboard";
 import { describeApiError } from "../lib/errors";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
@@ -64,12 +65,7 @@ export function ShareDialog({ target, onClose }: ShareDialogProps) {
 
   const handleCopy = async () => {
     if (!shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
+    setCopied(await copyToClipboard(shareUrl));
   };
 
   return (

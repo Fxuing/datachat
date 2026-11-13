@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import type { ChatSql } from "../../lib/api";
 import { cn } from "../../lib/utils";
+import { copyToClipboard } from "../../lib/clipboard";
 
 const STATUS_LABELS: Record<ChatSql["status"], string> = {
   ok: "已执行",
@@ -20,15 +21,10 @@ export function SqlCard({ sql, flat = false }: { sql: ChatSql; flat?: boolean })
   }, []);
 
   const copy = async () => {
-    if (!navigator.clipboard) return;
-    try {
-      await navigator.clipboard.writeText(sql.sql);
-      setCopied(true);
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => setCopied(false), 1_500);
-    } catch {
-      // Clipboard access can be blocked; leave the SQL visible for manual copy.
-    }
+    if (!(await copyToClipboard(sql.sql))) return;
+    setCopied(true);
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setCopied(false), 1_500);
   };
 
   return (

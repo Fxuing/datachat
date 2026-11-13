@@ -34,6 +34,21 @@ describe("MessageItem", () => {
     expect(screen.getByText("本月收入是多少？")).toBeInTheDocument();
   });
 
+  it("copies fenced code blocks from markdown", async () => {
+    const user = userEvent.setup();
+    render(<MarkdownText content={"```sql\nSELECT 1;\n```"} />);
+
+    await user.click(screen.getByRole("button", { name: "复制代码" }));
+
+    expect(await navigator.clipboard.readText()).toBe("SELECT 1;");
+    expect(screen.getByRole("button", { name: "已复制代码" })).toBeInTheDocument();
+  });
+
+  it("does not add a copy action to inline code", () => {
+    render(<MarkdownText content={"使用 `npm test` 运行。"} />);
+    expect(screen.queryByRole("button", { name: /复制/ })).not.toBeInTheDocument();
+  });
+
   it("keeps the thinking transcript collapsed until opened", async () => {
     const user = userEvent.setup();
     render(

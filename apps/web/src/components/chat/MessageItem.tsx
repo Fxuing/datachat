@@ -19,6 +19,7 @@ import { ToolCard } from "./ToolCard";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnFooter } from "./TurnFooter";
 import { RetryActions } from "./RetryActions";
+import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
 
 export function MarkdownText({ content }: { content: string }) {
   return (
@@ -44,6 +45,9 @@ export function MarkdownText({ content }: { content: string }) {
                 {children}
               </code>
             );
+          },
+          pre({ children }) {
+            return <MarkdownCodeBlock>{children}</MarkdownCodeBlock>;
           },
           a({ href, children, node: _node, ...props }) {
             if (href?.startsWith("/") && !href.startsWith("//")) {
