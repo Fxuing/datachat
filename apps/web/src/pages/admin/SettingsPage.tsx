@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Bot, Gauge, RotateCcw, Save, Settings, Share2 } from "lucide-react";
-import { AppShell } from "../../components/AppShell";
+import { useSearchParams } from "react-router-dom";
+import { Bot, Gauge, RotateCcw, Save, Settings, Share2 } from "lucide-react";
+import { AdminShell } from "../../components/admin/AdminShell";
 import { LlmProvidersSection } from "../../components/admin/LlmProvidersSection";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -27,10 +27,6 @@ import {
 } from "../../lib/api";
 import { describeApiError } from "../../lib/errors";
 import { queryKeys } from "../../lib/query";
-
-const selectClass =
-  "h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-ink " +
-  "focus-visible:border-linestrong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/15";
 
 type NumberKey = "queryMaxRows" | "queryPreviewRows" | "queryTimeoutMs" | "shareMaxDays";
 
@@ -137,9 +133,12 @@ function groupModels(models: ChatModelInfo[]): Array<[string, ChatModelInfo[]]> 
 }
 
 export default function SettingsPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [section, setSection] = useState<Section>("general");
+  const [params] = useSearchParams();
+  const sectionParam = params.get("section");
+  const section: Section = SECTIONS.some((item) => item.id === sectionParam)
+    ? (sectionParam as Section)
+    : "general";
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const settingsQuery = useQuery({
@@ -201,19 +200,6 @@ export default function SettingsPage() {
   const user = meQuery.data?.user;
   if (!user) return <PageSpinner />;
 
-  const sidebar = (
-    <div className="border-t border-line p-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="w-full justify-start gap-1.5"
-        onClick={() => navigate("/chat")}
-      >
-        <ArrowLeft className="h-4 w-4" />
-        返回对话
-      </Button>
-    </div>
-  );
 
   const busy = saveMutation.isPending || resetMutation.isPending;
   const models = modelsQuery.data?.models ?? [];
@@ -276,40 +262,15 @@ export default function SettingsPage() {
   const current = SECTIONS.find((item) => item.id === section)!;
 
   return (
-    <AppShell user={user} sidebar={sidebar}>
+    <AdminShell user={user}>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl px-6 py-6">
           <h1 className="text-xl font-semibold tracking-tight text-ink">设置</h1>
           <p className="mt-1 text-sm text-muted">
-            模型服务可接入任意兼容供应商；查询与分享限制对所有新请求生效。
+            模型服务、数据源、成员与治理入口集中在这里；查询与分享限制对所有新请求生效。
           </p>
 
           <div className="mt-5 flex flex-col gap-5 md:flex-row">
-            <nav aria-label="设置分区" className="md:w-44 md:shrink-0">
-              <ul className="flex gap-1 overflow-x-auto md:flex-col">
-                {SECTIONS.map((item) => {
-                  const Icon = item.icon;
-                  const active = item.id === section;
-                  return (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        aria-current={active ? "page" : undefined}
-                        className={`flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${
-                          active
-                            ? "bg-brandsoft font-medium text-brandtext"
-                            : "text-inksoft hover:bg-subtle"
-                        }`}
-                        onClick={() => setSection(item.id)}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {item.label}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </nav>
 
             <div className="min-w-0 flex-1">
               <div className="rounded-xl border border-line bg-surface p-6 shadow-card">
@@ -471,6 +432,6 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
-    </AppShell>
+    </AdminShell>
   );
 }

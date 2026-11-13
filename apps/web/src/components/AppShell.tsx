@@ -1,19 +1,7 @@
 import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  Activity,
-  BookOpen,
-  Clock,
-  Database,
-  LogOut,
-  Plug,
-  ScrollText,
-  Settings,
-  Shield,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { Clock, LogOut, Settings, type LucideIcon } from "lucide-react";
 import { logout, type SessionUser } from "../lib/api";
 import { cn } from "../lib/utils";
 import { BrandMark } from "./BrandMark";
@@ -30,14 +18,7 @@ export interface AppShellProps {
 }
 
 const adminLinks: { to: string; label: string; icon: LucideIcon }[] = [
-  { to: "/admin/users", label: "用户", icon: Users },
-  { to: "/admin/roles", label: "角色", icon: Shield },
-  { to: "/admin/datasources", label: "数据源", icon: Database },
-  { to: "/admin/skills", label: "技能管理", icon: BookOpen },
-  { to: "/admin/mcp", label: "MCP 服务器", icon: Plug },
-  { to: "/admin/audit", label: "审计日志", icon: ScrollText },
-  { to: "/admin/settings", label: "设置", icon: Settings },
-  { to: "/admin/ops", label: "运维", icon: Activity },
+  { to: "/admin/settings", label: "管理设置", icon: Settings },
 ];
 
 export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
@@ -95,7 +76,7 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
           <nav className="shrink-0 space-y-0.5 border-t border-line px-2 pb-2 pt-3">
             <p className="section-label pb-1.5">管理</p>
             {adminLinks.map(({ to, label, icon: Icon }) => {
-              const active = location.pathname.startsWith(to);
+              const active = location.pathname.startsWith("/admin");
               return (
                 <Link
                   key={to}

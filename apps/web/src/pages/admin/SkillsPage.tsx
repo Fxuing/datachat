@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, RotateCcw } from "lucide-react";
-import { AppShell } from "../../components/AppShell";
+import { Plus, RotateCcw } from "lucide-react";
+import { AdminShell } from "../../components/admin/AdminShell";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { SkillEditor } from "../../components/admin/SkillEditor";
 import { Button } from "../../components/ui/button";
@@ -46,9 +46,6 @@ function describeError(error: unknown, fallback: string): string {
   if (Array.isArray(details?.formErrors)) lines.push(...details.formErrors);
   return lines.length ? `${error.message}：${lines.join("；")}` : error.message;
 }
-
-const selectClass =
-  "h-8 rounded-md border border-linestrong bg-surface px-2 text-xs text-inksoft focus:border-linestrong focus:outline-none";
 
 export default function SkillsPage() {
   const navigate = useNavigate();
@@ -141,22 +138,9 @@ export default function SkillsPage() {
   const listForbidden =
     skillsQuery.isError && skillsQuery.error instanceof ApiError && skillsQuery.error.status === 403;
 
-  const sidebar = (
-    <div className="p-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="w-full justify-start gap-2"
-        onClick={() => navigate("/chat")}
-      >
-        <ArrowLeft className="h-4 w-4" />
-        返回对话
-      </Button>
-    </div>
-  );
 
   return (
-    <AppShell user={user} sidebar={sidebar}>
+    <AdminShell user={user}>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl px-6 py-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -232,8 +216,8 @@ export default function SkillsPage() {
             ) : listForbidden ? (
               <div className="flex flex-col items-center gap-3 px-4 py-10 text-sm text-muted">
                 <p>没有管理员权限，无法查看技能。</p>
-                <Button variant="outline" size="sm" onClick={() => navigate("/chat")}>
-                  返回对话
+                <Button variant="outline" size="sm" onClick={() => navigate("/admin/settings")}>
+                  返回设置
                 </Button>
               </div>
             ) : skillsQuery.isError ? (
@@ -384,6 +368,6 @@ export default function SkillsPage() {
           onCancel={() => setSeedOpen(false)}
         />
       ) : null}
-    </AppShell>
+    </AdminShell>
   );
 }

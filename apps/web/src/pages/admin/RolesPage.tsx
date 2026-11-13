@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Shield } from "lucide-react";
+import { Plus, Shield } from "lucide-react";
 import {
   FUNCTIONAL_PERMISSIONS,
   PERMISSION_GROUPS,
   isSystemPermission,
   type Permission,
 } from "@datachat/shared";
-import { AppShell } from "../../components/AppShell";
+import { AdminShell } from "../../components/admin/AdminShell";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { Button } from "../../components/ui/button";
 import {
@@ -223,7 +222,6 @@ function RoleEditor({
 }
 
 export default function RolesPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [draft, setDraft] = useState<"new" | string | null>(null);
@@ -295,22 +293,9 @@ export default function RolesPage() {
     ? describeApiError(deleteMutation.error, "删除角色失败，请稍后重试。")
     : null;
 
-  const sidebar = (
-    <div className="p-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="w-full justify-start gap-2"
-        onClick={() => navigate("/chat")}
-      >
-        <ArrowLeft className="h-4 w-4" />
-        返回对话
-      </Button>
-    </div>
-  );
 
   return (
-    <AppShell user={user} sidebar={sidebar}>
+    <AdminShell user={user}>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl px-6 py-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -471,6 +456,6 @@ export default function RolesPage() {
           }}
         />
       ) : null}
-    </AppShell>
+    </AdminShell>
   );
 }

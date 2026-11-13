@@ -108,7 +108,7 @@ describe("SettingsPage", () => {
     expect(await screen.findByRole("option", { name: /Qwen3.8 27B/ })).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
-    await user.click(screen.getByRole("button", { name: "查询限制" }));
+    await user.click(screen.getByRole("link", { name: "查询限制" }));
     expect(
       (screen.getByRole("spinbutton", { name: "查询最大行数" }) as HTMLInputElement).value,
     ).toBe("1000");
@@ -116,7 +116,7 @@ describe("SettingsPage", () => {
       (screen.getByRole("spinbutton", { name: "查询超时（毫秒）" }) as HTMLInputElement).value,
     ).toBe("5000");
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "分享" }));
+    await userEvent.setup().click(screen.getByRole("link", { name: "分享" }));
     expect(
       (screen.getByRole("spinbutton", { name: "分享最长有效期（天）" }) as HTMLInputElement)
         .value,
@@ -129,17 +129,17 @@ describe("SettingsPage", () => {
     renderPage();
 
     await screen.findByRole("combobox", { name: "默认模型" });
-    await user.click(screen.getByRole("button", { name: "查询限制" }));
+    await user.click(screen.getByRole("link", { name: "查询限制" }));
     const maxRows = await screen.findByRole("spinbutton", { name: "查询最大行数" });
     await user.clear(maxRows);
     await user.type(maxRows, "2000");
 
-    await user.click(screen.getByRole("button", { name: "分享" }));
+    await user.click(screen.getByRole("link", { name: "分享" }));
     const shareDays = screen.getByRole("spinbutton", { name: "分享最长有效期（天）" });
     await user.clear(shareDays);
     await user.type(shareDays, "14");
 
-    await user.click(screen.getByRole("button", { name: "通用" }));
+    await user.click(screen.getByRole("link", { name: "通用" }));
     await pickSelectOption(
       user,
       screen.getByRole("combobox", { name: "默认模型" }),
@@ -165,7 +165,7 @@ describe("SettingsPage", () => {
     renderPage();
 
     await screen.findByRole("combobox", { name: "默认模型" });
-    await user.click(screen.getByRole("button", { name: "查询限制" }));
+    await user.click(screen.getByRole("link", { name: "查询限制" }));
     const maxRows = await screen.findByRole("spinbutton", { name: "查询最大行数" });
     await user.clear(maxRows);
     await user.click(screen.getByRole("button", { name: "保存设置" }));

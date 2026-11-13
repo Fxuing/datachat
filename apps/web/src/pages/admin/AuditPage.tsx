@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
-import { AppShell } from "../../components/AppShell";
+import { ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
+import { AdminShell } from "../../components/admin/AdminShell";
 import {
   AUDIT_ACTION_LABELS,
   AUDIT_STATUS_LABELS,
@@ -56,9 +55,6 @@ const EMPTY_FILTERS: FilterState = {
   to: "",
 };
 
-const SELECT_CLASS =
-  "h-9 rounded-md border border-line bg-surface px-2 text-sm text-inksoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30";
-
 function startOfDay(value: string): number | undefined {
   if (!value) return undefined;
   const date = new Date(`${value}T00:00:00`);
@@ -72,7 +68,6 @@ function endOfDay(value: string): number | undefined {
 }
 
 export default function AuditPage() {
-  const navigate = useNavigate();
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<AuditEntry | null>(null);
@@ -129,17 +124,9 @@ export default function AuditPage() {
   const user = meQuery.data?.user;
   if (!user) return <PageSpinner />;
 
-  const sidebar = (
-    <div className="p-2">
-      <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => navigate("/chat")}>
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        返回对话
-      </Button>
-    </div>
-  );
 
   return (
-    <AppShell user={user} sidebar={sidebar}>
+    <AdminShell user={user}>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl px-6 py-6">
           <header className="flex flex-wrap items-end justify-between gap-3">
@@ -407,6 +394,6 @@ export default function AuditPage() {
           onClose={() => setSelected(null)}
         />
       ) : null}
-    </AppShell>
+    </AdminShell>
   );
 }

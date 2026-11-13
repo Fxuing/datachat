@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { Activity, ArrowLeft, DatabaseBackup, RefreshCw, Save, ShieldAlert } from "lucide-react";
-import { AppShell } from "../../components/AppShell";
+import { Activity, DatabaseBackup, RefreshCw, Save, ShieldAlert } from "lucide-react";
+import { AdminShell } from "../../components/admin/AdminShell";
 import { Button } from "../../components/ui/button";
 import {
   Dialog,
@@ -436,28 +435,12 @@ function BackupSection() {
 }
 
 export default function OpsPage() {
-  const navigate = useNavigate();
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const user = meQuery.data?.user;
   if (!user) return <PageSpinner />;
 
   return (
-    <AppShell
-      user={user}
-      sidebar={
-        <div className="p-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start"
-            onClick={() => navigate("/chat")}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            返回对话
-          </Button>
-        </div>
-      }
-    >
+    <AdminShell user={user}>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl px-6 py-6">
           <header className="flex items-center gap-2">
@@ -476,6 +459,6 @@ export default function OpsPage() {
           </p>
         </div>
       </div>
-    </AppShell>
+    </AdminShell>
   );
 }

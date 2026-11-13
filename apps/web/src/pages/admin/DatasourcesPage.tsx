@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import type { DatasourceInput } from "@datachat/shared";
-import { ArrowLeft, CheckCircle2, Plus, RefreshCw, ShieldAlert } from "lucide-react";
-import { AppShell } from "../../components/AppShell";
+import { CheckCircle2, Plus, RefreshCw, ShieldAlert } from "lucide-react";
+import { AdminShell } from "../../components/admin/AdminShell";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { DatasourceEditor } from "../../components/admin/DatasourceEditor";
 import { DatasourceGrantsDialog } from "../../components/admin/DatasourceGrantsDialog";
@@ -68,7 +67,6 @@ function typeLabel(type: DatasourceSummary["type"]): string {
 }
 
 export default function DatasourcesPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [editor, setEditor] = useState<EditorState | null>(null);
@@ -197,22 +195,9 @@ export default function DatasourcesPage() {
     deleteMutation.reset();
   };
 
-  const sidebar = (
-    <div className="p-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="w-full justify-start gap-2"
-        onClick={() => navigate("/chat")}
-      >
-        <ArrowLeft className="h-4 w-4" />
-        返回对话
-      </Button>
-    </div>
-  );
 
   return (
-    <AppShell user={user} sidebar={sidebar}>
+    <AdminShell user={user}>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl px-6 py-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -467,6 +452,6 @@ export default function DatasourcesPage() {
           onCancel={closeDelete}
         />
       ) : null}
-    </AppShell>
+    </AdminShell>
   );
 }
