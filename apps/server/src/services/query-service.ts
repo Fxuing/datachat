@@ -1,8 +1,8 @@
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import { findDatasource, type DatasourceRow } from "../db/repositories/datasources.js";
-import { userCanAccessDatasource } from "../db/repositories/grants.js";
 import { findUserById } from "../db/repositories/users.js";
+import { canAccessDatasource, resolveUserAccess } from "../auth/access.js";
 import { decryptSecret, deriveSecretKey } from "../agent/datasource/crypto.js";
 import type { PoolRegistry } from "../agent/datasource/pool.js";
 import { guardSql, type GuardErrorCode } from "../agent/sql/guard.js";
@@ -51,9 +51,9 @@ export interface QueryServiceDeps {
 }
 
 /**
- * Check datasource access before anything touches the network. The role is read
- * from the database rather than trusted from the caller, so a missing/disabled
- * user or an un-granted datasource always fails closed.
+ * Check datasource access before anything touches the network. Permissions and
+ * grants are re-resolved from the database rather than trusted from the caller, so
+ * a missing/disabled user or an un-granted datasource always fails closed.
  */
 export function authorizeDatasourceAccess(
   db: Db,
@@ -63,12 +63,7 @@ export function authorizeDatasourceAccess(
   const user = findUserById(db, userId);
   if (!user) return "用户不存在";
   if (user.status !== "active") return "用户已被禁用";
-  const allowed = userCanAccessDatasource(
-    db,
-    userId,
-    datasourceId,
-    user.role === "admin",
-  );
+  const allowed = canAccessDatasource(resolveUserAccess(db, user), datasourceId);
   return allowed ? null : "无权访问该数据源";
 }
 

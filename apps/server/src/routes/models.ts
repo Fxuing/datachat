@@ -40,7 +40,7 @@ export async function modelsRoutes(
         },
       )));
 
-  app.get("/api/models", { preHandler: app.authenticate }, async (): Promise<ModelsResponse> => {
+  app.get("/api/models", { preHandler: app.requirePermission("chat.use") }, async (): Promise<ModelsResponse> => {
     // No usable provider yet: report it instead of failing the page with a 500.
     if (!hasUsableProvider(opts.db, opts.config)) {
       return { configured: false, models: [], defaultId: null };

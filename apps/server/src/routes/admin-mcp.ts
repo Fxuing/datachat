@@ -211,12 +211,12 @@ export async function adminMcpRoutes(
   const notFound = (reply: FastifyReply) =>
     reply.code(404).send({ error: { code: "NOT_FOUND", message: "MCP 服务器不存在" } });
 
-  app.get("/api/admin/mcp-servers", { preHandler: app.requireAdmin }, async () => {
+  app.get("/api/admin/mcp-servers", { preHandler: app.requirePermission("admin.mcp") }, async () => {
     const rows = db.select().from(mcpServers).orderBy(asc(mcpServers.name)).all();
     return { servers: rows.map((row) => toMcpServerView(row, key)) };
   });
 
-  app.get("/api/admin/mcp-servers/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.get("/api/admin/mcp-servers/:id", { preHandler: app.requirePermission("admin.mcp") }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     if (!params.success) return notFound(reply);
     const row = db.select().from(mcpServers).where(eq(mcpServers.id, params.data.id)).get();
@@ -224,7 +224,7 @@ export async function adminMcpRoutes(
     return { server: toMcpServerView(row, key) };
   });
 
-  app.post("/api/admin/mcp-servers", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.post("/api/admin/mcp-servers", { preHandler: app.requirePermission("admin.mcp") }, async (request, reply) => {
     const parsed = createMcpServerSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send(validationError(parsed.error.flatten()));
     const input: McpServerInput = parsed.data;
@@ -284,7 +284,7 @@ export async function adminMcpRoutes(
     return reply.code(201).send({ server: toMcpServerView(row, key) });
   });
 
-  app.patch("/api/admin/mcp-servers/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.patch("/api/admin/mcp-servers/:id", { preHandler: app.requirePermission("admin.mcp") }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     if (!params.success) return notFound(reply);
     const existing = db.select().from(mcpServers).where(eq(mcpServers.id, params.data.id)).get();
@@ -418,7 +418,7 @@ export async function adminMcpRoutes(
     return { server: toMcpServerView(updated, key) };
   });
 
-  app.delete("/api/admin/mcp-servers/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.delete("/api/admin/mcp-servers/:id", { preHandler: app.requirePermission("admin.mcp") }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     if (!params.success) return notFound(reply);
     const row = db.select().from(mcpServers).where(eq(mcpServers.id, params.data.id)).get();
@@ -428,7 +428,7 @@ export async function adminMcpRoutes(
     return { ok: true };
   });
 
-  app.post("/api/admin/mcp-servers/:id/test", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.post("/api/admin/mcp-servers/:id/test", { preHandler: app.requirePermission("admin.mcp") }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     if (!params.success) return notFound(reply);
     const row = db.select().from(mcpServers).where(eq(mcpServers.id, params.data.id)).get();

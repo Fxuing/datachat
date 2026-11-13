@@ -8,6 +8,7 @@ import {
   skills,
 } from "../schema.js";
 import { isUniqueViolation } from "./users.js";
+import type { UserAccess } from "../../auth/access.js";
 import type { DatasourceType } from "@datachat/shared";
 
 export type DatasourceRow = typeof datasources.$inferSelect;
@@ -75,26 +76,15 @@ export function findDatasourceByName(db: Db, name: string): DatasourceRow | unde
     .get();
 }
 
-export function listDatasourcesForUser(
-  db: Db,
-  userId: string,
-  isAdmin: boolean,
-): DatasourceRow[] {
-  if (isAdmin) {
+/** Datasources the resolved access allows; `datasourceIds: null` means all of them. */
+export function listDatasourcesForAccess(db: Db, access: UserAccess): DatasourceRow[] {
+  if (access.datasourceIds === null) {
     return db.select().from(datasources).all();
   }
-  const granted = db
-    .select({ id: datasourceGrants.datasourceId })
-    .from(datasourceGrants)
-    .where(eq(datasourceGrants.userId, userId))
-    .all()
-    .map((row) => row.id);
-  if (granted.length === 0) return [];
-  return db.select().from(datasources).where(inArray(datasources.id, granted)).all();
+  const ids = [...access.datasourceIds];
+  if (ids.length === 0) return [];
+  return db.select().from(datasources).where(inArray(datasources.id, ids)).all();
 }
-
-/** Datasource access check shared by routes; admins may access everything. */
-export { userCanAccessDatasource as userCanAccess } from "./grants.js";
 
 export interface DatasourceSummary {
   id: string;

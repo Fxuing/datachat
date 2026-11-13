@@ -52,7 +52,7 @@ function persistedEvent(row: { seq: number; type: string; payloadJson: string })
 }
 
 export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Promise<void> {
-  app.get("/api/runs/:id", { preHandler: app.authenticate }, async (request, reply) => {
+  app.get("/api/runs/:id", { preHandler: app.requirePermission("chat.use") }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     if (!params.success) {
       return reply.code(400).send(error("VALIDATION", "参数不合法"));
@@ -76,7 +76,7 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
 
   app.post(
     "/api/runs/:id/abort",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       if (!params.success) {
@@ -115,7 +115,7 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
 
   app.get(
     "/api/runs/:id/stream",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       if (!params.success) {
@@ -254,7 +254,7 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
 
   app.put(
     "/api/runs/:id/feedback",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       const body = feedbackBodySchema.safeParse(request.body);
@@ -277,7 +277,7 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
 
   app.delete(
     "/api/runs/:id/feedback",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       if (!params.success) {

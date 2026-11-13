@@ -24,20 +24,20 @@ function errorPayload(error: unknown): { statusCode: number; body: { error: { co
 export async function opsRoutes(app: FastifyInstance, opts: OpsRoutesOptions): Promise<void> {
   app.get(
     "/api/admin/ops/retention",
-    { preHandler: app.requireAdmin },
+    { preHandler: app.requirePermission("admin.ops") },
     async () => opts.retention.preview(),
   );
 
   app.get(
     "/api/admin/ops/backups",
-    { preHandler: app.requireAdmin },
+    { preHandler: app.requirePermission("admin.ops") },
     async () => listBackups(opts.dataDir),
   );
 
   app.get(
     "/api/admin/ops/metrics",
     {
-      preHandler: app.requireAdmin,
+      preHandler: app.requirePermission("admin.ops"),
       schema: {
         querystring: {
           type: "object",
@@ -59,7 +59,7 @@ export async function opsRoutes(app: FastifyInstance, opts: OpsRoutesOptions): P
 
   app.post(
     "/api/admin/ops/retention/run",
-    { preHandler: app.requireAdmin },
+    { preHandler: app.requirePermission("admin.ops") },
     async (request, reply) => {
       try {
         const result = await opts.retention.run(request.user!.sub);

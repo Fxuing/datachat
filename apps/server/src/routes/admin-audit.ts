@@ -69,7 +69,7 @@ export async function adminAuditRoutes(
 ): Promise<void> {
   const { db } = opts;
 
-  app.get("/api/admin/audit", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.get("/api/admin/audit", { preHandler: app.requirePermission("admin.audit") }, async (request, reply) => {
     const parsed = listQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return reply.code(400).send({

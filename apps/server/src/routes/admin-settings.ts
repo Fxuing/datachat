@@ -66,11 +66,11 @@ export async function adminSettingsRoutes(
     defaultModelId: await resolveDefaultModelId({ db: opts.db, config: opts.config, getRuntime }),
   });
 
-  app.get("/api/admin/settings", { preHandler: app.requireAdmin }, async () => ({
+  app.get("/api/admin/settings", { preHandler: app.requirePermission("admin.settings") }, async () => ({
     settings: await snapshot(),
   }));
 
-  app.put("/api/admin/settings", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.put("/api/admin/settings", { preHandler: app.requirePermission("admin.settings") }, async (request, reply) => {
     const parsed = putBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({

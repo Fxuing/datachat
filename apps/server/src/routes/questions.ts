@@ -45,7 +45,7 @@ function error(code: string, message: string) {
 export async function questionRoutes(app: FastifyInstance, opts: QuestionRouteOptions): Promise<void> {
   app.post(
     "/api/conversations/:id/questions/:toolCallId/answer",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
     const params = paramsSchema.safeParse(request.params);
     const body = answerBodySchema.safeParse(request.body);

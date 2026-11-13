@@ -129,7 +129,7 @@ export async function llmProviderRoutes(
 
   app.get(
     "/api/admin/llm-providers",
-    { preHandler: app.requireAdmin },
+    { preHandler: app.requirePermission("admin.settings") },
     async () => {
       const settings = effectiveSettings(opts.db, opts.config);
       return {
@@ -141,7 +141,7 @@ export async function llmProviderRoutes(
 
   app.post(
     "/api/admin/llm-providers/test",
-    { preHandler: app.requireAdmin },
+    { preHandler: app.requirePermission("admin.settings") },
     async (request, reply) => {
       const body = testSchema.parse(request.body);
       let apiKey = body.apiKey?.trim() ?? "";
@@ -185,7 +185,7 @@ export async function llmProviderRoutes(
 
   app.post(
     "/api/admin/llm-providers",
-    { preHandler: app.requireAdmin },
+    { preHandler: app.requirePermission("admin.settings") },
     async (request, reply) => {
       const body = createSchema.parse(request.body);
       if (findLlmProviderByName(opts.db, body.name)) {
@@ -211,7 +211,7 @@ export async function llmProviderRoutes(
 
   app.patch(
     "/api/admin/llm-providers/:id",
-    { preHandler: app.requireAdmin },
+    { preHandler: app.requirePermission("admin.settings") },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const existing = getLlmProvider(opts.db, id);
@@ -242,7 +242,7 @@ export async function llmProviderRoutes(
 
   app.post(
     "/api/admin/llm-providers/:id/refresh",
-    { preHandler: app.requireAdmin },
+    { preHandler: app.requirePermission("admin.settings") },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const existing = getLlmProvider(opts.db, id);
@@ -279,7 +279,7 @@ export async function llmProviderRoutes(
 
   app.delete(
     "/api/admin/llm-providers/:id",
-    { preHandler: app.requireAdmin },
+    { preHandler: app.requirePermission("admin.settings") },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       if (!getLlmProvider(opts.db, id)) {

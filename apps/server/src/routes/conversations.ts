@@ -13,7 +13,9 @@ import {
   deleteConversation,
   touchConversation,
 } from "../db/repositories/conversations.js";
-import { findDatasource, userCanAccess } from "../db/repositories/datasources.js";
+import { findDatasource } from "../db/repositories/datasources.js";
+import { canAccessDatasource } from "../auth/access.js";
+import { permissionDeniedBody } from "../auth/guard.js";
 import { appendRunEvent, findRunEvent } from "../db/repositories/run-events.js";
 import {
   createRun,
@@ -136,7 +138,7 @@ export async function conversationRoutes(
 
   app.get(
     "/api/conversations",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request) => {
       const query = listQuerySchema.safeParse(request.query);
       if (!query.success) {
@@ -155,7 +157,7 @@ export async function conversationRoutes(
 
   app.post(
     "/api/conversations",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
       const body = createBodySchema.safeParse(request.body);
       if (!body.success) {
@@ -163,10 +165,7 @@ export async function conversationRoutes(
       }
       const user = request.user!;
       const datasource = findDatasource(opts.db, body.data.datasourceId);
-      if (
-        !datasource ||
-        !userCanAccess(opts.db, user.sub, datasource.id, user.role === "admin")
-      ) {
+      if (!datasource || !canAccessDatasource(request.access!, datasource.id)) {
         return reply.code(404).send(error("NOT_FOUND", "数据源不存在"));
       }
       let modelId = body.data.modelId;
@@ -206,7 +205,7 @@ export async function conversationRoutes(
 
   app.get(
     "/api/conversations/:id",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       if (!params.success) {
@@ -226,7 +225,7 @@ export async function conversationRoutes(
 
   app.get(
     "/api/conversations/:id/skills",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       if (!params.success) {
@@ -252,7 +251,7 @@ export async function conversationRoutes(
 
   app.patch(
     "/api/conversations/:id",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       const body = updateBodySchema.safeParse(request.body);
@@ -305,7 +304,7 @@ export async function conversationRoutes(
 
   app.delete(
     "/api/conversations/:id",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       if (!params.success) {
@@ -343,7 +342,7 @@ export async function conversationRoutes(
   app.post(
     "/api/conversations/:id/messages",
     {
-      preHandler: app.authenticate,
+      preHandler: app.requirePermission("chat.use"),
       config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
     },
     async (request, reply) => {
@@ -359,6 +358,9 @@ export async function conversationRoutes(
       }
 
       const content = body.data.content;
+      if (body.data.skill && !request.access!.permissions.has("skill.use")) {
+        return reply.code(403).send(permissionDeniedBody("skill.use"));
+      }
       const skill = body.data.skill
         ? findApplicableSkill(opts.db, conversation.datasourceId, body.data.skill)
         : undefined;
@@ -404,7 +406,7 @@ export async function conversationRoutes(
   app.post(
     "/api/runs/:runId/retry",
     {
-      preHandler: app.authenticate,
+      preHandler: app.requirePermission("chat.use"),
       config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
     },
     async (request, reply) => {
@@ -442,6 +444,9 @@ export async function conversationRoutes(
         return reply.code(409).send(error("RUN_NOT_RETRYABLE", "找不到原始问题，无法重试"));
       }
       const skillName = typeof payload?.skill === "string" ? payload.skill : undefined;
+      if (skillName && !request.access!.permissions.has("skill.use")) {
+        return reply.code(403).send(permissionDeniedBody("skill.use"));
+      }
       const skill = skillName
         ? findApplicableSkill(opts.db, conversation.datasourceId, skillName)
         : undefined;

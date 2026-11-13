@@ -178,7 +178,7 @@ describe("admin users", () => {
       payload: { role: "user" },
     });
     expect(demoteRoot.statusCode).toBe(403);
-    expect(demoteRoot.json().error.code).toBe("FORBIDDEN");
+    expect(demoteRoot.json().error.code).toBe("PERMISSION_DENIED");
     await a.close();
   });
 });

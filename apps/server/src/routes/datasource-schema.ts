@@ -2,10 +2,8 @@ import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import type { PoolRegistry } from "../agent/datasource/pool.js";
-import {
-  findDatasource,
-  userCanAccess,
-} from "../db/repositories/datasources.js";
+import { findDatasource } from "../db/repositories/datasources.js";
+import { canAccessDatasource } from "../auth/access.js";
 import { SCHEMA_CACHE_TTL_MS, loadSchemaEntry } from "../db/repositories/schema-cache.js";
 import { refreshDatasourceSchema } from "../services/schema-refresh.js";
 
@@ -23,16 +21,6 @@ const idParamsSchema = {
 
 const schemaPageLimit = 50;
 
-function checkAccess(
-  db: Db,
-  request: { user?: { sub: string; role: string } },
-  datasourceId: string,
-): boolean {
-  const user = request.user;
-  if (!user) return false;
-  return userCanAccess(db, user.sub, datasourceId, user.role === "admin");
-}
-
 export async function datasourceSchemaRoutes(
   app: FastifyInstance,
   opts: DatasourceSchemaRoutesOptions,
@@ -42,7 +30,7 @@ export async function datasourceSchemaRoutes(
 
   app.post(
     "/api/datasources/:id/refresh-schema",
-    { preHandler: app.requireAdmin, schema: { params: idParamsSchema } },
+    { preHandler: app.requirePermission("admin.datasources"), schema: { params: idParamsSchema } },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const datasource = findDatasource(opts.db, id);
@@ -69,8 +57,8 @@ export async function datasourceSchemaRoutes(
     { preHandler: app.authenticate, schema: { params: idParamsSchema } },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const user = request.user!;
-      if (!checkAccess(opts.db, request, id)) {
+      const access = request.access!;
+      if (!canAccessDatasource(access, id)) {
         return reply.code(403).send({ error: { code: "FORBIDDEN", message: "无权访问该数据源" } });
       }
 
@@ -90,7 +78,7 @@ export async function datasourceSchemaRoutes(
         refreshedAt: entry.snapshot.refreshedAt,
         stale: Date.now() - entry.refreshedAt > SCHEMA_CACHE_TTL_MS,
         // Raw driver text can leak hostnames/accounts; only admins see it.
-        error: user.role === "admin" ? entry.error : entry.error ? "上次刷新失败" : null,
+        error: access.isAdmin ? entry.error : entry.error ? "上次刷新失败" : null,
         total: matched.length,
       };
     },

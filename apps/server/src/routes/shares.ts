@@ -51,32 +51,36 @@ export async function shareRoutes(
   app: FastifyInstance,
   opts: ShareRouteOptions,
 ): Promise<void> {
-  app.post("/api/shares", { preHandler: app.authenticate }, async (request, reply) => {
-    const body = createBodySchema.safeParse(request.body);
-    if (!body.success) {
-      return reply.code(400).send(error("VALIDATION", "参数不合法"));
-    }
+  app.post(
+    "/api/shares",
+    { preHandler: app.requirePermission("share.create") },
+    async (request, reply) => {
+      const body = createBodySchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.code(400).send(error("VALIDATION", "参数不合法"));
+      }
 
-    const result = createShare({
-      db: opts.db,
-      userId: request.user!.sub,
-      ...(body.data.conversationId !== undefined
-        ? { conversationId: body.data.conversationId }
-        : {}),
-      ...(body.data.reportId !== undefined ? { reportId: body.data.reportId } : {}),
-      ...(body.data.expiresInDays !== undefined
-        ? { expiresInDays: body.data.expiresInDays }
-        : {}),
-      maxExpiresInDays: effectiveSettings(opts.db, opts.config).shareMaxDays,
-    });
-    if (!result.ok) {
-      const status = ERROR_STATUS[result.code];
-      return reply
-        .code(status)
-        .send(error(status === 404 ? "NOT_FOUND" : "VALIDATION", result.message));
-    }
-    return reply.code(201).send({ share: result.share });
-  });
+      const result = createShare({
+        db: opts.db,
+        userId: request.user!.sub,
+        ...(body.data.conversationId !== undefined
+          ? { conversationId: body.data.conversationId }
+          : {}),
+        ...(body.data.reportId !== undefined ? { reportId: body.data.reportId } : {}),
+        ...(body.data.expiresInDays !== undefined
+          ? { expiresInDays: body.data.expiresInDays }
+          : {}),
+        maxExpiresInDays: effectiveSettings(opts.db, opts.config).shareMaxDays,
+      });
+      if (!result.ok) {
+        const status = ERROR_STATUS[result.code];
+        return reply
+          .code(status)
+          .send(error(status === 404 ? "NOT_FOUND" : "VALIDATION", result.message));
+      }
+      return reply.code(201).send({ share: result.share });
+    },
+  );
 
   app.delete("/api/shares/:id", { preHandler: app.authenticate }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);

@@ -68,13 +68,15 @@ function toAdminUser(db: Db, row: UserRow) {
 
 export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): Promise<void> {
   const { db } = opts;
+  const usersAdmin = app.requirePermission("admin.users");
+  const datasourcesAdmin = app.requirePermission("admin.datasources");
 
-  app.get("/api/admin/users", { preHandler: app.requireAdmin }, async () => {
+  app.get("/api/admin/users", { preHandler: usersAdmin }, async () => {
     const rows = db.select().from(users).all();
     return { users: rows.map((row) => toAdminUser(db, row)) };
   });
 
-  app.post("/api/admin/users", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.post("/api/admin/users", { preHandler: usersAdmin }, async (request, reply) => {
     const parsed = createUserSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({
@@ -132,7 +134,7 @@ export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): P
     return reply.code(201).send({ user: toAdminUser(db, row) });
   });
 
-  app.patch("/api/admin/users/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.patch("/api/admin/users/:id", { preHandler: usersAdmin }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     const body = updateUserSchema.safeParse(request.body);
     if (!params.success || !body.success) {
@@ -232,7 +234,7 @@ export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): P
 
   app.get(
     "/api/admin/datasources/:id/grants",
-    { preHandler: app.requireAdmin },
+    { preHandler: datasourcesAdmin },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       if (!params.success) {
@@ -244,7 +246,7 @@ export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): P
 
   app.put(
     "/api/admin/datasources/:id/grants",
-    { preHandler: app.requireAdmin },
+    { preHandler: datasourcesAdmin },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       const body = z.object({ userIds: z.array(z.string().uuid()) }).safeParse(request.body);

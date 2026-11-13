@@ -38,29 +38,33 @@ export async function reportRoutes(
   app: FastifyInstance,
   opts: ReportRouteOptions,
 ): Promise<void> {
-  app.post("/api/reports", { preHandler: app.authenticate }, async (request, reply) => {
-    const body = createBodySchema.safeParse(request.body);
-    if (!body.success) {
-      return reply.code(400).send(error("VALIDATION", "参数不合法"));
-    }
+  app.post(
+    "/api/reports",
+    { preHandler: app.requirePermission("report.create") },
+    async (request, reply) => {
+      const body = createBodySchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.code(400).send(error("VALIDATION", "参数不合法"));
+      }
 
-    const result = createReport({
-      db: opts.db,
-      artifacts: opts.artifacts,
-      userId: request.user!.sub,
-      conversationId: body.data.conversationId,
-      artifactIds: body.data.artifactIds,
-      ...(body.data.title !== undefined ? { title: body.data.title } : {}),
-      ...(body.data.markdown !== undefined ? { markdown: body.data.markdown } : {}),
-    });
-    if (!result.ok) {
-      const status = ERROR_STATUS[result.code];
-      return reply
-        .code(status)
-        .send(error(status === 404 ? "NOT_FOUND" : "VALIDATION", result.message));
-    }
-    return reply.code(201).send({ report: result.report });
-  });
+      const result = createReport({
+        db: opts.db,
+        artifacts: opts.artifacts,
+        userId: request.user!.sub,
+        conversationId: body.data.conversationId,
+        artifactIds: body.data.artifactIds,
+        ...(body.data.title !== undefined ? { title: body.data.title } : {}),
+        ...(body.data.markdown !== undefined ? { markdown: body.data.markdown } : {}),
+      });
+      if (!result.ok) {
+        const status = ERROR_STATUS[result.code];
+        return reply
+          .code(status)
+          .send(error(status === 404 ? "NOT_FOUND" : "VALIDATION", result.message));
+      }
+      return reply.code(201).send({ report: result.report });
+    },
+  );
 
   app.get("/api/reports/:id", { preHandler: app.authenticate }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);

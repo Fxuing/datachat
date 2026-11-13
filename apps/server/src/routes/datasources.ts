@@ -13,7 +13,7 @@ import {
   findDatasource,
   findDatasourceByName,
   insertDatasource,
-  listDatasourcesForUser,
+  listDatasourcesForAccess,
   toDatasourceSummary,
   updateDatasource,
   type DatasourceRow,
@@ -59,6 +59,7 @@ export async function datasourceRoutes(
 ): Promise<void> {
   const { config, db, pools } = opts;
   const key = deriveSecretKey(config.appSecret);
+  const preHandler = app.requirePermission("admin.datasources");
 
   const audit = (
     request: FastifyRequest,
@@ -75,11 +76,11 @@ export async function datasourceRoutes(
   };
 
   app.get("/api/datasources", { preHandler: app.authenticate }, async (request) => {
-    const rows = listDatasourcesForUser(db, request.user!.sub, request.user!.role === "admin");
+    const rows = listDatasourcesForAccess(db, request.access!);
     return { datasources: rows.map((row) => toDatasourceSummary(row)) };
   });
 
-  app.post("/api/datasources", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.post("/api/datasources", { preHandler }, async (request, reply) => {
     const parsed = datasourceInputSchema.safeParse(request.body);
     if (!parsed.success || !parsed.data.password) {
       return reply.code(400).send({ error: { code: "VALIDATION", message: "缺少必要参数" } });
@@ -148,7 +149,7 @@ export async function datasourceRoutes(
     });
   });
 
-  app.patch("/api/datasources/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.patch("/api/datasources/:id", { preHandler }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     const body = updateSchema.safeParse(request.body);
     if (!params.success || !body.success) {
@@ -217,7 +218,7 @@ export async function datasourceRoutes(
     return { ok: true };
   });
 
-  app.delete("/api/datasources/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.delete("/api/datasources/:id", { preHandler }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     if (!params.success) {
       return reply.code(400).send({ error: { code: "VALIDATION", message: "参数不合法" } });
@@ -242,7 +243,7 @@ export async function datasourceRoutes(
     return { ok: true };
   });
 
-  app.post("/api/datasources/:id/test", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.post("/api/datasources/:id/test", { preHandler }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     if (!params.success) {
       return reply.code(400).send({ error: { code: "VALIDATION", message: "参数不合法" } });

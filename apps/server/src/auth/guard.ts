@@ -7,6 +7,17 @@ import { findUserById } from "../db/repositories/users.js";
 
 export const SESSION_COOKIE = "dc_session";
 
+/** 403 body for a missing permission; shared by `requirePermission` and handler-level gates. */
+export function permissionDeniedBody(permission: Permission) {
+  return {
+    error: {
+      code: "PERMISSION_DENIED",
+      message: `缺少权限：${PERMISSION_LABELS[permission]}`,
+      permission,
+    },
+  };
+}
+
 export interface AuthGuardOptions {
   signer: SessionSigner;
   db: Db;
@@ -49,13 +60,7 @@ export function registerAuthGuards(app: FastifyInstance, opts: AuthGuardOptions)
       await app.authenticate(request, reply);
       if (reply.sent) return;
       if (!request.access?.permissions.has(permission)) {
-        return reply.code(403).send({
-          error: {
-            code: "PERMISSION_DENIED",
-            message: `缺少权限：${PERMISSION_LABELS[permission]}`,
-            permission,
-          },
-        });
+        return reply.code(403).send(permissionDeniedBody(permission));
       }
     };
   });

@@ -164,12 +164,12 @@ export async function adminSkillRoutes(
     });
   };
 
-  app.get("/api/admin/skills", { preHandler: app.requireAdmin }, async () => {
+  app.get("/api/admin/skills", { preHandler: app.requirePermission("admin.skills") }, async () => {
     const rows = db.select().from(skills).orderBy(asc(skills.name)).all();
     return { skills: rows.map((row) => toSkillView(row)) };
   });
 
-  app.get("/api/admin/skills/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.get("/api/admin/skills/:id", { preHandler: app.requirePermission("admin.skills") }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "技能不存在" } });
     const row = findSkill(db, params.data.id);
@@ -177,7 +177,7 @@ export async function adminSkillRoutes(
     return { skill: toDetailView(row) };
   });
 
-  app.post("/api/admin/skills", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.post("/api/admin/skills", { preHandler: app.requirePermission("admin.skills") }, async (request, reply) => {
     const parsed = createSkillSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send(validationError(parsed.error.flatten()));
     const input = parsed.data;
@@ -234,7 +234,7 @@ export async function adminSkillRoutes(
     return reply.code(201).send({ skill: toDetailView(row) });
   });
 
-  app.patch("/api/admin/skills/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.patch("/api/admin/skills/:id", { preHandler: app.requirePermission("admin.skills") }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     const parsed = updateSkillSchema.safeParse(request.body);
     if (!params.success || !parsed.success) {
@@ -329,7 +329,7 @@ export async function adminSkillRoutes(
     return { skill: toDetailView(updated) };
   });
 
-  app.delete("/api/admin/skills/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
+  app.delete("/api/admin/skills/:id", { preHandler: app.requirePermission("admin.skills") }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "技能不存在" } });
     const row = findSkill(db, params.data.id);
@@ -339,7 +339,7 @@ export async function adminSkillRoutes(
     return { ok: true };
   });
 
-  app.post("/api/admin/skills/seed", { preHandler: app.requireAdmin }, async (request) => {
+  app.post("/api/admin/skills/seed", { preHandler: app.requirePermission("admin.skills") }, async (request) => {
     const result = seedSkills(db, agentDir);
     audit(request, { mode: "seed", imported: result.imported, skipped: result.skipped });
     return result;

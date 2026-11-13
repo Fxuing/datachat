@@ -133,30 +133,34 @@ export async function artifactRoutes(
   app: FastifyInstance,
   opts: ArtifactRouteOptions,
 ): Promise<void> {
-  app.get("/api/artifacts/:id", { preHandler: app.authenticate }, async (request, reply) => {
-    const params = idParamsSchema.safeParse(request.params);
-    if (!params.success) {
-      return reply.code(400).send(error("VALIDATION", "参数不合法"));
-    }
-    const artifact = findReadableArtifact(opts, params.data.id, request.user!);
-    if (!artifact) {
-      return reply.code(404).send(error("NOT_FOUND", "结果不存在"));
-    }
-    return {
-      id: artifact.id,
-      kind: artifact.kind,
-      conversationId: artifact.conversationId,
-      rowCount: artifact.rowCount,
-      truncated: artifact.truncated,
-      columns: artifact.columns,
-      createdAt: artifact.createdAt,
-      spec: parseSpec(artifact.specJson ?? null),
-    };
-  });
+  app.get(
+    "/api/artifacts/:id",
+    { preHandler: app.requirePermission("chat.use") },
+    async (request, reply) => {
+      const params = idParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.code(400).send(error("VALIDATION", "参数不合法"));
+      }
+      const artifact = findReadableArtifact(opts, params.data.id, request.user!);
+      if (!artifact) {
+        return reply.code(404).send(error("NOT_FOUND", "结果不存在"));
+      }
+      return {
+        id: artifact.id,
+        kind: artifact.kind,
+        conversationId: artifact.conversationId,
+        rowCount: artifact.rowCount,
+        truncated: artifact.truncated,
+        columns: artifact.columns,
+        createdAt: artifact.createdAt,
+        spec: parseSpec(artifact.specJson ?? null),
+      };
+    },
+  );
 
   app.get(
     "/api/artifacts/:id/rows",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       const query = rowsQuerySchema.safeParse(request.query);
@@ -194,7 +198,7 @@ export async function artifactRoutes(
 
   app.get(
     "/api/artifacts/:id/download",
-    { preHandler: app.authenticate },
+    { preHandler: app.requirePermission("export.data") },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
       const query = downloadQuerySchema.safeParse(request.query);
