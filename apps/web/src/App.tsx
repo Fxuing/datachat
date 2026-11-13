@@ -24,6 +24,7 @@ const DatasourcesPage = lazy(() => import("./pages/admin/DatasourcesPage"));
 const AuditPage = lazy(() => import("./pages/admin/AuditPage"));
 const SettingsPage = lazy(() => import("./pages/admin/SettingsPage"));
 const OpsPage = lazy(() => import("./pages/admin/OpsPage"));
+const ScheduledTasksPage = lazy(() => import("./pages/ScheduledTasksPage"));
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const meQuery = useQuery({
@@ -89,6 +90,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ChatPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/scheduled"
+          element={
+            <RequireAuth>
+              <ScheduledTasksPage />
             </RequireAuth>
           }
         />

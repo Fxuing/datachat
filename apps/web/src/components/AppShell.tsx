@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   BookOpen,
+  Clock,
   Database,
   LogOut,
   Plug,
@@ -69,6 +70,22 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">{sidebar}</div>
+
+        <nav className="shrink-0 border-t border-line px-2 py-2">
+          <Link
+            to="/scheduled"
+            aria-current={location.pathname.startsWith("/scheduled") ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] transition-colors",
+              location.pathname.startsWith("/scheduled")
+                ? "bg-brandsoft font-medium text-brandtext"
+                : "text-inksoft hover:bg-subtle hover:text-ink",
+            )}
+          >
+            <Clock className="h-4 w-4 shrink-0" />
+            定时任务
+          </Link>
+        </nav>
 
         {user.role === "admin" ? (
           <nav className="shrink-0 space-y-0.5 border-t border-line px-2 pb-2 pt-3">
