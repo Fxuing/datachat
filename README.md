@@ -119,6 +119,16 @@ EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -
 
 迁移会用 `role_member` 回填现有 `role=user` 用户；升级前建议先执行 `pnpm ops:backup`。
 
+## 定时任务与站内信
+
+有 `chat.use` + `report.create` 权限的用户可在左侧“定时任务”（`/scheduled`）创建任务：
+
+- **配置**：名称、数据源、自然语言问题、5 段 cron（每天/每周一/每月 1 日预设或自定义）、IANA 时区、可选模型；最小间隔 5 分钟，单用户最多 20 个任务。
+- **执行**：服务每 60 秒检查到期任务（全局并发 2、单用户 1、单次超时 10 分钟），在隐藏会话（`conversations.kind = scheduled`）中复用完整 Agent 链路，结果自动生成报告。
+- **通知**：成功/失败/自动停用写入站内信，左下角铃铛显示未读数（30 秒轮询）；连续失败 3 次自动停用。
+- **权限**：创建和执行都要求 `chat.use` + `report.create`，并在执行时重新检查数据源访问；权限或数据源失效会跳过本次执行并停用任务。
+- **运维**：调度为单进程内存实现，不做分布式锁；暂不支持 IM 推送、任务共享或行/列级权限。
+
 ## 运维与数据保留
 
 管理员左下角“管理”→“运维”（`/admin/ops`）：
@@ -226,6 +236,7 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 - [x] 运维页可查看 7/30/90 天运行指标；保留策略可预览后清理，活跃分享/运行中会话自动跳过。
 - [x] 角色/用户管理可配置功能权限、数据源授权与系统管理员；HTTP、Skills/MCP 与聊天 UI 均按权限门禁。
 - [x] `pnpm ops:backup` / `ops:restore` 可备份并恢复 SQLite 与 artifact，恢复前校验完整性并保留 rollback。
+- [x] 定时任务可按 cron 自动执行、生成报告并发送站内信；连续失败 3 次自动停用，权限失效时跳过。
 
 完整实施状态、计划外能力和下一步候选见 [`docs/roadmap.md`](./docs/roadmap.md)。
 
@@ -241,6 +252,7 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 - 尚无 Playwright E2E；运行指标、保留策略与备份恢复已实现，详见 `docs/roadmap.md`。
 - 备份为本地目录，不含 `.env`；异地/对象存储备份与恢复演练尚未实现。
 - RBAC 仅到角色与数据源级；行级/列级数据权限尚未实现。
+- 定时任务为单机内存调度，不支持分布式执行、IM 推送或任务共享；执行结果只保存在报告与站内信中。
 
 ## 上下文压缩与使用率
 

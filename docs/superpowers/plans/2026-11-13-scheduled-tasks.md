@@ -238,12 +238,12 @@ export interface NotificationItem { id: string; type: string; title: string; bod
 
 ## 验收清单
 
-- [ ] 迁移 0012 应用成功，`conversations.kind` 默认 `chat`，旧会话不受影响。
-- [ ] cron/时区/最小间隔校验正确，预设映射正确。
-- [ ] 手动运行生成隐藏会话、run、报告、成功通知。
-- [ ] 失败/超时通知 owner，连续 3 次自动停用。
-- [ ] 权限/数据源失效时跳过并停用。
-- [ ] 任务/通知 owner 隔离；admin 不能读他人任务。
-- [ ] 列表不显示 `kind="scheduled"` 的会话。
-- [ ] UI 创建/编辑/暂停/删除/立即执行/历史/铃铛可用。
-- [ ] `pnpm verify` 通过并推送。
+- [x] 迁移 0012 应用成功，`conversations.kind` 默认 `chat`，旧会话不受影响。
+- [x] cron/时区/最小间隔校验正确，预设映射正确。
+- [x] 手动运行生成隐藏会话、run、报告、成功通知。
+- [x] 失败/超时通知 owner，连续 3 次自动停用。
+- [x] 权限/数据源失效时跳过并停用。
+- [x] 任务/通知 owner 隔离；admin 不能读他人任务。
+- [x] 列表不显示 `kind="scheduled"` 的会话。
+- [x] UI 创建/编辑/暂停/删除/立即执行/历史/铃铛可用。
+- [x] `pnpm verify` 通过并推送。
