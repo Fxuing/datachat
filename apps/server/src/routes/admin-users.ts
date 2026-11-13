@@ -11,18 +11,29 @@ import {
   findUserByUsername,
   insertUser,
   toPublicUser,
+  type UserRow,
 } from "../db/repositories/users.js";
 import { hashPassword } from "../auth/password.js";
 import { listGrantedUserIds, replaceGrants } from "../db/repositories/grants.js";
+import {
+  findRole,
+  listRoleIdsForUser,
+  listRolesForUser,
+  setUserRoles,
+  UnknownRoleError,
+} from "../db/repositories/roles.js";
 import { safeRecordAuditEvent } from "../services/audit.js";
 
 class LastAdminError extends Error {}
+
+const roleIdsSchema = z.array(z.string().min(1)).max(20).optional();
 
 const createUserSchema = z.object({
   username: z.string().trim().min(2).max(64),
   password: z.string().min(8).max(200),
   displayName: z.string().trim().max(64).optional(),
   role: z.enum(["admin", "user"]).default("user"),
+  roleIds: roleIdsSchema,
 });
 
 const updateUserSchema = z.object({
@@ -30,16 +41,37 @@ const updateUserSchema = z.object({
   status: z.enum(["active", "disabled"]).optional(),
   displayName: z.string().trim().max(64).nullable().optional(),
   password: z.string().min(8).max(200).optional(),
+  roleIds: roleIdsSchema,
 });
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
+
+/** Empty assignments and unknown roles are rejected before any write happens. */
+function roleAssignmentError(
+  db: Db,
+  roleIds: string[],
+): { code: string; message: string } | null {
+  if (roleIds.length === 0) {
+    return { code: "ROLE_REQUIRED", message: "至少需要选择一个角色" };
+  }
+  const missing = roleIds.find((roleId) => !findRole(db, roleId));
+  return missing ? { code: "UNKNOWN_ROLE", message: `未知角色：${missing}` } : null;
+}
+
+function toAdminUser(db: Db, row: UserRow) {
+  return {
+    ...toPublicUser(row),
+    roleIds: listRoleIdsForUser(db, row.id),
+    roles: listRolesForUser(db, row.id).map((role) => ({ id: role.id, name: role.name })),
+  };
+}
 
 export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): Promise<void> {
   const { db } = opts;
 
   app.get("/api/admin/users", { preHandler: app.requireAdmin }, async () => {
     const rows = db.select().from(users).all();
-    return { users: rows.map((row) => toPublicUser(row)) };
+    return { users: rows.map((row) => toAdminUser(db, row)) };
   });
 
   app.post("/api/admin/users", { preHandler: app.requireAdmin }, async (request, reply) => {
@@ -53,19 +85,36 @@ export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): P
     if (exists) {
       return reply.code(409).send({ error: { code: "CONFLICT", message: "用户名已存在" } });
     }
-    let row: ReturnType<typeof insertUser>;
+    // New users default to the built-in member role; an explicit list must not
+    // silently gain member, and an empty list is never persisted.
+    const roleIds = parsed.data.roleIds ?? ["role_member"];
+    const roleError = roleAssignmentError(db, roleIds);
+    if (roleError) {
+      return reply.code(400).send({ error: roleError });
+    }
+    let row: UserRow;
+    const passwordHash = await hashPassword(parsed.data.password);
     try {
-      row = insertUser(db, {
-        id: randomUUID(),
-        username: parsed.data.username,
-        passwordHash: await hashPassword(parsed.data.password),
-        role: parsed.data.role,
-        displayName: parsed.data.displayName ?? null,
-        createdAt: Date.now(),
+      row = db.transaction((tx) => {
+        const inserted = insertUser(tx, {
+          id: randomUUID(),
+          username: parsed.data.username,
+          passwordHash,
+          role: parsed.data.role,
+          displayName: parsed.data.displayName ?? null,
+          createdAt: Date.now(),
+        });
+        setUserRoles(tx, inserted.id, roleIds);
+        return inserted;
       });
     } catch (error) {
       if (error instanceof DuplicateUsernameError) {
         return reply.code(409).send({ error: { code: "CONFLICT", message: "用户名已存在" } });
+      }
+      if (error instanceof UnknownRoleError) {
+        return reply
+          .code(400)
+          .send({ error: { code: "UNKNOWN_ROLE", message: `未知角色：${error.roleId}` } });
       }
       throw error;
     }
@@ -74,9 +123,13 @@ export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): P
       action: "user_create",
       targetUserId: row.id,
       ip: request.ip,
-      detail: { username: row.username, role: row.role },
+      detail: {
+        username: row.username,
+        role: row.role,
+        roleIds: listRoleIdsForUser(db, row.id),
+      },
     });
-    return reply.code(201).send({ user: toPublicUser(row) });
+    return reply.code(201).send({ user: toAdminUser(db, row) });
   });
 
   app.patch("/api/admin/users/:id", { preHandler: app.requireAdmin }, async (request, reply) => {
@@ -92,6 +145,13 @@ export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): P
 
     const nextRole = body.data.role ?? target.role;
     const nextStatus = body.data.status ?? target.status;
+    const nextRoleIds = body.data.roleIds;
+    if (nextRoleIds !== undefined) {
+      const roleError = roleAssignmentError(db, nextRoleIds);
+      if (roleError) {
+        return reply.code(400).send({ error: roleError });
+      }
+    }
 
     // An admin may edit their own profile, but not lock themselves out.
     if (target.id === request.user?.sub) {
@@ -136,12 +196,20 @@ export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): P
           })
           .where(eq(users.id, target.id))
           .run();
+        if (nextRoleIds !== undefined) {
+          setUserRoles(tx, target.id, nextRoleIds);
+        }
       });
     } catch (error) {
       if (error instanceof LastAdminError) {
         return reply
           .code(409)
           .send({ error: { code: "CONFLICT", message: "系统至少需要保留一名可用管理员" } });
+      }
+      if (error instanceof UnknownRoleError) {
+        return reply
+          .code(400)
+          .send({ error: { code: "UNKNOWN_ROLE", message: `未知角色：${error.roleId}` } });
       }
       throw error;
     }
@@ -156,9 +224,10 @@ export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): P
         role: updated.role,
         status: updated.status,
         passwordChanged: Boolean(body.data.password),
+        roleIds: listRoleIdsForUser(db, updated.id),
       },
     });
-    return { user: toPublicUser(updated) };
+    return { user: toAdminUser(db, updated) };
   });
 
   app.get(
