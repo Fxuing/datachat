@@ -1047,6 +1047,109 @@ export function testMcpServer(id: string): Promise<McpTestResult> {
   return apiRequest(`/api/admin/mcp-servers/${id}/test`, { method: "POST" });
 }
 
+export interface ScheduledTaskSummary {
+  id: string;
+  name: string;
+  prompt: string;
+  datasourceId: string;
+  datasourceName: string;
+  modelId: string | null;
+  cronExpression: string;
+  timezone: string;
+  enabled: number;
+  nextRunAt: number;
+  lastRunAt: number | null;
+  lastStatus: string | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  createdAt: number;
+  updatedAt: number;
+  lastRun: {
+    status: string;
+    error: string | null;
+    reportId: string | null;
+    finishedAt: number | null;
+  } | null;
+}
+
+export interface ScheduledTaskRun {
+  id: string;
+  taskId: string;
+  trigger: string;
+  status: string;
+  error: string | null;
+  conversationId: string | null;
+  reportId: string | null;
+  startedAt: number | null;
+  finishedAt: number | null;
+  createdAt: number;
+}
+
+export interface ScheduledTaskInput {
+  name: string;
+  prompt: string;
+  datasourceId: string;
+  cronExpression: string;
+  timezone: string;
+  modelId?: string | null;
+  enabled?: boolean;
+}
+
+export interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  href: string | null;
+  readAt: number | null;
+  createdAt: number;
+}
+
+export function listScheduledTasks(): Promise<{ tasks: ScheduledTaskSummary[] }> {
+  return apiRequest("/api/scheduled-tasks");
+}
+
+export function createScheduledTask(input: ScheduledTaskInput): Promise<ScheduledTaskSummary> {
+  return apiRequest("/api/scheduled-tasks", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateScheduledTask(
+  id: string,
+  input: Partial<ScheduledTaskInput>,
+): Promise<ScheduledTaskSummary> {
+  return apiRequest(`/api/scheduled-tasks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteScheduledTask(id: string): Promise<void> {
+  return apiRequest(`/api/scheduled-tasks/${id}`, { method: "DELETE" });
+}
+
+export function runScheduledTask(id: string): Promise<ScheduledTaskRun> {
+  return apiRequest(`/api/scheduled-tasks/${id}/run`, { method: "POST" });
+}
+
+export function listScheduledTaskRuns(id: string): Promise<{ runs: ScheduledTaskRun[] }> {
+  return apiRequest(`/api/scheduled-tasks/${id}/runs`);
+}
+
+export function listNotifications(): Promise<{
+  notifications: NotificationItem[];
+  unread: number;
+}> {
+  return apiRequest("/api/notifications");
+}
+
+export function markNotificationRead(id: string): Promise<void> {
+  return apiRequest(`/api/notifications/${id}/read`, { method: "POST" });
+}
+
+export function markAllNotificationsRead(): Promise<{ marked: number }> {
+  return apiRequest("/api/notifications/read-all", { method: "POST" });
+}
+
 export interface PublicShareMessage {
   role: "user" | "assistant";
   text: string;
