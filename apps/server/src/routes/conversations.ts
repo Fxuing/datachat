@@ -240,11 +240,13 @@ export async function conversationRoutes(
         return reply.code(404).send(error("NOT_FOUND", "会话不存在"));
       }
       return {
-        skills: listApplicableSkills(opts.db, conversation.datasourceId).map((skill) => ({
-          name: skill.name,
-          description: skill.description,
-          scope: skill.scope,
-        })),
+        skills: request.access!.permissions.has("skill.use")
+          ? listApplicableSkills(opts.db, conversation.datasourceId).map((skill) => ({
+              name: skill.name,
+              description: skill.description,
+              scope: skill.scope,
+            }))
+          : [],
       };
     },
   );

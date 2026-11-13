@@ -13,16 +13,45 @@ import type { AppConfig } from "../config.js";
 import { loadMcpFor } from "./mcp.js";
 import { renderSystemPrompt } from "./prompt.js";
 
+/** Functional permissions that shape the agent's resource loader. */
+export interface ConversationPermissions {
+  skills: boolean;
+  mcp: boolean;
+}
+
 export interface ConversationResourcesInput {
   db: Db;
   config: AppConfig;
   conversationId: string;
   datasourceId: string;
   userId: string;
-  skillsDir: string;
+  skillsDir?: string;
+  canUseSkills: boolean;
+  canUseMcp: boolean;
   datasourceName: string;
   datasourceType: "mysql" | "postgres";
   database: string;
+}
+
+export interface ResourceSettings {
+  additionalSkillPaths: string[];
+  mcpEnabled: boolean;
+}
+
+/**
+ * Decide which optional resources a session may load. Kept pure so the permission
+ * matrix can be tested without building a resource loader.
+ */
+export function buildResourceSettings(input: {
+  canUseSkills: boolean;
+  canUseMcp: boolean;
+  skillsDir?: string;
+}): ResourceSettings {
+  return {
+    additionalSkillPaths:
+      input.canUseSkills && input.skillsDir ? [input.skillsDir] : [],
+    mcpEnabled: input.canUseMcp,
+  };
 }
 
 export interface ConversationResources {
@@ -73,11 +102,12 @@ export async function createConversationResources(
     (entry): entry is string => Boolean(entry),
   );
   const eventBus = createEventBus();
+  const settings = buildResourceSettings(input);
   const loader = new DefaultResourceLoader({
     cwd: workspaceDir,
     agentDir: input.config.agentDir,
     eventBus,
-    additionalSkillPaths: [input.skillsDir],
+    additionalSkillPaths: settings.additionalSkillPaths,
     ...(extensionPaths.length > 0 ? { additionalExtensionPaths: extensionPaths } : {}),
     noExtensions: true,
     // Auto-discovered host/project skills would collide with the materialized ones by name and
@@ -89,16 +119,20 @@ export async function createConversationResources(
       datasourceType: input.datasourceType,
       database: input.database,
     }),
-    extensionFactories: [
-      createMcpExtension({
-        loadConfig: () =>
-          loadMcpFor({
-            db: input.db,
-            config: input.config,
-            datasourceId: input.datasourceId,
-          }),
-      }),
-    ],
+    ...(settings.mcpEnabled
+      ? {
+          extensionFactories: [
+            createMcpExtension({
+              loadConfig: () =>
+                loadMcpFor({
+                  db: input.db,
+                  config: input.config,
+                  datasourceId: input.datasourceId,
+                }),
+            }),
+          ],
+        }
+      : {}),
   });
 
   await loader.reload();

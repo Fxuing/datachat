@@ -304,6 +304,8 @@ describe("createConversationResources", () => {
       datasourceId: "d1",
       userId: "u1",
       skillsDir,
+      canUseSkills: true,
+      canUseMcp: true,
       datasourceName: "销售库",
       datasourceType: "mysql",
       database: "sales",

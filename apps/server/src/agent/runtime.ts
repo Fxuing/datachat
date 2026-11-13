@@ -1,5 +1,6 @@
 import type { AgentSession, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { RunEvent } from "@datachat/shared";
+import { resolveUserAccess } from "../auth/access.js";
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../db/repositories/conversations.js";
 import { appendRunEvent } from "../db/repositories/run-events.js";
 import { markRun } from "../db/repositories/runs.js";
+import { findUserById } from "../db/repositories/users.js";
 import type { ArtifactStore } from "../services/artifacts.js";
 import type { PoolRegistry } from "./datasource/pool.js";
 import { RunEventBus } from "./event-bus.js";
@@ -18,9 +20,10 @@ import {
   type UsageTotals,
 } from "./event-bridge.js";
 import { createAgentModelRuntime } from "./model-runtime.js";
-import { createConversationSession } from "./session.js";
 import { QuestionBridge, type AskUserAnswerInput, type AskUserAnswerVerdict } from "./question-bridge.js";
-import { materializeSkills } from "./skills.js";
+import type { ConversationPermissions } from "./resources.js";
+import { createConversationSession } from "./session.js";
+import { materializeSkills, type MaterializeSkillsInput } from "./skills.js";
 import type { AgentToolContext } from "./tools/context.js";
 
 const DISPOSE_ABORT_TIMEOUT_MS = 5_000;
@@ -43,6 +46,7 @@ export type ConversationSessionFactory = (input: {
   userId: string;
   runId: string;
   questionBridge: QuestionBridge;
+  permissions: ConversationPermissions;
 }) => Promise<SessionBundle>;
 
 export interface ConversationRuntimeOptions {
@@ -51,11 +55,41 @@ export interface ConversationRuntimeOptions {
   userId: string;
   bus: RunEventBus;
   createSession: ConversationSessionFactory;
+  /** Resolved by the runtime from the owner's roles when omitted. */
+  permissions?: ConversationPermissions;
   now?: () => number;
 }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Resolve the agent-facing permission flags from the owner's roles. Sessions always
+ * belong to a persisted user; the fallback keeps synthetic ids (tests, imports) working
+ * with the member preset instead of silently stripping skills and MCP.
+ */
+export function resolveConversationPermissions(
+  db: Db,
+  userId: string,
+): ConversationPermissions {
+  const user = findUserById(db, userId);
+  if (!user) return { skills: true, mcp: true };
+  const access = resolveUserAccess(db, user);
+  return {
+    skills: access.permissions.has("skill.use"),
+    mcp: access.permissions.has("mcp.use"),
+  };
+}
+
+/** Skill directories are only materialized for sessions allowed to use skills. */
+export async function materializeSkillsForPermissions(
+  db: Db,
+  input: MaterializeSkillsInput,
+  permissions: ConversationPermissions,
+): Promise<string | undefined> {
+  if (!permissions.skills) return undefined;
+  return materializeSkills(db, input);
 }
 
 /**
@@ -70,6 +104,7 @@ export class ConversationRuntime {
   private readonly bus: RunEventBus;
   private readonly createSession: ConversationSessionFactory;
   private readonly now: () => number;
+  private readonly sessionPermissions: ConversationPermissions;
 
   private conversation: ConversationRow;
   private readonly queue: QueueJob[] = [];
@@ -95,7 +130,13 @@ export class ConversationRuntime {
     this.bus = options.bus;
     this.createSession = options.createSession;
     this.now = options.now ?? Date.now;
+    this.sessionPermissions =
+      options.permissions ?? resolveConversationPermissions(options.db, options.userId);
     this.lastUsed = this.now();
+  }
+
+  get permissions(): ConversationPermissions {
+    return this.sessionPermissions;
   }
 
   get busy(): boolean {
@@ -278,6 +319,7 @@ export class ConversationRuntime {
         userId: this.userId,
         runId,
         questionBridge: this.getQuestionBridge(),
+        permissions: this.sessionPermissions,
       }).then((bundle) => {
         this.sessionBundle = bundle;
         return bundle;
@@ -478,13 +520,17 @@ export class RuntimeManager {
     this.bus = options.bus ?? new RunEventBus();
     this.createSession =
       options.createSession ??
-      (async ({ conversation, userId, questionBridge }) => {
+      (async ({ conversation, userId, permissions, questionBridge }) => {
         const runtime = await this.getModelRuntime();
-        const skillsDir = await materializeSkills(this.db, {
-          conversationId: conversation.id,
-          datasourceId: conversation.datasourceId,
-          dataDir: this.config.dataDir,
-        });
+        const skillsDir = await materializeSkillsForPermissions(
+          this.db,
+          {
+            conversationId: conversation.id,
+            datasourceId: conversation.datasourceId,
+            dataDir: this.config.dataDir,
+          },
+          permissions,
+        );
         return createConversationSession({
           db: this.db,
           config: this.config,
@@ -492,6 +538,8 @@ export class RuntimeManager {
           conversation,
           userId,
           skillsDir,
+          canUseSkills: permissions.skills,
+          canUseMcp: permissions.mcp,
           pools: this.pools,
           artifacts: this.artifacts,
           questionBridge,

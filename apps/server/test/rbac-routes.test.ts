@@ -188,7 +188,12 @@ async function seedResult(owner: string): Promise<string> {
   return meta.id;
 }
 
-function inject(cookie: string, method: "GET" | "POST", url: string, payload?: unknown) {
+function inject(
+  cookie: string,
+  method: "GET" | "POST",
+  url: string,
+  payload?: Record<string, unknown>,
+) {
   return app.inject({
     method,
     url,

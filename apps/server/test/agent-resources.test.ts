@@ -37,6 +37,8 @@ describe("conversation resources", () => {
       datasourceId: randomUUID(),
       userId: randomUUID(),
       skillsDir: path.join(root, "skills"),
+      canUseSkills: true,
+      canUseMcp: true,
       datasourceName: "demo",
       datasourceType: "mysql",
       database: "demo",

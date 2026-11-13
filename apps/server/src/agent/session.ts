@@ -29,7 +29,9 @@ export interface CreateConversationSessionInput {
   runtime: ModelRuntime;
   conversation: ConversationRow;
   userId: string;
-  skillsDir: string;
+  skillsDir?: string;
+  canUseSkills: boolean;
+  canUseMcp: boolean;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
   questionBridge: QuestionBridge;
@@ -66,6 +68,20 @@ export async function createConversationSession(
   const providerIds = enabledProviderIds(input.db);
   const model = resolveConversationModel(input.runtime, conversation.modelId, providerIds);
 
+  const { loader, workspaceDir, eventBus } = await createConversationResources({
+    db: input.db,
+    config: input.config,
+    conversationId: conversation.id,
+    datasourceId: conversation.datasourceId,
+    userId: input.userId,
+    skillsDir: input.skillsDir,
+    canUseSkills: input.canUseSkills,
+    canUseMcp: input.canUseMcp,
+    datasourceName: datasource.name,
+    datasourceType: datasource.type,
+    database: datasource.database,
+  });
+
   const toolContext: AgentToolContext = {
     db: input.db,
     config: input.config,
@@ -75,20 +91,9 @@ export async function createConversationSession(
     conversationId: conversation.id,
     datasourceId: conversation.datasourceId,
     runId: "",
-    skillsDir: input.skillsDir,
+    // Without skills the read tool stays inside the empty conversation workspace.
+    skillsDir: input.skillsDir ?? workspaceDir,
   };
-
-  const { loader, workspaceDir, eventBus } = await createConversationResources({
-    db: input.db,
-    config: input.config,
-    conversationId: conversation.id,
-    datasourceId: conversation.datasourceId,
-    userId: input.userId,
-    skillsDir: input.skillsDir,
-    datasourceName: datasource.name,
-    datasourceType: datasource.type,
-    database: datasource.database,
-  });
 
   const sessionManager = conversation.piSessionFile
     ? SessionManager.open(conversation.piSessionFile, undefined, workspaceDir)
