@@ -76,6 +76,7 @@ function UserEditor({
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<AdminUser["status"]>(user?.status ?? "active");
+  const [isAdmin, setIsAdmin] = useState(user?.role === "admin");
   const [roleIds, setRoleIds] = useState<ReadonlySet<string>>(
     () =>
       new Set(
@@ -104,6 +105,7 @@ function UserEditor({
           displayName: trimmedDisplayName === "" ? null : trimmedDisplayName,
           roleIds: orderedRoleIds,
           status,
+          role: isAdmin ? "admin" : "user",
           ...(password === "" ? {} : { password }),
         },
       });
@@ -115,6 +117,7 @@ function UserEditor({
         username: username.trim(),
         password,
         ...(trimmedDisplayName === "" ? {} : { displayName: trimmedDisplayName }),
+        role: isAdmin ? "admin" : "user",
         roleIds: orderedRoleIds,
       },
     });
@@ -215,6 +218,24 @@ function UserEditor({
             ) : null}
           </div>
         ) : null}
+
+        <div className="space-y-1.5">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-inksoft">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-brand"
+              checked={isAdmin}
+              disabled={saving || isSelf}
+              onChange={(event) => setIsAdmin(event.target.checked)}
+            />
+            <span>系统管理员</span>
+          </label>
+          <p className="text-[11px] text-muted">
+            {isSelf
+              ? "不能修改自己的管理员角色。"
+              : "管理员不受角色与数据源限制，可进入所有管理页面。"}
+          </p>
+        </div>
 
         <fieldset className="space-y-1.5">
           <legend className={labelClass}>角色</legend>

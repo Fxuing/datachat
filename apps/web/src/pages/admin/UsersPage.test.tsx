@@ -187,7 +187,34 @@ describe("UsersPage", () => {
         username: "alice",
         displayName: "Alice",
         password: "alice-pass-123",
+        role: "user",
         roleIds: ["role_member", "role_analyst"],
+      }),
+    );
+  });
+
+  it("creates a system admin when the admin flag is checked", async () => {
+    const browser = userEvent.setup();
+    const fetchMock = stubApi();
+    renderPage();
+
+    await screen.findByText("Bob");
+    await browser.click(screen.getByRole("button", { name: "新建用户" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("系统管理员")).not.toBeChecked();
+
+    await browser.type(within(dialog).getByLabelText("用户名"), "alice");
+    await browser.type(within(dialog).getByLabelText("密码"), "alice-pass-123");
+    await browser.click(within(dialog).getByLabelText("系统管理员"));
+    await browser.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(requestBody(fetchMock, "/api/admin/users", "POST")).toEqual({
+        username: "alice",
+        password: "alice-pass-123",
+        role: "admin",
+        roleIds: ["role_member"],
       }),
     );
   });
@@ -212,6 +239,7 @@ describe("UsersPage", () => {
         displayName: "Bob",
         roleIds: ["role_analyst"],
         status: "active",
+        role: "user",
       }),
     );
   });
@@ -242,6 +270,33 @@ describe("UsersPage", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("combobox", { name: "状态" })).toBeDisabled();
     expect(within(dialog).getByText("不能禁用自己的账号。")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("系统管理员")).toBeChecked();
+    expect(within(dialog).getByLabelText("系统管理员")).toBeDisabled();
+    expect(within(dialog).getByText("不能修改自己的管理员角色。")).toBeInTheDocument();
+  });
+
+  it("promotes a user to system admin from the edit dialog", async () => {
+    const browser = userEvent.setup();
+    const fetchMock = stubApi();
+    renderPage();
+
+    await screen.findByText("Bob");
+    await browser.click(within(rowOf("Bob")).getByRole("button", { name: "编辑" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("系统管理员")).not.toBeChecked();
+
+    await browser.click(within(dialog).getByLabelText("系统管理员"));
+    await browser.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(requestBody(fetchMock, "/api/admin/users/u-bob", "PATCH")).toEqual({
+        displayName: "Bob",
+        roleIds: ["role_member", "role_analyst"],
+        status: "active",
+        role: "admin",
+      }),
+    );
   });
 });
 

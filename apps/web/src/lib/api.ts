@@ -97,6 +97,8 @@ export interface CreateAdminUserInput {
   username: string;
   password: string;
   displayName?: string;
+  /** System-admin flag, independent of the assigned custom roles. */
+  role?: "admin" | "user";
   roleIds?: string[];
 }
 
@@ -104,6 +106,7 @@ export interface UpdateAdminUserInput {
   displayName?: string | null;
   password?: string;
   status?: "active" | "disabled";
+  role?: "admin" | "user";
   roleIds?: string[];
 }
 
