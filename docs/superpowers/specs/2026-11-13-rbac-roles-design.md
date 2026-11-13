@@ -140,7 +140,7 @@ export function resolveUserAccess(db: Db, user: UserRow): UserAccess;
 2. 其他用户：
    - `user_roles → role_permissions` 去重得到权限集合
    - `role_datasource_grants` 与 `datasource_grants` 去重得到数据源集合
-3. 无角色用户：只有直授数据源、无功能权限；迁移后不会再出现，但解析仍需容错。
+3. 无角色用户：解析器按“成员”功能权限兜底（仅兼容迁移前的历史行/测试），服务端禁止保存空 `roleIds`，因此正常运行不会产生无角色用户。
 
 `authenticate` 每次请求从数据库重新解析（角色/分配变更立即生效，不依赖 JWT 中的 role），挂到 `request.access`。新增：
 
