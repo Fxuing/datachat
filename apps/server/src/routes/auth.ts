@@ -5,6 +5,8 @@ import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import { users } from "../db/schema.js";
 import { findUserByUsername, toPublicUser } from "../db/repositories/users.js";
+import { listRolesForUser } from "../db/repositories/roles.js";
+import { resolveUserAccess } from "../auth/access.js";
 import { verifyPassword } from "../auth/password.js";
 import { SESSION_COOKIE } from "../auth/guard.js";
 import type { SessionSigner } from "../auth/jwt.js";
@@ -80,6 +82,11 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions): 
   });
 
   app.get("/api/auth/me", { preHandler: app.authenticate }, async (request) => {
-    return { user: toPublicUser(request.authUser!) };
+    const user = request.authUser!;
+    return {
+      user: toPublicUser(user),
+      permissions: [...resolveUserAccess(db, user).permissions],
+      roles: listRolesForUser(db, user.id).map((role) => ({ id: role.id, name: role.name })),
+    };
   });
 }

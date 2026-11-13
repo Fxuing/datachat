@@ -1,5 +1,7 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { PERMISSION_LABELS, type Permission } from "@datachat/shared";
 import type { SessionSigner } from "./jwt.js";
+import { resolveUserAccess } from "./access.js";
 import type { Db } from "../db/client.js";
 import { findUserById } from "../db/repositories/users.js";
 
@@ -14,6 +16,7 @@ export function registerAuthGuards(app: FastifyInstance, opts: AuthGuardOptions)
   const { signer, db } = opts;
   app.decorateRequest("user", undefined);
   app.decorateRequest("authUser", undefined);
+  app.decorateRequest("access", undefined);
 
   app.decorate("authenticate", async (request, reply) => {
     const token = request.cookies[SESSION_COOKIE];
@@ -38,6 +41,23 @@ export function registerAuthGuards(app: FastifyInstance, opts: AuthGuardOptions)
     }
     request.authUser = user;
     request.user = { sub: user.id, username: user.username, role: user.role };
+    request.access = resolveUserAccess(db, user);
+  });
+
+  app.decorate("requirePermission", (permission: Permission) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
+      await app.authenticate(request, reply);
+      if (reply.sent) return;
+      if (!request.access?.permissions.has(permission)) {
+        return reply.code(403).send({
+          error: {
+            code: "PERMISSION_DENIED",
+            message: `缺少权限：${PERMISSION_LABELS[permission]}`,
+            permission,
+          },
+        });
+      }
+    };
   });
 
   app.decorate("requireAdmin", async (request, reply) => {
