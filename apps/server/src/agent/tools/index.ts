@@ -12,16 +12,27 @@ import { createSandboxReadTool } from "./sandbox-read.js";
  * Tools available to the DataChat agent. Every tool closes over the current
  * conversation's ids, so no tool takes a datasource id from the model.
  */
-export function buildAgentTools(ctx: AgentToolContext): ToolDefinition[] {
-  return [
+export interface AgentToolOptions {
+  /** Fail closed: only an explicit grant enables report creation. */
+  canCreateReports?: boolean;
+}
+
+export function buildAgentTools(
+  ctx: AgentToolContext,
+  options: AgentToolOptions = {},
+): ToolDefinition[] {
+  const tools = [
     createSandboxReadTool(ctx),
     createDbSchemaTool(ctx) as ToolDefinition,
     createDbQueryTool(ctx) as ToolDefinition,
     createDbExplainTool(ctx) as ToolDefinition,
     createMakeChartTool(ctx) as ToolDefinition,
     createListArtifactsTool(ctx) as ToolDefinition,
-    createReportTool(ctx) as ToolDefinition,
   ];
+  if (options.canCreateReports === true) {
+    tools.push(createReportTool(ctx) as ToolDefinition);
+  }
+  return tools;
 }
 
 export type { AgentToolContext } from "./context.js";

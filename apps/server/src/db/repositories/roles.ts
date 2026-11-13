@@ -201,9 +201,11 @@ export function deleteRole(db: Db, id: string): void {
 
 export function setUserRoles(db: Db, userId: string, roleIds: string[]): void {
   const unique = [...new Set(roleIds)];
-  const missing = unique.find((roleId) => !findRole(db, roleId));
-  if (missing) throw new UnknownRoleError(missing);
   db.transaction((tx) => {
+    // Re-check inside the transaction so a concurrent role delete maps to
+    // UnknownRoleError instead of surfacing a raw foreign-key failure.
+    const missing = unique.find((roleId) => !findRole(tx, roleId));
+    if (missing) throw new UnknownRoleError(missing);
     tx.delete(userRoles).where(eq(userRoles.userId, userId)).run();
     if (unique.length > 0) {
       tx.insert(userRoles)

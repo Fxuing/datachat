@@ -358,13 +358,13 @@ describe("reports api", () => {
 
 describe("create_report tool", () => {
   it("is registered in buildAgentTools", () => {
-    const names = buildAgentTools(toolContext()).map((tool) => tool.name);
+    const names = buildAgentTools(toolContext(), { canCreateReports: true }).map((tool) => tool.name);
     expect(names).toContain("create_report");
   });
 
   it("creates a report from model-authored markdown", async () => {
     const artifactId = await seedResult();
-    const tool = buildAgentTools(toolContext()).find((item) => item.name === "create_report")!;
+    const tool = buildAgentTools(toolContext(), { canCreateReports: true }).find((item) => item.name === "create_report")!;
 
     const result = await tool.execute(
       "call-1",
@@ -400,7 +400,7 @@ describe("create_report tool", () => {
 
   it("returns an error result for a foreign artifact", async () => {
     const artifactId = await seedResult({ userId: otherUserId });
-    const tool = buildAgentTools(toolContext()).find((item) => item.name === "create_report")!;
+    const tool = buildAgentTools(toolContext(), { canCreateReports: true }).find((item) => item.name === "create_report")!;
 
     const result = await tool.execute(
       "call-1",

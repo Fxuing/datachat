@@ -277,11 +277,27 @@ describe("admin roles", () => {
     await a.close();
   });
 
-  it("deletes a role assigned to users and cascades the assignment", async () => {
+  it("refuses to delete a role that is still assigned", async () => {
     const created = await createRoleViaApi();
     const id = created.json().role.id;
     setUserRoles(db, userId, [id]);
+
+    const a = await app();
+    const removed = await a.inject({
+      method: "DELETE",
+      url: `/api/admin/roles/${id}`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(removed.statusCode).toBe(409);
+    expect(removed.json().error.code).toBe("ROLE_IN_USE");
+    expect(roleDetail(db, id)).toBeDefined();
     expect(listRoleIdsForUser(db, userId)).toEqual([id]);
+    await a.close();
+  });
+
+  it("deletes an unassigned role and records the audit detail", async () => {
+    const created = await createRoleViaApi();
+    const id = created.json().role.id;
 
     const a = await app();
     const removed = await a.inject({
@@ -292,7 +308,6 @@ describe("admin roles", () => {
     expect(removed.statusCode).toBe(200);
     expect(removed.json()).toEqual({ ok: true });
     expect(roleDetail(db, id)).toBeUndefined();
-    expect(listRoleIdsForUser(db, userId)).toEqual([]);
 
     const audits = db
       .select()

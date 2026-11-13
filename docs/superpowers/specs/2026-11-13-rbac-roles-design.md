@@ -117,7 +117,7 @@ CREATE INDEX role_datasource_grants_datasource_idx ON role_datasource_grants (da
 
 迁移 `0011_role_audit.sql`：按 `0009_ops_audit.sql` 的方式重建 `query_audit`，在 CHECK 中加入 `role_change`。
 
-角色删除时，`user_roles` 与 `role_datasource_grants` 由外键级联删除。现有 `datasource_grants` 表不变。
+角色仍分配给用户时禁止删除（409 `ROLE_IN_USE`）；需先解除分配，避免用户意外失去全部角色而进入兜底权限。删除未分配角色时，`user_roles` 与 `role_datasource_grants` 由外键级联删除。现有 `datasource_grants` 表不变。
 
 ## 5. 权限解析
 

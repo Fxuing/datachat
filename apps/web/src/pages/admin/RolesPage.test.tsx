@@ -58,7 +58,7 @@ const analyst = {
   isBuiltin: false,
   permissionCount: 1,
   datasourceCount: 0,
-  userCount: 1,
+  userCount: 0,
   createdAt: 1,
   updatedAt: 2,
 };
@@ -224,6 +224,15 @@ describe("RolesPage", () => {
     expect(screen.queryByText("系统权限（仅内置管理员）")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("用户管理")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("角色管理")).not.toBeInTheDocument();
+  });
+
+  it("disables deleting a role that still has users", async () => {
+    const browser = userEvent.setup();
+    stubApi();
+    renderPage();
+
+    await screen.findByText("成员");
+    expect(within(rowOf("成员")).queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
   });
 
   it("deletes a custom role after confirmation", async () => {

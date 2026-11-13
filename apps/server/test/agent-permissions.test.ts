@@ -14,6 +14,8 @@ import {
 } from "../src/agent/runtime.js";
 import { createDb, type DbHandle } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
+import { buildAgentTools } from "../src/agent/tools/index.js";
+import type { AgentToolContext } from "../src/agent/tools/context.js";
 import { createConversation } from "../src/db/repositories/conversations.js";
 import { createRole, setUserRoles } from "../src/db/repositories/roles.js";
 import { insertUser } from "../src/db/repositories/users.js";
@@ -120,7 +122,7 @@ describe("skill materialization permissions", () => {
     const skillsDir = await materializeSkillsForPermissions(
       handle.db,
       { conversationId: "c1", datasourceId: "d1", dataDir: root },
-      { skills: false, mcp: true },
+      { skills: false, mcp: true, reports: true },
     );
 
     expect(skillsDir).toBeUndefined();
@@ -131,11 +133,23 @@ describe("skill materialization permissions", () => {
     const skillsDir = await materializeSkillsForPermissions(
       handle.db,
       { conversationId: "c1", datasourceId: "d1", dataDir: root },
-      { skills: true, mcp: false },
+      { skills: true, mcp: false, reports: true },
     );
 
     expect(skillsDir).toBe(path.join(root, "skills", "c1"));
     expect(fs.existsSync(skillsDir!)).toBe(true);
+  });
+});
+
+describe("agent tool permissions", () => {
+  it("omits create_report without report.create", () => {
+    const ctx = { skillsDir: root } as AgentToolContext;
+    const withoutReports = buildAgentTools(ctx, { canCreateReports: false }).map(
+      (tool) => tool.name,
+    );
+    const withReports = buildAgentTools(ctx, { canCreateReports: true }).map((tool) => tool.name);
+    expect(withoutReports).not.toContain("create_report");
+    expect(withReports).toContain("create_report");
   });
 });
 
@@ -177,21 +191,38 @@ describe("ConversationRuntime permission resolution", () => {
     expect(resolveConversationPermissions(handle.db, userId)).toEqual({
       skills: false,
       mcp: false,
+      reports: false,
     });
-    expect(runtimeFor(userId).permissions).toEqual({ skills: false, mcp: false });
+    expect(runtimeFor(userId).permissions).toEqual({
+      skills: false,
+      mcp: false,
+      reports: false,
+    });
+  });
+
+  it("keeps report creation only with report.create", () => {
+    const withoutReport = userWithRole("user", ["chat.use", "skill.use", "mcp.use"]);
+    const withReport = userWithRole("user", [
+      "chat.use",
+      "skill.use",
+      "mcp.use",
+      "report.create",
+    ]);
+    expect(resolveConversationPermissions(handle.db, withoutReport).reports).toBe(false);
+    expect(resolveConversationPermissions(handle.db, withReport).reports).toBe(true);
   });
 
   it("keeps skills and mcp for the member preset", () => {
     const userId = userWithRole("user");
-    expect(runtimeFor(userId).permissions).toEqual({ skills: true, mcp: true });
+    expect(runtimeFor(userId).permissions).toEqual({ skills: true, mcp: true, reports: true });
   });
 
   it("keeps skills and mcp for an admin", () => {
     const userId = userWithRole("admin");
-    expect(runtimeFor(userId).permissions).toEqual({ skills: true, mcp: true });
+    expect(runtimeFor(userId).permissions).toEqual({ skills: true, mcp: true, reports: true });
   });
 
-  it("keeps skills and mcp for synthetic users without a database row", () => {
+  it("fails closed for synthetic users without a database row", () => {
     const runtime = new ConversationRuntime({
       db: handle.db,
       conversation: createConversation(handle.db, { userId: "synthetic", datasourceId: "ds-1" }),
@@ -201,6 +232,6 @@ describe("ConversationRuntime permission resolution", () => {
         throw new Error("session creation is not part of this test");
       },
     });
-    expect(runtime.permissions).toEqual({ skills: true, mcp: true });
+    expect(runtime.permissions).toEqual({ skills: false, mcp: false, reports: false });
   });
 });

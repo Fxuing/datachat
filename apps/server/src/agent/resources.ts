@@ -17,6 +17,7 @@ import { renderSystemPrompt } from "./prompt.js";
 export interface ConversationPermissions {
   skills: boolean;
   mcp: boolean;
+  reports: boolean;
 }
 
 export interface ConversationResourcesInput {

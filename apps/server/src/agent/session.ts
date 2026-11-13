@@ -32,6 +32,7 @@ export interface CreateConversationSessionInput {
   skillsDir?: string;
   canUseSkills: boolean;
   canUseMcp: boolean;
+  canCreateReports: boolean;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
   questionBridge: QuestionBridge;
@@ -111,7 +112,9 @@ export async function createConversationSession(
     model,
     thinkingLevel: toThinkingLevel(conversation.thinkingLevel),
     noTools: "builtin",
-    customTools: buildAgentTools(toolContext),
+    customTools: buildAgentTools(toolContext, {
+      canCreateReports: input.canCreateReports,
+    }),
   });
   input.questionBridge.bind(eventBus);
   await session.bindExtensions({ uiContext: input.questionBridge.uiContext });

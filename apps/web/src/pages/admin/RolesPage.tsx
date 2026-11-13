@@ -383,6 +383,12 @@ export default function RolesPage() {
                                 variant="ghost"
                                 size="sm"
                                 className="text-danger hover:bg-dangersoft hover:text-danger"
+                                disabled={role.userCount > 0}
+                                title={
+                                  role.userCount > 0
+                                    ? "请先解除该角色下的用户分配"
+                                    : undefined
+                                }
                                 onClick={() => {
                                   deleteMutation.reset();
                                   setDeleteTarget(role);

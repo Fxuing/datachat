@@ -74,11 +74,12 @@ export function resolveConversationPermissions(
   userId: string,
 ): ConversationPermissions {
   const user = findUserById(db, userId);
-  if (!user) return { skills: true, mcp: true };
+  if (!user) return { skills: false, mcp: false, reports: false };
   const access = resolveUserAccess(db, user);
   return {
     skills: access.permissions.has("skill.use"),
     mcp: access.permissions.has("mcp.use"),
+    reports: access.permissions.has("report.create"),
   };
 }
 
@@ -540,6 +541,7 @@ export class RuntimeManager {
           skillsDir,
           canUseSkills: permissions.skills,
           canUseMcp: permissions.mcp,
+          canCreateReports: permissions.reports,
           pools: this.pools,
           artifacts: this.artifacts,
           questionBridge,

@@ -115,6 +115,7 @@ EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -
 - **自定义角色**：功能权限 + 数据源授权；可多角色，权限与数据源取并集，并与原有的按用户直授 `datasource_grants` 取并集。
 - **即时性**：角色/权限修改对 HTTP 接口和界面立即生效；已打开的 Agent 会话在**下一次新建会话**时应用新的 Skills / MCP 权限。
 - **撤销语义**：撤销 `report.create` / `share.create` / `export.data` 只阻止新建；已有报告仍可查看/删除，已有分享仍可撤销。
+- **删除角色**：角色仍分配给用户时不可删除，需先在用户页解除分配；内置角色不可删除或改名。
 
 迁移会用 `role_member` 回填现有 `role=user` 用户；升级前建议先执行 `pnpm ops:backup`。
 

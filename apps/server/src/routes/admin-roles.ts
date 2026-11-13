@@ -199,6 +199,14 @@ export async function adminRoleRoutes(app: FastifyInstance, opts: { db: Db }): P
       return reply.code(400).send({ error: { code: "BUILTIN_ROLE", message: "内置角色不可删除" } });
     }
     const detail = roleDetail(db, role.id)!;
+    if (detail.userCount > 0) {
+      return reply.code(409).send({
+        error: {
+          code: "ROLE_IN_USE",
+          message: `该角色仍分配给 ${detail.userCount} 个用户，请先解除分配`,
+        },
+      });
+    }
     deleteRole(db, role.id);
     safeRecordAuditEvent(db, {
       actorUserId: request.authUser!.id,
