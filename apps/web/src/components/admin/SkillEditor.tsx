@@ -4,6 +4,7 @@ import type { AdminSkillDetail, DatasourceSummary, SkillInput, SkillScope } from
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 import { Textarea } from "../ui/textarea";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -71,17 +72,6 @@ export function SkillEditor({
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
-  useEffect(() => {
-    if (discardOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || busy) return;
-      if (dirty) setDiscardOpen(true);
-      else onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [busy, dirty, discardOpen, onClose]);
-
   const close = () => {
     if (busy) return;
     if (dirty) setDiscardOpen(true);
@@ -118,24 +108,16 @@ export function SkillEditor({
 
   return (
     <>
-      <div
-        className="fixed inset-0 z-40 flex justify-end bg-black/30"
-        role="presentation"
-        onMouseDown={close}
-      >
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={title}
-          className="flex h-full w-full max-w-xl flex-col border-l border-line bg-surface shadow-xl"
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
-            <h2 className="text-sm font-semibold text-ink">{title}</h2>
-            <Button variant="ghost" size="icon" aria-label="关闭" onClick={close}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+      <Sheet open onOpenChange={(open) => { if (!open) close(); }}>
+        <SheetContent hideClose className="max-w-xl">
+          <SheetHeader className="h-14 flex-row items-center justify-between gap-3 px-4 py-0">
+            <SheetTitle className="text-sm">{title}</SheetTitle>
+            <SheetClose asChild>
+              <Button variant="ghost" size="icon" aria-label="关闭">
+                <X className="h-4 w-4" />
+              </Button>
+            </SheetClose>
+          </SheetHeader>
 
           <form
             className="flex min-h-0 flex-1 flex-col"
@@ -272,8 +254,8 @@ export function SkillEditor({
               </div>
             </div>
           </form>
-        </div>
-      </div>
+        </SheetContent>
+      </Sheet>
 
       {deleteOpen ? (
         <ConfirmDialog

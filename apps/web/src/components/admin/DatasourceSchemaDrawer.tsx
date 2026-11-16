@@ -12,6 +12,7 @@ import { queryKeys } from "../../lib/query";
 import { formatClock } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 
 const PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -44,14 +45,6 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
   useEffect(() => {
     setPage(0);
   }, [debouncedSearch]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
 
   const schemaQuery = useQuery({
     queryKey: queryKeys.datasourceSchema(datasource.id, debouncedSearch),
@@ -91,23 +84,13 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
     : null;
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex justify-end bg-black/30"
-      role="presentation"
-      onMouseDown={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${datasource.name} 的表结构`}
-        className="flex h-full w-full max-w-2xl flex-col border-l border-line bg-surface shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
+    <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <SheetContent hideClose className="max-w-2xl">
+        <SheetHeader className="h-14 flex-row items-center justify-between gap-3 px-4 py-0">
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-ink">
+            <SheetTitle className="truncate text-sm">
               {datasource.name} 的表结构
-            </h2>
+            </SheetTitle>
             <p className="truncate text-[11px] text-muted">
               {schemaQuery.data
                 ? `共 ${total} 张表 · 刷新于 ${formatClock(schemaQuery.data.refreshedAt)}`
@@ -124,11 +107,13 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
               <RefreshCw className={`h-3.5 w-3.5 ${refresh.isPending ? "animate-spin" : ""}`} />
               {refresh.isPending ? "刷新中…" : "刷新"}
             </Button>
-            <Button variant="ghost" size="icon" aria-label="关闭表结构" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
+            <SheetClose asChild>
+              <Button variant="ghost" size="icon" aria-label="关闭表结构">
+                <X className="h-4 w-4" />
+              </Button>
+            </SheetClose>
           </div>
-        </div>
+        </SheetHeader>
 
         <div className="shrink-0 border-b border-line p-3">
           <Input
@@ -288,7 +273,7 @@ export function DatasourceSchemaDrawer({ datasource, onClose }: DatasourceSchema
             </div>
           </div>
         ) : null}
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }

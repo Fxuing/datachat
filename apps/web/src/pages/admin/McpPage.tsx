@@ -6,6 +6,7 @@ import { AdminShell } from "../../components/admin/AdminShell";
 import { McpEditor } from "../../components/admin/McpEditor";
 import { Button } from "../../components/ui/button";
 import { PageSpinner } from "../../components/ui/spinner";
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import {
   ApiError,
   createMcpServer,
@@ -286,32 +287,34 @@ export default function McpPage() {
 
       {editingId ? (
         detailQuery.isPending ? (
-          <div className="fixed inset-0 z-40 flex justify-end bg-black/30">
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="编辑 MCP 服务器"
-              className="flex h-full w-full max-w-xl items-center justify-center border-l border-line bg-surface shadow-xl"
-            >
-              <PageSpinner label="加载 MCP 服务器…" />
-            </div>
-          </div>
+          <Sheet open onOpenChange={(open) => { if (!open) closeEditor(); }}>
+            <SheetContent hideClose className="max-w-xl">
+              <SheetHeader className="sr-only">
+                <SheetTitle>加载 MCP 服务器</SheetTitle>
+              </SheetHeader>
+              <div className="flex flex-1 items-center justify-center">
+                <PageSpinner label="加载 MCP 服务器…" />
+              </div>
+            </SheetContent>
+          </Sheet>
         ) : detailQuery.isError || !detailQuery.data ? (
-          <div className="fixed inset-0 z-40 flex justify-end bg-black/30">
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="编辑 MCP 服务器"
-              className="flex h-full w-full max-w-xl flex-col items-center justify-center gap-3 border-l border-line bg-surface px-6 shadow-xl"
-            >
-              <p className="text-sm text-muted">
-                {describeError(detailQuery.error, "MCP 服务器加载失败，请稍后重试。")}
-              </p>
-              <Button variant="outline" size="sm" onClick={closeEditor}>
-                关闭
-              </Button>
-            </div>
-          </div>
+          <Sheet open onOpenChange={(open) => { if (!open) closeEditor(); }}>
+            <SheetContent hideClose className="max-w-xl">
+              <SheetHeader className="h-14 flex-row items-center justify-between gap-3 px-4 py-0">
+                <SheetTitle className="text-sm">编辑 MCP 服务器</SheetTitle>
+                <SheetClose asChild>
+                  <Button variant="ghost" size="sm" onClick={closeEditor}>
+                    关闭
+                  </Button>
+                </SheetClose>
+              </SheetHeader>
+              <div className="flex flex-1 items-center justify-center px-6 text-center">
+                <p className="text-sm text-muted">
+                  {describeError(detailQuery.error, "MCP 服务器加载失败，请稍后重试。")}
+                </p>
+              </div>
+            </SheetContent>
+          </Sheet>
         ) : (
           <McpEditor
             key={editingId}

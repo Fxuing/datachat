@@ -1,8 +1,9 @@
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { X } from "lucide-react";
 import type { AuditEntry } from "../../lib/api";
 import { formatDateTime } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../ui/sheet";
 
 export interface AuditDetailDrawerProps {
   entry: AuditEntry;
@@ -57,40 +58,24 @@ export function AuditDetailDrawer({
   datasourceName,
   onClose,
 }: AuditDetailDrawerProps) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
   const ip = typeof entry.detailJson?.ip === "string" ? entry.detailJson.ip : null;
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex justify-end bg-black/30"
-      role="presentation"
-      onMouseDown={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="审计详情"
-        className="flex h-full w-full max-w-2xl flex-col border-l border-line bg-surface shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
+    <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <SheetContent hideClose className="max-w-2xl">
+        <SheetHeader className="h-14 flex-row items-center justify-between gap-3 px-4 py-0">
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-ink">审计详情</h2>
-            <p className="truncate text-[11px] text-muted">
+            <SheetTitle className="truncate text-sm">审计详情</SheetTitle>
+            <SheetDescription className="truncate text-[11px]">
               {formatDateTime(entry.createdAt)} · {entry.id}
-            </p>
+            </SheetDescription>
           </div>
-          <Button variant="ghost" size="icon" aria-label="关闭" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+          <SheetClose asChild>
+            <Button variant="ghost" size="icon" aria-label="关闭">
+              <X className="h-4 w-4" />
+            </Button>
+          </SheetClose>
+        </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           <dl className="grid grid-cols-2 gap-4">
@@ -149,7 +134,7 @@ export function AuditDetailDrawer({
             )}
           </section>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
