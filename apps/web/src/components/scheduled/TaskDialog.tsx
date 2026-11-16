@@ -120,7 +120,7 @@ export function TaskDialog({
           <DialogDescription>自动执行问题并生成报告，结果发送到站内信。</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="max-h-[calc(90vh-8rem)] space-y-3 overflow-y-auto px-4 py-3">
           <label className="block">
             <span className="mb-1 block text-[12px] font-medium text-ink">名称</span>
             <Input value={name} maxLength={100} onChange={(event) => setName(event.target.value)} />
