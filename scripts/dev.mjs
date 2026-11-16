@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const node = process.execPath;
 const children = [];
 let stopping = false;
 
@@ -18,10 +19,9 @@ function envValue(name, fallback) {
   }
 }
 
-function start(label, command, args, cwd) {
-  const child = spawn(command, args, {
+function start(label, args, cwd) {
+  const child = spawn(node, args, {
     cwd,
-    shell: true,
     stdio: ["ignore", "inherit", "inherit"],
     env: { ...process.env, FORCE_COLOR: "1" },
   });
@@ -76,22 +76,18 @@ function waitForHealth(port, timeoutMs) {
 
 process.on("SIGINT", () => { stop(); process.exit(0); });
 process.on("SIGTERM", () => { stop(); process.exit(0); });
+process.on("SIGHUP", () => { stop(); process.exit(0); });
+process.on("exit", stop);
 
 console.log("[dev] building shared package…");
-const build = spawnSync("pnpm", ["--filter", "@datachat/shared", "build"], {
-  cwd: root,
+const build = spawnSync(node, ["node_modules/typescript/lib/tsc.js", "-p", "tsconfig.build.json"], {
+  cwd: path.join(root, "packages/shared"),
   stdio: "inherit",
-  shell: true,
 });
 if (build.status !== 0) process.exit(build.status ?? 1);
 
-start("shared", "pnpm", ["--filter", "@datachat/shared", "dev"], root);
-start(
-  "server",
-  "pnpm",
-  ["exec", "tsx", "watch", "--env-file-if-exists=../../.env", "src/index.ts"],
-  path.join(root, "apps/server"),
-);
+start("shared", ["node_modules/typescript/lib/tsc.js", "-w", "-p", "tsconfig.build.json", "--preserveWatchOutput"], path.join(root, "packages/shared"));
+start("server", ["node_modules/tsx/dist/cli.mjs", "watch", "--env-file-if-exists=../../.env", "src/index.ts"], path.join(root, "apps/server"));
 
 const port = Number(envValue("PORT", "8080"));
 const ready = await waitForHealth(port, 60_000);
@@ -101,4 +97,4 @@ if (ready) {
   console.error(`[dev] server did not become healthy on port ${port}; starting web anyway`);
 }
 
-start("web", "pnpm", ["--filter", "@datachat/web", "dev"], root);
+start("web", ["node_modules/vite/bin/vite.js"], path.join(root, "apps/web"));
