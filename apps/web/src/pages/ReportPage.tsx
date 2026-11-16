@@ -1,15 +1,16 @@
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { Children, isValidElement, lazy, Suspense, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, FileWarning, Printer, Share2, Trash2 } from "lucide-react";
 import type { Column } from "@datachat/shared";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { AppShell } from "../components/AppShell";
 import { ConfirmDialog } from "../components/admin/ConfirmDialog";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { ShareDialog } from "../components/ShareDialog";
+import { ReportToc, useReportTocActive } from "../components/report/ReportToc";
 import { PageSpinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
 import {
@@ -24,6 +25,7 @@ import { describeApiError } from "../lib/errors";
 import { queryKeys } from "../lib/query";
 import { useCan } from "../hooks/use-access";
 import { parseReportMarkdown } from "../lib/report-markdown";
+import { extractReportHeadings, headingId } from "../lib/report-toc";
 import { cn, formatCount } from "../lib/utils";
 
 const LazyChartCard = lazy(() =>
@@ -50,10 +52,34 @@ export function formatReportTime(timestamp: number): string {
   return new Date(timestamp).toLocaleString("zh-CN", { hour12: false });
 }
 
+function textFromChildren(children: ReactNode): string {
+  return Children.toArray(children)
+    .map((child) => {
+      if (typeof child === "string" || typeof child === "number") return String(child);
+      if (isValidElement<{ children?: ReactNode }>(child)) return textFromChildren(child.props.children);
+      return "";
+    })
+    .join("");
+}
+
+function headingProps(children: ReactNode) {
+  return { id: headingId(textFromChildren(children)), className: "scroll-mt-10" };
+}
+
 function ReportMarkdown({ content }: { content: string }) {
+  const components: Components = {
+    h1: ({ children }) => <h1 {...headingProps(children)}>{children}</h1>,
+    h2: ({ children }) => <h2 {...headingProps(children)}>{children}</h2>,
+    h3: ({ children }) => <h3 {...headingProps(children)}>{children}</h3>,
+  };
+
   return (
     <div className="markdown text-sm">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+      <ReactMarkdown
+        components={components}
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlight]}
+      >
         {content}
       </ReactMarkdown>
     </div>
@@ -229,6 +255,12 @@ export default function ReportPage() {
     retry: false,
   });
 
+  const report = reportQuery.data?.report;
+  const reportMarkdown = report?.markdown ?? "";
+  const headings = useMemo(() => extractReportHeadings(reportMarkdown), [reportMarkdown]);
+  const reportScrollRef = useRef<HTMLDivElement>(null);
+  const activeHeadingId = useReportTocActive(headings, reportScrollRef);
+
   const goBack = () => {
     const conversationId = reportQuery.data?.report.conversationId;
     if (conversationId) {
@@ -255,7 +287,6 @@ export default function ReportPage() {
     return <PageSpinner />;
   }
 
-  const report = reportQuery.data?.report;
   const notFound =
     reportQuery.isError &&
     reportQuery.error instanceof ApiError &&
@@ -336,30 +367,39 @@ export default function ReportPage() {
   } else if (report) {
     const segments = parseReportMarkdown(report.markdown);
     content = (
-      <div className="report-page min-h-0 flex-1 overflow-y-auto bg-surface">
-        <article className="mx-auto w-full max-w-3xl px-6 py-8 print:max-w-none print:px-0 print:py-0">
-          <header className="mb-6 border-b border-line pb-4">
-            <h1 className="text-xl font-semibold text-ink">{report.title}</h1>
-            <p className="mt-1 text-xs text-muted">
-              生成时间：{formatReportTime(report.createdAt)}
-            </p>
-          </header>
-          <div className="flex flex-col gap-4">
-            {segments.map((segment, index) =>
-              segment.type === "markdown" ? (
-                segment.content.trim() ? (
-                  <ReportMarkdown key={index} content={segment.content} />
-                ) : null
-              ) : (
-                <ReportArtifact
-                  key={`${segment.artifactId}-${index}`}
-                  artifactId={segment.artifactId}
-                  listed={report.artifactIds.includes(segment.artifactId)}
-                />
-              ),
-            )}
-          </div>
-        </article>
+      <div className="relative min-h-0 flex-1">
+        <div ref={reportScrollRef} className="report-page h-full overflow-y-auto bg-surface">
+          <article className="mx-auto w-full max-w-[44rem] px-6 py-8 print:max-w-none print:px-0 print:py-0">
+            <header className="mb-6 border-b border-line pb-4">
+              <h1 className="text-xl font-semibold text-ink">{report.title}</h1>
+              <p className="mt-1 text-xs text-muted">
+                生成时间：{formatReportTime(report.createdAt)}
+              </p>
+            </header>
+            <div className="flex flex-col gap-4">
+              {segments.map((segment, index) =>
+                segment.type === "markdown" ? (
+                  segment.content.trim() ? (
+                    <ReportMarkdown key={index} content={segment.content} />
+                  ) : null
+                ) : (
+                  <ReportArtifact
+                    key={`${segment.artifactId}-${index}`}
+                    artifactId={segment.artifactId}
+                    listed={report.artifactIds.includes(segment.artifactId)}
+                  />
+                ),
+              )}
+            </div>
+          </article>
+        </div>
+        <ReportToc
+          headings={headings}
+          activeId={activeHeadingId}
+          onSelect={(heading) =>
+            document.getElementById(heading)?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+        />
       </div>
     );
   } else {
