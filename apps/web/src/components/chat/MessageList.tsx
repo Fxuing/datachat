@@ -126,7 +126,7 @@ function EmptyChat({
     modelsCount > 0 &&
     !starting;
   return (
-    <div className="flex flex-col items-center justify-center gap-7 py-20 text-center">
+    <div className="flex flex-col items-center justify-center gap-5 py-8 text-center">
       <div className="relative">
         <span className="absolute inset-0 -z-10 rounded-full bg-brand/20 blur-2xl" />
         <BrandMark size={60} className="rounded-[14px] shadow-card" />
