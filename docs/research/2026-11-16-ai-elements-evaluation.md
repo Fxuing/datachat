@@ -60,7 +60,55 @@ Trace
 
 **注意**：我们的 Agent 没有显式 Plan/Todo 事件，第一版不要做 Plan/Queue；只做“已发生的调用链”，等事件模型支持计划后再扩展。
 
-## 3. MessageScroller：滚动行为值得参考
+## 3. Reasoning、Model Selector 与 Agent 过程组件
+
+### 3.1 Reasoning
+
+Reasoning 本质上是 Trace 的一层封装：一行 “Thinking” → 流式结束后变成 “Thought”，显示耗时，内部放思考文本；内置 `TraceCollapsible`，运行时展开、结束后收起。
+
+评价：**行为与我们的 `ThinkingBlock` 几乎一致**（默认展开、跟随、结束折叠），差距主要在视觉统一和耗时展示。因此不必单独引入 Reasoning，直接把它作为 Trace 的第一行即可；这样思考、工具、结果共享同一套缩进和状态样式。
+
+### 3.2 Model Selector
+
+两个菜单：一个选模型，一个选思考强度（effort），通常嵌在 Prompt Input 的底部工具栏。
+
+评价：**我们的 `ModelPicker` 功能更全**——按 provider 分组、显示模型元数据、支持 7 档思考、与上下文环/发送按钮同排。AI Elements 的版本更通用，但没有 provider 概念。除非重做 Composer，否则不建议替换；可以借鉴它的“两个独立菜单”视觉，但当前单 Popover 更省空间。
+
+### 3.3 Agent 过程组件
+
+| 组件 | 语义 | 对我们的适用性 |
+|---|---|---|
+| Tool | 一次工具调用，含输入/输出/错误/等待审批 | ★★★★★ 直接对应 `db_schema/db_query/db_explain/make_chart/create_report`，应作为 Trace 的行 |
+| Task | Agent 正在做的一件事，步骤随执行逐条出现，标题区分“正在做/已做完” | ★★★★ 可以把一轮问答视为一个 Task，天然有进度 |
+| Plan | 开始前就确定的步骤，含 pending 状态和 “2 of 4 done” | ★★ 需要 Agent 显式产出计划；当前没有 plan 事件，强行做会变成假进度 |
+| Queue | Todo 列表，分“待办/已完成” | ★★ 需要 todo 工具或状态机；SQL Agent 暂不需要 |
+| Chain of Thought | 一段摘要展开成完整步骤 | ★★★ 与 Trace/Reasoning 重叠，可作为外层摘要 |
+| Stack Trace | 失败的工具调用 + 调用栈 | ★★★ SQL/工具错误详情可借用其展示方式 |
+| Sources / Inline Citation | 回答引用的来源 | ★ 我们目前没有网页检索；未来可引用表/字段，但不是现在 |
+| Confirmation | 工具执行前的批准 | ★ 只读查询不需要 |
+| Subagent / File Tree / Terminal / Test Results / Checkpoint | 编码类 Agent 场景 | ✗ 不适用 |
+
+评价：**Agent 过程组件是这套库里除 Trace 外最有价值的一组**，因为它们把“执行过程”当成一等公民，而不是聊天气泡的附属。但真正能直接落地的是 **Tool + Task + Stack Trace**；Plan/Queue 依赖新的 Agent 事件模型，第一版不建议做。
+
+### 3.4 建议的目标形态
+
+把现有 `TurnFooter + ThinkingBlock + 工具卡 + SQL 卡` 收敛成一条 Trace：
+
+```text
+▾ 本轮完成 · 5 步 · 23.4s
+  ✓ 思考 · 8.2s
+  ✓ 读取表结构 · 0.4s
+  ✓ 执行查询 · 1.2s      [查看 SQL]
+  ✓ 生成图表 · 0.6s
+  ✓ 生成报告 · 2.1s
+```
+
+- 运行中：`running` 行带 shimmer，自动展开当前步骤；
+- 失败：`error` 行标题用“查询失败”，详情放错误和安全提示；
+- 完成：整体默认收起，只留一行摘要；用户展开看 SQL/结果；
+- 结果表格仍用现有 `ResultCard` Dialog，不塞进 Trace 的正文。
+
+## 4. MessageScroller：滚动行为值得参考
 
 能力：
 
@@ -76,7 +124,7 @@ Trace
 - 可借鉴其“锚点 + 跟随 + 保留阅读位置”的状态机，但不一定要引入组件；引入时要处理乐观消息、run 分组、minimap 和自动滚动之间的冲突。
 - 如果引入，优先使用 `@shadcn/react` 的 headless 行为，保持我们自己的消息气泡和结果卡片。
 
-## 4. 兼容性评估
+## 5. 兼容性评估
 
 | 项 | 现状 | 影响 |
 |---|---|---|
@@ -88,7 +136,7 @@ Trace
 
 Tailwind 3 只能用旧版 `shadcn@2.3.0`，而新版 AI Elements 不在旧 CLI 中；整体迁移意味着先升级 Tailwind 4，成本约 3–5 天。
 
-## 5. 结论与后续
+## 6. 结论与后续
 
 1. **不做整体迁移**。DataChat 的聊天界面是业务定制（技能、数据源、SQL、结果、分享），AI Elements 是通用 Agent UI，直接替换收益低。
 2. **优先做 Trace 的设计移植**：把执行步骤统一成“图标 + 标题 + 状态 + 耗时 + 可展开详情”的调用链；不引入依赖，保留现有 token 和组件。
@@ -97,7 +145,7 @@ Tailwind 3 只能用旧版 `shadcn@2.3.0`，而新版 AI Elements 不在旧 CLI 
 
 建议在 Playwright 或产品扩展之后排期；若要做，先开分支做 1 天原型，不改主界面。
 
-## 6. 参考
+## 7. 参考
 
 - [AI Elements](https://ui.shadcn.com/docs/ai-elements)
 - [Trace](https://ui.shadcn.com/docs/components/base/trace)
