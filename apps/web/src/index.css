@@ -111,6 +111,31 @@
     @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-line bg-subtle px-1 font-mono text-[10px] text-muted;
   }
 
+  /* Running-step label: light sweeps across the text to signal live work
+     without a spinner on every row. Falls back to plain text when the OS asks
+     for reduced motion. */
+  .trace-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      rgb(var(--muted)) 0%,
+      rgb(var(--ink)) 45%,
+      rgb(var(--muted)) 90%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: trace-shimmer 1.8s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .trace-shimmer {
+      background-image: none;
+      animation: none;
+      color: rgb(var(--ink-soft));
+    }
+  }
+
   .markdown {
     @apply text-sm leading-7 text-inksoft;
   }
@@ -233,6 +258,15 @@
 
   .report-toolbar {
     display: none !important;
+  }
+}
+
+@keyframes trace-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
   }
 }
 

@@ -12,11 +12,10 @@ import {
   type ChatResult,
 } from "../../lib/api";
 import { parseReportMarkdown } from "../../lib/report-markdown";
+import { pairQueries } from "../../lib/pair-queries";
 import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard";
 import { ResultCard } from "./ResultCard";
-import { QueryPairList } from "./QueryPairList";
-import { ToolCard } from "./ToolCard";
-import { ThinkingBlock } from "./ThinkingBlock";
+import { TurnTrace } from "./TurnTrace";
 import { TurnFooter } from "./TurnFooter";
 import { RetryActions } from "./RetryActions";
 import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
@@ -204,14 +203,17 @@ export function MessageItem({
     (result) => !referenced.has(result.artifactId),
   );
   const standaloneCharts = charts.filter((chart) => !referenced.has(chart.id));
-  const detailTools = message.tools.filter(
-    (tool) => tool.name !== "db_query" && tool.name !== "db_explain",
-  );
-  const stepCount =
-    message.tools.length || message.sqls.length + standaloneResults.length;
+  // SQL and the rows it produced belong inside the trace; results without a
+  // recorded statement stay plain cards next to the answer.
+  const { pairs, unmatched } = pairQueries(message.sqls, standaloneResults);
+  const hasTrace =
+    Boolean(message.thinkingSegments?.some((segment) => segment.trim())) ||
+    Boolean(message.thinking?.trim()) ||
+    message.tools.length > 0 ||
+    message.sqls.length > 0;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="group/turn flex flex-col gap-3">
       <UserBubble content={message.user.content} skill={message.user.skill} />
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-[11px] font-medium text-muted">
@@ -220,7 +222,17 @@ export function MessageItem({
           </span>
           DataChat
         </div>
-        <ThinkingBlock thinking={message.thinking ?? ""} />
+        <TurnTrace
+          status={message.status}
+          thinkingSegments={message.thinkingSegments}
+          thinking={message.thinking}
+          tools={message.tools}
+          queries={pairs}
+          durationMs={message.durationMs}
+          usage={message.usage ?? null}
+          onCreateReport={onCreateReport}
+          canExport={canExport}
+        />
         {assistantText ? (
           <div className="flex flex-col gap-2">
             {segments.map((segment, index) => {
@@ -287,30 +299,26 @@ export function MessageItem({
             ) : null}
           </div>
         ) : null}
+        {unmatched.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {unmatched.map((item, index) => (
+              <ResultCard
+                key={item.artifactId}
+                {...item}
+                index={unmatched.length > 1 ? index + 1 : undefined}
+                onCreateReport={onCreateReport}
+                canExport={canExport}
+              />
+            ))}
+          </div>
+        ) : null}
         <TurnFooter
           runId={message.runId}
           status={message.status}
-          usage={message.usage ?? null}
-          durationMs={message.durationMs ?? null}
+          usage={hasTrace ? null : (message.usage ?? null)}
+          durationMs={hasTrace ? null : (message.durationMs ?? null)}
           feedback={message.feedback ?? null}
-          stepCount={stepCount}
-        >
-          {standaloneResults.length > 0 || message.sqls.length > 0 ? (
-            <QueryPairList
-              sqls={message.sqls}
-              results={standaloneResults}
-              onCreateReport={onCreateReport}
-              canExport={canExport}
-            />
-          ) : null}
-          {detailTools.length > 0 ? (
-            <div className="flex flex-col gap-1.5">
-              {detailTools.map((tool) => (
-                <ToolCard key={tool.toolCallId} tool={tool} />
-              ))}
-            </div>
-          ) : null}
-        </TurnFooter>
+        />
       </div>
     </div>
   );

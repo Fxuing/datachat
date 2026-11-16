@@ -78,6 +78,8 @@ export interface ConversationMessage {
   assistant: { content: string } | null;
   /** Full thinking transcript, when the model produced one. */
   thinking: string | null;
+  /** The same transcript split where tool calls interrupted the reasoning. */
+  thinkingSegments: string[] | null;
   usage: ConversationUsage | null;
   /** Wall-clock duration of the run, excluding queue time. */
   durationMs: number | null;
@@ -122,6 +124,7 @@ interface MessageGroup {
   user: { content: string; skill?: string } | null;
   assistant: string | null;
   thinking: string | null;
+  thinkingSegments: string[] | null;
   deltas: string[];
   tools: ToolMessage[];
   results: ConversationResultMessage[];
@@ -188,6 +191,7 @@ function groupFor(grouped: Map<string, MessageGroup>, runId: string, createdAt: 
     user: null,
     assistant: null,
     thinking: null,
+    thinkingSegments: null,
     deltas: [],
     tools: [],
     results: [],
@@ -210,6 +214,8 @@ function applyEvent(group: MessageGroup, event: RunEvent): void {
       break;
     case "thinking":
       group.thinking = event.payload.content;
+      // Rows written before segments existed only carry the joined text.
+      group.thinkingSegments = event.payload.segments ?? [event.payload.content];
       break;
     case "text_delta":
       group.deltas.push(event.payload.text);
@@ -280,6 +286,7 @@ export function getConversationDetail(
           ? { content: group.deltas.join("") }
           : null,
       thinking: group.thinking,
+      thinkingSegments: group.thinkingSegments,
       usage: toUsage(run),
       durationMs:
         run?.startedAt != null && run.endedAt != null

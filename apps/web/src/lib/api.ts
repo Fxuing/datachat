@@ -248,6 +248,8 @@ export interface ChatMessage {
   user: { content: string; skill?: string | null };
   assistant: { content: string } | null;
   thinking?: string | null;
+  /** Reasoning split where tool calls interrupted it, oldest first. */
+  thinkingSegments?: string[] | null;
   usage?: ChatUsage | null;
   durationMs?: number | null;
   feedback?: ChatFeedback | null;

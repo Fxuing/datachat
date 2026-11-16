@@ -32,7 +32,21 @@ export function formatDateTime(timestamp: number): string {
 
 export function formatDuration(ms: number): string {
   if (ms < 1_000) return `${Math.round(ms)}ms`;
-  return `${(ms / 1_000).toFixed(1)}s`;
+  if (ms < 60_000) {
+    const seconds = ms / 1_000;
+    // Whole seconds read better without the trailing `.0`.
+    return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`;
+  }
+  const minutes = Math.floor(ms / 60_000);
+  const seconds = Math.round((ms % 60_000) / 1_000);
+  return `${minutes}m ${seconds}s`;
+}
+
+/** `26.8k tokens` style short count for usage numbers. */
+export function formatTokens(count: number): string {
+  if (count < 1_000) return String(count);
+  if (count < 1_000_000) return `${(count / 1_000).toFixed(1)}k`;
+  return `${(count / 1_000_000).toFixed(1)}m`;
 }
 
 /** Locale-independent thousands separator so counts read the same in tests. */

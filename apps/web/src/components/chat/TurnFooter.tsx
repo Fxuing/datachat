@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, Clock3, Loader2, ThumbsDown, ThumbsUp } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Clock3, ThumbsDown, ThumbsUp } from "lucide-react";
 import type { ChatFeedback, ChatUsage } from "../../lib/api";
 import { deleteRunFeedback, saveRunFeedback } from "../../lib/api";
-import { cn } from "../../lib/utils";
+import { cn, formatDuration, formatTokens } from "../../lib/utils";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -19,24 +19,9 @@ export interface TurnFooterProps {
   runId: string | null;
   status: "idle" | "queued" | "running" | "ok" | "error" | "aborted";
   usage?: ChatUsage | null;
+  /** Only shown when the turn has no trace to carry the duration itself. */
   durationMs?: number | null;
   feedback?: ChatFeedback | null;
-  stepCount: number;
-  children?: ReactNode;
-}
-
-function formatTokens(count: number): string {
-  if (count < 1_000) return String(count);
-  if (count < 1_000_000) return `${(count / 1_000).toFixed(1)}k`;
-  return `${(count / 1_000_000).toFixed(1)}m`;
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1_000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
-  const minutes = Math.floor(ms / 60_000);
-  const seconds = Math.round((ms % 60_000) / 1_000);
-  return `${minutes}m ${seconds}s`;
 }
 
 export function TurnFooter({
@@ -45,10 +30,7 @@ export function TurnFooter({
   usage,
   durationMs,
   feedback: savedFeedback,
-  stepCount,
-  children,
 }: TurnFooterProps) {
-  const [stepsOpen, setStepsOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [rating, setRating] = useState<1 | -1>(1);
   const [comment, setComment] = useState("");
@@ -93,6 +75,7 @@ export function TurnFooter({
   };
 
   const totalTokens = usage ? usage.input + usage.output : 0;
+  const showTokens = Boolean(usage) && totalTokens > 0;
   const active = status === "running" || status === "queued";
   const canRate = Boolean(runId) && !active;
 
@@ -105,11 +88,17 @@ export function TurnFooter({
 
   return (
     <div className="flex flex-col gap-2">
-      {stepsOpen && children ? (
-        <div className="rounded-lg border border-line bg-surface/60 p-2">{children}</div>
-      ) : null}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
-        <div className="flex items-center gap-0.5">
+        <div
+          className={cn(
+            "flex items-center gap-0.5 transition-opacity",
+            // Rating stays out of the way until the reader is on this turn. An
+            // already-rated turn keeps showing which way it went, and touch
+            // screens (no hover) always get the buttons.
+            !feedback &&
+              "opacity-0 focus-within:opacity-100 group-hover/turn:opacity-100 [@media(hover:none)]:opacity-100",
+          )}
+        >
           <button
             type="button"
             aria-label="有帮助"
@@ -138,49 +127,38 @@ export function TurnFooter({
           </button>
         </div>
 
-        {active ? (
+        {durationMs != null || showTokens ? (
           <span className="flex items-center gap-1.5">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            {status === "queued" ? "排队中…" : "生成中…"}
-          </span>
-        ) : null}
-
-        {totalTokens > 0 && usage ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span tabIndex={0}>{formatTokens(totalTokens)} tokens</span>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              输入 {usage.input} · 输出 {usage.output} · 缓存读 {usage.cacheRead} · 缓存写{" "}
-              {usage.cacheWrite}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-
-        {durationMs != null ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="flex items-center gap-1" tabIndex={0}>
-                <Clock3 className="h-3 w-3" />
-                {formatDuration(durationMs)}
+            {durationMs != null ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex items-center gap-1 tabular-nums" tabIndex={0}>
+                    <Clock3 className="h-3 w-3" />
+                    {formatDuration(durationMs)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">本次运行耗时</TooltipContent>
+              </Tooltip>
+            ) : null}
+            {durationMs != null && showTokens ? (
+              <span aria-hidden="true" className="text-muted/60">
+                /
               </span>
-            </TooltipTrigger>
-            <TooltipContent side="top">本次运行耗时</TooltipContent>
-          </Tooltip>
-        ) : null}
-
-        {stepCount > 0 ? (
-          <button
-            type="button"
-            aria-expanded={stepsOpen}
-            onClick={() => setStepsOpen((open) => !open)}
-            className="flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-subtle hover:text-inksoft"
-          >
-            执行步骤 {stepCount}
-            <ChevronDown
-              className={cn("h-3 w-3 transition-transform", stepsOpen && "rotate-180")}
-            />
-          </button>
+            ) : null}
+            {showTokens && usage ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="tabular-nums" tabIndex={0}>
+                    {formatTokens(totalTokens)} tokens
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  输入 {usage.input} · 输出 {usage.output} · 缓存读 {usage.cacheRead} · 缓存写{" "}
+                  {usage.cacheWrite}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+          </span>
         ) : null}
       </div>
 

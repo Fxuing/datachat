@@ -27,6 +27,23 @@ describe("runStreamReducer", () => {
     expect(state.finalText).toBe("你好，世界");
   });
 
+  it("starts a new reasoning segment at every tool call", () => {
+    let state = apply(initialRunStreamState, 1, {
+      type: "thinking_delta",
+      payload: { text: "先确认表结构。" },
+    });
+    state = apply(state, 2, {
+      type: "tool_start",
+      payload: { toolCallId: "call-1", name: "db_schema", args: { table: "users" } },
+    });
+    state = apply(state, 3, {
+      type: "thinking_delta",
+      payload: { text: "表里没有 channel 字段。" },
+    });
+
+    expect(state.thinkingSegments).toEqual(["先确认表结构。", "表里没有 channel 字段。"]);
+  });
+
   it("tracks tool start/end updates in place and preserves arguments", () => {
     let state = apply(initialRunStreamState, 1, {
       type: "tool_start",
@@ -165,7 +182,7 @@ describe("runStreamReducer", () => {
     });
 
     expect(state.text).toBe("");
-    expect(state.thinking).toBe("");
+    expect(state.thinkingSegments).toEqual([""]);
     expect(state.finalText).toBeNull();
     expect(state.notices).toHaveLength(1);
 

@@ -77,7 +77,8 @@ export interface RunStreamState {
   status: RunStatusValue;
   connection: RunConnection;
   text: string;
-  thinking: string;
+  /** Reasoning in the order it arrived; a tool call starts a new segment. */
+  thinkingSegments: string[];
   tools: RunToolState[];
   sqls: RunSqlState[];
   results: RunResultState[];
@@ -98,7 +99,7 @@ export const initialRunStreamState: RunStreamState = {
   status: "idle",
   connection: "idle",
   text: "",
-  thinking: "",
+  thinkingSegments: [""],
   tools: [],
   sqls: [],
   results: [],
@@ -120,6 +121,7 @@ export type RunStreamAction =
   | { type: "connection"; connection: RunConnection }
   | { type: "event"; seq: number; event: RunEvent }
   | { type: "failure"; message: string };
+
 
 function upsertTool(tools: RunToolState[], patch: RunToolState): RunToolState[] {
   const index = tools.findIndex((tool) => tool.toolCallId === patch.toolCallId);
@@ -190,11 +192,17 @@ export function runStreamReducer(
           };
         case "text_delta":
           return { ...base, text: state.text + event.payload.text };
-        case "thinking_delta":
-          return { ...base, thinking: state.thinking + event.payload.text };
+        case "thinking_delta": {
+          const segments = [...state.thinkingSegments];
+          const last = segments.length - 1;
+          segments[last] = `${segments[last] ?? ""}${event.payload.text}`;
+          return { ...base, thinkingSegments: segments };
+        }
         case "tool_start":
           return {
             ...base,
+            // The model reasons again after the tool result: start a new stretch.
+            thinkingSegments: [...state.thinkingSegments, ""],
             tools: upsertTool(state.tools, {
               toolCallId: event.payload.toolCallId,
               name: event.payload.name,
@@ -269,7 +277,7 @@ export function runStreamReducer(
           return {
             ...base,
             text: "",
-            thinking: "",
+            thinkingSegments: [""],
             finalText: null,
             notices: [
               ...state.notices,

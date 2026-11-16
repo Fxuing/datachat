@@ -47,7 +47,14 @@ export const runEventSchema = z.discriminatedUnion("type", [
   /** Final thinking transcript, persisted once per run for reloaded histories. */
   z.object({
     type: z.literal("thinking"),
-    payload: z.object({ content: z.string() }),
+    payload: z.object({
+      content: z.string(),
+      /** The same text split where a tool call interrupted the reasoning.
+       *
+       * Absent on rows written before the split existed; readers fall back to
+       * treating `content` as one segment. */
+      segments: z.array(z.string()).optional(),
+    }),
   }),
   z.object({
     type: z.literal("tool_start"),

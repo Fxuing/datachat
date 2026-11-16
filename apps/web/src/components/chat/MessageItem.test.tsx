@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { MarkdownText, MessageItem } from "./MessageItem";
@@ -49,7 +49,7 @@ describe("MessageItem", () => {
     expect(screen.queryByRole("button", { name: /复制/ })).not.toBeInTheDocument();
   });
 
-  it("keeps the thinking transcript collapsed until opened", async () => {
+  it("shows the reasoning on its row and keeps the full transcript one click away", async () => {
     const user = userEvent.setup();
     render(
       <MessageItem
@@ -60,9 +60,15 @@ describe("MessageItem", () => {
         })}
       />,
     );
-    expect(screen.queryByText("先确认表结构，再统计 7 月数据。")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /思考过程/ }));
-    expect(screen.getByText("先确认表结构，再统计 7 月数据。")).toBeInTheDocument();
+    expect(screen.queryByText(/先确认表结构/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /本轮完成/ }));
+    const row = screen.getAllByTestId("trace-line")[0]!;
+    expect(row).toHaveTextContent("先确认表结构，再统计 7 月数据。");
+    expect(row).not.toHaveTextContent("思考");
+
+    await user.click(within(row).getByRole("button"));
+    expect(screen.getByTestId("turn-thinking")).toHaveTextContent("先确认表结构，再统计 7 月数据。");
   });
 
   it("renders the persisted terminal error instead of a generic message", () => {
@@ -133,7 +139,7 @@ describe("MessageItem", () => {
     expect(screen.getByText("42")).toBeInTheDocument();
   });
 
-  it("keeps standalone results inside the collapsed process block", async () => {
+  it("shows a result without a recorded statement as a result card", () => {
     render(
       <MemoryRouter>
         <MessageItem
@@ -154,10 +160,6 @@ describe("MessageItem", () => {
         />
       </MemoryRouter>,
     );
-
-    const user = userEvent.setup();
-    expect(screen.queryByText("查询结果")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /执行步骤/ }));
 
     expect(screen.getByText("查询结果")).toBeInTheDocument();
     expect(screen.getByText("1 行 · 1 列")).toBeInTheDocument();

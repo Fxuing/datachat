@@ -159,7 +159,6 @@ describe("ChatPage permission gates", () => {
     expect(composer).toHaveAttribute("placeholder", "当前角色没有对话权限，请联系管理员");
     expect(screen.queryByRole("button", { name: "分享" })).not.toBeInTheDocument();
 
-    await browser.click(screen.getByRole("button", { name: /执行步骤 1/ }));
     await browser.click(screen.getByRole("button", { name: "查看数据" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "alice" })).toBeInTheDocument();
@@ -195,7 +194,6 @@ describe("ChatPage permission gates", () => {
       expect.objectContaining({ method: "POST" }),
     );
 
-    await browser.click(screen.getByRole("button", { name: /执行步骤 1/ }));
     await browser.click(screen.getByRole("button", { name: "查看数据" }));
     expect(screen.getByRole("button", { name: "生成报告" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "下载 CSV" })).toHaveAttribute(

@@ -107,6 +107,34 @@ describe("bridgeSessionEvents", () => {
     expect(session.listenerCount).toBe(1);
   });
 
+  it("keeps reasoning recorded around a tool call in separate paragraphs", () => {
+    const { session } = setup();
+
+    send(session, {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "先看表结构，" },
+    });
+    send(session, {
+      type: "tool_execution_start",
+      toolCallId: "call-1",
+      toolName: "db_schema",
+      args: { table: "users" },
+    });
+    send(session, {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "再统计。" },
+    });
+    const message = assistantMessage("共有 3 行。");
+    send(session, { type: "message_end", message });
+    send(session, { type: "agent_end", messages: [message], willRetry: false });
+
+    const thinking = stored().find((row) => row.event.type === "thinking");
+    expect(thinking?.event.payload).toEqual({
+      content: "先看表结构，\n\n再统计。",
+      segments: ["先看表结构，", "再统计。"],
+    });
+  });
+
   it("persists the full thinking transcript once the run ends", () => {
     const { session } = setup();
 
@@ -131,7 +159,10 @@ describe("bridgeSessionEvents", () => {
       "usage",
       "run_end",
     ]);
-    expect(rows[2]?.event.payload).toEqual({ content: "先确认表结构，再统计。" });
+    expect(rows[2]?.event.payload).toEqual({
+      content: "先确认表结构，再统计。",
+      segments: ["先确认表结构，再统计。"],
+    });
   });
 
   it("does not persist an assistant message while the agent will retry", () => {

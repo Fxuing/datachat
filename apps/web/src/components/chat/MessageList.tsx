@@ -13,15 +13,14 @@ import { Button } from "../ui/button";
 import { BrandMark } from "../BrandMark";
 import { ChartCard, chartOptionFromSpec } from "./ChartCard";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
-import { QueryPairList } from "./QueryPairList";
 import { RunStatus } from "./RunStatus";
-import { ToolCard } from "./ToolCard";
-import { ThinkingBlock } from "./ThinkingBlock";
+import { TurnTrace } from "./TurnTrace";
 import { TurnFooter } from "./TurnFooter";
 import { ConversationMinimap } from "./ConversationMinimap";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { ResultCard } from "./ResultCard";
 import { parseReportMarkdown } from "../../lib/report-markdown";
+import { pairQueries } from "../../lib/pair-queries";
 import type { ModelPickerStatus } from "./ModelPicker";
 
 export interface MessageListProps {
@@ -326,6 +325,24 @@ export function MessageList({
   const standaloneCharts = stream.charts.filter(
     (chart) => !referencedCharts.has(chart.chartArtifactId),
   );
+  // Results already rendered inline at their `[[artifact:…]]` placeholder must
+  // not show up a second time inside the trace; the rest pair with their SQL.
+  const inlineResults = new Set(
+    streamSegments
+      .filter((segment) => segment.type === "artifact")
+      .map((segment) => segment.artifactId),
+  );
+  const standaloneResults = stream.results.filter(
+    (item) => !inlineResults.has(item.artifactId),
+  );
+  const { pairs: queryPairs, unmatched: unmatchedResults } = pairQueries(
+    stream.sqls,
+    standaloneResults,
+  );
+  const hasTrace =
+    stream.thinkingSegments.some((segment) => segment.trim()) ||
+    stream.tools.length > 0 ||
+    stream.sqls.length > 0;
   // Charts only settle into their final place once the run finishes. Rendering
   // them mid-stream makes them jump from the fallback slot into an inline
   // placeholder as soon as the model writes it.
@@ -352,7 +369,7 @@ export function MessageList({
     messages.length,
     optimisticText,
     stream.text,
-    stream.thinking,
+    stream.thinkingSegments,
     stream.status,
     stream.tools.length,
     stream.sqls.length,
@@ -408,7 +425,7 @@ export function MessageList({
         ))}
 
         {showStream ? (
-          <div className="flex flex-col gap-3">
+          <div className="group/turn flex flex-col gap-3">
             {optimisticText ? (
               <UserBubble
                 content={optimisticText}
@@ -418,9 +435,15 @@ export function MessageList({
             ) : null}
             <div className="flex flex-col gap-2">
               <AssistantHeader />
-              <ThinkingBlock
-                thinking={stream.thinking}
-                running={stream.status === "running"}
+              <TurnTrace
+                status={stream.status}
+                thinkingSegments={stream.thinkingSegments}
+                tools={stream.tools}
+                queries={queryPairs}
+                durationMs={stream.durationMs}
+                usage={stream.usage}
+                onCreateReport={onCreateReport}
+                canExport={canExport}
               />
               {streamSegments.map((segment, index) => {
                 if (segment.type === "markdown") {
@@ -464,6 +487,19 @@ export function MessageList({
                   ))}
                 </div>
               ) : null}
+              {chartsReady && unmatchedResults.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  {unmatchedResults.map((item, index) => (
+                    <ResultCard
+                      key={item.artifactId}
+                      {...item}
+                      index={unmatchedResults.length > 1 ? index + 1 : undefined}
+                      onCreateReport={onCreateReport}
+                      canExport={canExport}
+                    />
+                  ))}
+                </div>
+              ) : null}
               {stream.notices.map((notice, index) => (
                 <p key={`${notice.kind}-${index}`} className="text-[11px] text-warning">
                   {notice.message}
@@ -472,37 +508,15 @@ export function MessageList({
               {stream.connection === "reconnecting" ? (
                 <p className="text-[11px] text-muted">连接中断，正在重连…</p>
               ) : null}
-              <RunStatus state={stream} />
+              {/* The trace is the live display while it has steps; the plain
+                  status line only speaks when there is nothing else to watch. */}
+              {hasTrace ? null : <RunStatus state={stream} />}
               <TurnFooter
                 runId={activeRunId}
                 status={stream.status}
-                usage={stream.usage}
-                durationMs={stream.durationMs}
-                stepCount={stream.tools.length}
-              >
-                {stream.sqls.length > 0 || stream.results.length > 0 ? (
-                  <QueryPairList
-                    sqls={stream.sqls}
-                    results={stream.results}
-                    onCreateReport={onCreateReport}
-                    canExport={canExport}
-                  />
-                ) : null}
-                {stream.tools.some(
-                  (tool) => tool.name !== "db_query" && tool.name !== "db_explain",
-                ) ? (
-                  <div className="flex flex-col gap-1.5">
-                    {stream.tools
-                      .filter(
-                        (tool) =>
-                          tool.name !== "db_query" && tool.name !== "db_explain",
-                      )
-                      .map((tool) => (
-                        <ToolCard key={tool.toolCallId} tool={tool} />
-                      ))}
-                  </div>
-                ) : null}
-              </TurnFooter>
+                usage={hasTrace ? null : stream.usage}
+                durationMs={hasTrace ? null : stream.durationMs}
+              />
             </div>
           </div>
         ) : null}
