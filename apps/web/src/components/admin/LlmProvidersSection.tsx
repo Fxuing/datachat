@@ -1,10 +1,18 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { PageSpinner } from "../ui/spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "../ui/sheet";
 import {
   createLlmProvider,
   deleteLlmProvider,
@@ -19,10 +27,6 @@ import {
 import { describeApiError } from "../../lib/errors";
 import { queryKeys } from "../../lib/query";
 import { ConfirmDialog } from "./ConfirmDialog";
-
-const selectClass =
-  "h-10 w-full rounded-md border border-linestrong bg-surface px-3 text-sm text-ink " +
-  "focus-visible:border-linestrong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/15";
 
 const PROTOCOL_LABEL: Record<LlmProtocol, string> = {
   "openai-completions": "OpenAI 兼容",
@@ -264,14 +268,6 @@ function ProviderEditor({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
   const testMutation = useMutation({
     mutationFn: () =>
       testLlmProvider({
@@ -366,29 +362,21 @@ function ProviderEditor({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex justify-end bg-black/30"
-      role="presentation"
-      onMouseDown={() => onClose()}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={existing ? "编辑模型服务" : "添加模型服务"}
-        className="flex h-full w-full max-w-xl flex-col border-l border-line bg-surface shadow-pop"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="flex items-center justify-between border-b border-line px-5 py-4">
+    <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <SheetContent hideClose aria-label={existing ? "编辑模型服务" : "添加模型服务"}>
+        <SheetHeader className="flex-row items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-ink">
-              {existing ? "编辑模型服务" : "添加模型服务"}
-            </h2>
-            <p className="mt-0.5 text-xs text-muted">Key 使用 APP_SECRET 加密存储，不会回传明文。</p>
+            <SheetTitle>{existing ? "编辑模型服务" : "添加模型服务"}</SheetTitle>
+            <SheetDescription className="mt-0.5">
+              Key 使用 APP_SECRET 加密存储，不会回传明文。
+            </SheetDescription>
           </div>
-          <Button variant="ghost" size="icon" aria-label="关闭" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </header>
+          <SheetClose asChild>
+            <Button variant="ghost" size="icon" aria-label="关闭">
+              <X className="h-4 w-4" />
+            </Button>
+          </SheetClose>
+        </SheetHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           {error ? (
@@ -542,7 +530,7 @@ function ProviderEditor({
             {saveMutation.isPending ? "保存中…" : "保存"}
           </Button>
         </footer>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
