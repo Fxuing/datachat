@@ -183,10 +183,10 @@ WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 
 ```bash
 # 在构建机导出（镜像打成一个 tar）
-docker save datachat-server:0.1.0-416134f datachat-web:0.1.0-416134f   | gzip -1 > datachat-images-0.1.0-416134f.tar.gz
+docker save datachat-server:0.1.0-8e19468 datachat-web:0.1.0-8e19468   | gzip -1 > datachat-images-0.1.0-8e19468.tar.gz
 
 # 在服务器
-docker load -i datachat-images-0.1.0-416134f.tar.gz
+docker load -i datachat-images-0.1.0-8e19468.tar.gz
 mkdir -p /opt/datachat && cd /opt/datachat
 cp /path/to/docker-compose.yml .
 cp /path/to/deploy/env.example .env
