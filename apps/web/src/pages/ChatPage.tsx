@@ -351,6 +351,8 @@ export default function ChatPage() {
   if (!conversationId) {
     content = (
       <MessageList
+        key={conversationId ?? "new"}
+        conversationId={conversationId ?? null}
         messages={[]}
         stream={stream.state}
         showStream={false}
@@ -396,6 +398,8 @@ export default function ChatPage() {
   } else {
     content = (
       <MessageList
+        key={conversationId ?? "new"}
+        conversationId={conversationId ?? null}
         messages={messages ?? []}
         artifacts={conversationQuery.data?.artifacts ?? []}
         stream={stream.state}

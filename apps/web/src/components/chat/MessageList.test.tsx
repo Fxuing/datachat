@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { MessageList } from "./MessageList";
 import { initialRunStreamState, type RunStreamState } from "../../lib/run-events";
@@ -221,5 +221,107 @@ describe("MessageList charts", () => {
     );
 
     expect(screen.getAllByText("月度趋势")).toHaveLength(1);
+  });
+});
+
+
+describe("MessageList scrolling", () => {
+  const message = {
+    runId: "run-1",
+    status: "ok" as const,
+    user: { content: "统计订单" },
+    assistant: { content: "共 20 单" },
+    tools: [],
+    results: [],
+    sqls: [],
+    error: null,
+    createdAt: 1,
+  };
+
+  it("restores a saved reading position for the conversation", () => {
+    window.sessionStorage.setItem(
+      "datachat:scroll:c-1",
+      JSON.stringify({ scrollTop: 240, atBottom: false }),
+    );
+    render(
+      <MemoryRouter>
+        <MessageList
+          conversationId="c-1"
+          messages={[message]}
+          stream={initialRunStreamState}
+          showStream={false}
+          optimisticText={null}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("message-scroll").scrollTop).toBe(240);
+  });
+
+  it("marks new live content while the reader is scrolled up", () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <MessageList
+          conversationId="c-1"
+          messages={[message]}
+          stream={stream({ status: "running" })}
+          showStream
+          optimisticText={null}
+        />
+      </MemoryRouter>,
+    );
+    const container = screen.getByTestId("message-scroll");
+    Object.defineProperty(container, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(container, "clientHeight", { configurable: true, value: 400 });
+    container.scrollTop = 100;
+    fireEvent.scroll(container);
+
+    rerender(
+      <MemoryRouter>
+        <MessageList
+          conversationId="c-1"
+          messages={[message]}
+          stream={stream({ status: "running", text: "正在整理结果" })}
+          showStream
+          optimisticText={null}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("有新内容")).toBeInTheDocument();
+
+    Object.defineProperty(container, "scrollTo", { configurable: true, value: vi.fn() });
+    fireEvent.click(screen.getByRole("button", { name: "回到底部" }));
+    expect(screen.queryByText("有新内容")).not.toBeInTheDocument();
+  });
+
+  it("returns to the bottom when a new question is sent", () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <MessageList
+          conversationId="c-1"
+          messages={[message]}
+          stream={initialRunStreamState}
+          showStream={false}
+          optimisticText={null}
+        />
+      </MemoryRouter>,
+    );
+    const container = screen.getByTestId("message-scroll");
+    Object.defineProperty(container, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(container, "clientHeight", { configurable: true, value: 400 });
+    container.scrollTop = 100;
+    fireEvent.scroll(container);
+
+    rerender(
+      <MemoryRouter>
+        <MessageList
+          conversationId="c-1"
+          messages={[message]}
+          stream={initialRunStreamState}
+          showStream
+          optimisticText="再统计一次"
+        />
+      </MemoryRouter>,
+    );
+    expect(container.scrollTop).toBe(1000);
   });
 });

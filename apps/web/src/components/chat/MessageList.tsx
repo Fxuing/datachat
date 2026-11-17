@@ -22,8 +22,12 @@ import { ResultCard } from "./ResultCard";
 import { parseReportMarkdown } from "../../lib/report-markdown";
 import { pairQueries } from "../../lib/pair-queries";
 import type { ModelPickerStatus } from "./ModelPicker";
+import { cn } from "../../lib/utils";
+import { isNearBottom, readScrollPosition, writeScrollPosition, type StoredScrollPosition } from "../../lib/message-scroll";
 
 export interface MessageListProps {
+  /** Conversation whose reading position is persisted; null for a new chat. */
+  conversationId?: string | null;
   messages: ChatMessage[];
   stream: RunStreamState;
   showStream: boolean;
@@ -276,6 +280,7 @@ function EmptyChat({
 }
 
 export function MessageList({
+  conversationId = null,
   messages,
   stream,
   showStream,
@@ -305,9 +310,12 @@ export function MessageList({
   canExport = true,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  const scrollInitialized = useRef(false);
+  const saveFrame = useRef<number | null>(null);
+  const lastPosition = useRef<StoredScrollPosition>({ scrollTop: 0, atBottom: true });
   const [showJump, setShowJump] = useState(false);
+  const [hasNewContent, setHasNewContent] = useState(false);
   // While a run is streaming, its persisted group can already be in the history
   // (the page fetched the conversation right after navigating from the empty
   // state). Render the live block instead of both it and the persisted copy.
@@ -348,23 +356,89 @@ export function MessageList({
   // placeholder as soon as the model writes it.
   const chartsReady = stream.status === "ok" || stream.status === "error";
 
+  // Reset the per-conversation scroll state. ChatPage remounts this component
+  // on route changes, but keeping the reset here also makes a reused instance
+  // safe when the conversation id changes.
+  useEffect(() => {
+    scrollInitialized.current = false;
+    stickToBottom.current = true;
+    setShowJump(false);
+    setHasNewContent(false);
+  }, [conversationId]);
+
   useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
     const onScroll = () => {
-      const nearBottom =
-        element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+      if (!scrollInitialized.current) return;
+      const nearBottom = isNearBottom(element);
       stickToBottom.current = nearBottom;
-      setShowJump((visible) => (visible === !nearBottom ? visible : !nearBottom));
+      lastPosition.current = { scrollTop: element.scrollTop, atBottom: nearBottom };
+      setShowJump(!nearBottom);
+      if (nearBottom) setHasNewContent(false);
+      if (!conversationId) return;
+      if (saveFrame.current !== null) cancelAnimationFrame(saveFrame.current);
+      saveFrame.current = requestAnimationFrame(() => {
+        writeScrollPosition(conversationId, lastPosition.current);
+      });
     };
     element.addEventListener("scroll", onScroll, { passive: true });
-    return () => element.removeEventListener("scroll", onScroll);
-  }, []);
+    return () => {
+      element.removeEventListener("scroll", onScroll);
+      if (saveFrame.current !== null) cancelAnimationFrame(saveFrame.current);
+      if (conversationId && scrollInitialized.current) {
+        writeScrollPosition(conversationId, lastPosition.current);
+      }
+    };
+  }, [conversationId]);
+
+  // Restore a reading position when coming back to a conversation. A position
+  // that was at the bottom means the user was following live output, so stay
+  // pinned after the history renders. A new chat always starts at the bottom.
+  useEffect(() => {
+    if (scrollInitialized.current || loading) return;
+    const element = containerRef.current;
+    if (!element) return;
+    scrollInitialized.current = true;
+    const saved = conversationId ? readScrollPosition(conversationId) : null;
+    if (saved && !saved.atBottom) {
+      element.scrollTop = saved.scrollTop;
+      lastPosition.current = saved;
+      stickToBottom.current = false;
+      setShowJump(true);
+      return;
+    }
+    element.scrollTop = element.scrollHeight;
+    lastPosition.current = { scrollTop: element.scrollTop, atBottom: true };
+    stickToBottom.current = true;
+    setShowJump(false);
+  }, [conversationId, loading, messages.length]);
+
+  // Sending always brings the new question into view, even if the reader had
+  // scrolled up in the previous turn.
+  useEffect(() => {
+    if (!optimisticText) return;
+    const element = containerRef.current;
+    if (!element) return;
+    element.scrollTop = element.scrollHeight;
+    lastPosition.current = { scrollTop: element.scrollTop, atBottom: true };
+    stickToBottom.current = true;
+    setShowJump(false);
+    setHasNewContent(false);
+  }, [optimisticText]);
 
   useEffect(() => {
-    if (!stickToBottom.current) return;
-    bottomRef.current?.scrollIntoView?.({ block: "end" });
-    setShowJump(false);
+    const element = containerRef.current;
+    if (!element) return;
+    if (stickToBottom.current) {
+      element.scrollTop = element.scrollHeight;
+      setShowJump(false);
+      setHasNewContent(false);
+      return;
+    }
+    // Only live output makes the off-screen button mean "new content";
+    // refetches of history must not.
+    if (stream.status === "running" || optimisticText) setHasNewContent(true);
   }, [
     messages.length,
     optimisticText,
@@ -389,6 +463,7 @@ export function MessageList({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={containerRef}
+        data-testid="message-scroll"
         className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgb(var(--brand)/0.06),transparent_70%)]">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
         {!hasContent ? (
@@ -521,11 +596,10 @@ export function MessageList({
           </div>
         ) : null}
 
-        <div ref={bottomRef} />
         </div>
       </div>
       <ConversationMinimap messages={messages} containerRef={containerRef} />
-      {showJump ? (
+      {showJump || hasNewContent ? (
         <button
           type="button"
           aria-label="回到底部"
@@ -534,9 +608,14 @@ export function MessageList({
             if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
             stickToBottom.current = true;
             setShowJump(false);
+            setHasNewContent(false);
           }}
-          className="absolute bottom-4 left-1/2 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-line bg-surface text-inksoft shadow-pop transition-colors hover:bg-subtle"
+          className={cn(
+            "absolute bottom-4 left-1/2 flex h-8 -translate-x-1/2 items-center justify-center rounded-full border border-line bg-surface text-inksoft shadow-pop transition-colors hover:bg-subtle",
+            hasNewContent ? "gap-1.5 px-3 text-[11px] font-medium" : "w-8",
+          )}
         >
+          {hasNewContent ? <span>有新内容</span> : null}
           <ArrowDown className="h-4 w-4" />
         </button>
       ) : null}
