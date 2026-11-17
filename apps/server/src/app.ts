@@ -29,6 +29,7 @@ import { opsRoutes } from "./routes/ops.js";
 import { createRetentionService, type RetentionService } from "./services/ops-retention.js";
 import { scheduledTaskRoutes } from "./routes/scheduled-tasks.js";
 import { notificationRoutes } from "./routes/notifications.js";
+import { memoryRoutes } from "./routes/memories.js";
 import { createScheduledTaskService, type ScheduledTaskService } from "./services/scheduled-tasks.js";
 import { ArtifactStore } from "./services/artifacts.js";
 import type { AppConfig } from "./config.js";
@@ -177,6 +178,7 @@ export async function buildApp({
   await app.register(opsRoutes, { db, dataDir: config.dataDir, retention });
   await app.register(scheduledTaskRoutes, { db, scheduledTasks });
   await app.register(notificationRoutes, { db });
+  await app.register(memoryRoutes, { db });
   app.addHook("onClose", async () => {
     await scheduledTasks.shutdown();
     await agentRuntime.shutdown();

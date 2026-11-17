@@ -289,17 +289,18 @@ export function setUserMemorySettings(
 }
 
 /** Global admin switch AND the user's own switch. */
-export function isMemoryEnabled(db: Db, userId: string): boolean {
+export function isGlobalMemoryEnabled(db: Db): boolean {
   const raw = readSettingRows(db).get("memoryEnabled");
-  let globalEnabled = true;
-  if (raw !== undefined) {
-    try {
-      globalEnabled = JSON.parse(raw) !== false;
-    } catch {
-      globalEnabled = true;
-    }
+  if (raw === undefined) return true;
+  try {
+    return JSON.parse(raw) !== false;
+  } catch {
+    return true;
   }
-  if (!globalEnabled) return false;
+}
+
+export function isMemoryEnabled(db: Db, userId: string): boolean {
+  if (!isGlobalMemoryEnabled(db)) return false;
   return getUserMemorySettings(db, userId).enabled;
 }
 
