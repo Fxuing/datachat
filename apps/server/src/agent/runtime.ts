@@ -28,6 +28,7 @@ import { materializeSkills, type MaterializeSkillsInput } from "./skills.js";
 import type { AgentToolContext } from "./tools/context.js";
 import { enabledProviderIds } from "../services/llm-catalog.js";
 import { extractMemoriesForRun } from "../memory/extraction.js";
+import type { MemoryUsageItem } from "../memory/recall.js";
 import { createMemoryGenerator } from "../memory/generate.js";
 
 const DISPOSE_ABORT_TIMEOUT_MS = 5_000;
@@ -51,6 +52,8 @@ export type ConversationSessionFactory = (input: {
   runId: string;
   questionBridge: QuestionBridge;
   permissions: ConversationPermissions;
+  /** Memories injected into a turn, forwarded to the run's trace. */
+  onMemoryUsed?: (items: MemoryUsageItem[]) => void;
 }) => Promise<SessionBundle>;
 
 export interface ConversationRuntimeOptions {
@@ -330,6 +333,12 @@ export class ConversationRuntime {
         runId,
         questionBridge: this.getQuestionBridge(),
         permissions: this.sessionPermissions,
+        // The memory extension runs inside `session.prompt`, so the job that is
+        // active at that moment is the run that should carry the memories.
+        onMemoryUsed: (memories) => {
+          const active = this.activeJob?.runId;
+          if (active) this.emitEvent(active, { type: "memory_used", payload: { memories } });
+        },
       }).then((bundle) => {
         this.sessionBundle = bundle;
         return bundle;
@@ -547,7 +556,7 @@ export class RuntimeManager {
       });
     this.createSession =
       options.createSession ??
-      (async ({ conversation, userId, permissions, questionBridge }) => {
+      (async ({ conversation, userId, permissions, questionBridge, onMemoryUsed }) => {
         const runtime = await this.getModelRuntime();
         const skillsDir = await materializeSkillsForPermissions(
           this.db,
@@ -568,6 +577,7 @@ export class RuntimeManager {
           canUseSkills: permissions.skills,
           canUseMcp: permissions.mcp,
           canUseMemory: permissions.memory,
+          ...(onMemoryUsed ? { onMemoryUsed } : {}),
           canCreateReports: permissions.reports,
           pools: this.pools,
           artifacts: this.artifacts,

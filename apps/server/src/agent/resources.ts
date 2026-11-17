@@ -11,7 +11,7 @@ import {
 import type { Db } from "../db/client.js";
 import type { AppConfig } from "../config.js";
 import { loadMcpFor } from "./mcp.js";
-import { createMemoryExtension } from "../memory/recall.js";
+import { createMemoryExtension, type MemoryUsageItem } from "../memory/recall.js";
 import { renderSystemPrompt } from "./prompt.js";
 
 /** Functional permissions that shape the agent's resource loader. */
@@ -32,6 +32,8 @@ export interface ConversationResourcesInput {
   canUseSkills: boolean;
   canUseMcp: boolean;
   canUseMemory: boolean;
+  /** Receives the memories injected into a turn, for the run's trace. */
+  onMemoryUsed?: (items: MemoryUsageItem[]) => void;
   datasourceName: string;
   datasourceType: "mysql" | "postgres";
   database: string;
@@ -131,6 +133,7 @@ export async function createConversationResources(
         conversationId: input.conversationId,
         datasourceId: input.datasourceId,
         datasourceName: input.datasourceName,
+        ...(input.onMemoryUsed ? { onMemoryUsed: input.onMemoryUsed } : {}),
       }),
     );
   }

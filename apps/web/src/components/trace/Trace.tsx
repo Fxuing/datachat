@@ -3,6 +3,7 @@ import { AlertCircle, ChevronDown } from "lucide-react";
 import { cn, formatDuration, formatTokens } from "../../lib/utils";
 import { type TraceStatus } from "./status";
 import { useTraceOpen } from "./use-trace-open";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 export interface TraceProps {
   /** Summary headline: 「本轮完成」/「本轮执行中」/「查询失败」. */
@@ -15,6 +16,8 @@ export interface TraceProps {
   tokens?: number | null;
   /** Native tooltip for the token count: the input/output breakdown. */
   tokensHint?: string;
+  /** One more summary item after the token count (e.g. 「记忆 2」). */
+  extra?: ReactNode;
   /** `TraceLine` items. */
   children?: ReactNode;
   open?: boolean;
@@ -33,6 +36,7 @@ export function Trace({
   durationMs,
   tokens,
   tokensHint,
+  extra,
   children,
   open: openProp,
   defaultOpen,
@@ -61,10 +65,20 @@ export function Trace({
     stepCount && stepCount > 0 ? `${stepCount} 步` : null,
     typeof durationMs === "number" ? formatDuration(durationMs) : null,
     typeof tokens === "number" && tokens > 0 ? (
-      <span key="tokens" title={tokensHint} className="tabular-nums">
-        {formatTokens(tokens)} tokens
-      </span>
+      // The summary is a button already, so the count is the whole trigger and
+      // the breakdown lives in the shared tooltip rather than a native title.
+      <Tooltip key="tokens">
+        <TooltipTrigger asChild>
+          <span className="tabular-nums">{formatTokens(tokens)} tokens</span>
+        </TooltipTrigger>
+        {tokensHint ? (
+          <TooltipContent side="top" className="max-w-xs">
+            {tokensHint}
+          </TooltipContent>
+        ) : null}
+      </Tooltip>
     ) : null,
+    extra ?? null,
   ].filter(Boolean);
 
   const summary = (

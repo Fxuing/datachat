@@ -79,6 +79,20 @@ function sanitize(value: string, max: number): string {
   return truncateTo(value.replace(/<\/?user_memory>/gi, ""), max);
 }
 
+function toUsageItem(
+  row: UserMemoryRow,
+  datasourceName: string | undefined,
+  core: boolean,
+): MemoryUsageItem {
+  return {
+    id: row.id,
+    kind: row.kind,
+    content: row.content.trim(),
+    core,
+    scope: scopeLabel(row, datasourceName),
+  };
+}
+
 export interface MemoryBlockInput {
   db: Db;
   userId: string;
@@ -88,9 +102,19 @@ export interface MemoryBlockInput {
   now?: number;
 }
 
+export interface MemoryUsageItem {
+  id: string;
+  kind: MemoryKind;
+  content: string;
+  core: boolean;
+  scope?: string;
+}
+
 export interface MemoryBlock {
   text: string;
   usedIds: string[];
+  /** What actually made it into the block, for the run's `memory_used` event. */
+  used: MemoryUsageItem[];
 }
 
 /**
@@ -98,15 +122,17 @@ export interface MemoryBlock {
  * ranked against the user's prompt. Any failure degrades to an empty block.
  */
 export function buildMemoryBlock(input: MemoryBlockInput): MemoryBlock {
-  if (!isMemoryEnabled(input.db, input.userId)) return { text: "", usedIds: [] };
+  if (!isMemoryEnabled(input.db, input.userId)) return { text: "", usedIds: [], used: [] };
   try {
     const core = listCoreMemories(input.db, input.userId, input.datasourceId);
     const coreLines: string[] = [];
+    const coreRows: UserMemoryRow[] = [];
     let coreLength = 0;
     for (const row of core.slice(0, 20)) {
       const line = sanitize(lineFor(row, input.datasourceName), 400);
       if (coreLength + line.length + 1 > MEMORY_CORE_BUDGET) break;
       coreLines.push(line);
+      coreRows.push(row);
       coreLength += line.length + 1;
     }
     if (coreLines.length === 0) coreLength = 0;
@@ -143,16 +169,18 @@ export function buildMemoryBlock(input: MemoryBlockInput): MemoryBlock {
       .slice(0, MEMORY_RECALL_LIMIT);
 
     const recallLines: string[] = [];
+    const recallRows: UserMemoryRow[] = [];
     let recallLength = 0;
     for (const { row } of scored) {
       const line = sanitize(lineFor(row, input.datasourceName), 400);
       if (recallLength + line.length + 1 > MEMORY_RECALL_BUDGET) break;
       recallLines.push(line);
+      recallRows.push(row);
       recallLength += line.length + 1;
     }
 
     if (coreLines.length === 0 && recallLines.length === 0) {
-      return { text: "", usedIds: [] };
+      return { text: "", usedIds: [], used: [] };
     }
     const body = [
       "<user_memory>",
@@ -164,18 +192,21 @@ export function buildMemoryBlock(input: MemoryBlockInput): MemoryBlock {
     ].join("\n");
     const text = truncateTo(body, MEMORY_TOTAL_BUDGET);
 
-    const usedIds = [
-      ...core.map((row) => row.id),
-      ...scored.map((entry) => entry.row.id),
+    // Only what fits the budget was actually injected, so only those rows are
+    // reported (and only those get their last-used stamp refreshed).
+    const used: MemoryUsageItem[] = [
+      ...coreRows.map((row) => toUsageItem(row, input.datasourceName, true)),
+      ...recallRows.map((row) => toUsageItem(row, input.datasourceName, false)),
     ];
+    const usedIds = used.map((item) => item.id);
     try {
       touchUserMemories(input.db, input.userId, usedIds, input.now ?? Date.now());
     } catch {
       // Injection must never fail the conversation because of a usage counter.
     }
-    return { text, usedIds };
+    return { text, usedIds, used };
   } catch {
-    return { text: "", usedIds: [] };
+    return { text: "", usedIds: [], used: [] };
   }
 }
 
@@ -185,6 +216,8 @@ export interface MemoryExtensionOptions {
   conversationId?: string;
   datasourceId: string;
   datasourceName?: string;
+  /** Called with the memories that went into a turn's prompt, for the UI. */
+  onMemoryUsed?: (items: MemoryUsageItem[]) => void;
 }
 
 /** One inline extension per conversation; refreshes recall before every user turn. */
@@ -208,6 +241,13 @@ export function createMemoryExtension(options: MemoryExtensionOptions) {
         query: event.prompt,
       });
       if (!block.text) return undefined;
+      if (options.onMemoryUsed && block.used.length > 0) {
+        try {
+          options.onMemoryUsed(block.used);
+        } catch {
+          // Reporting is cosmetic; never fail the turn over it.
+        }
+      }
       return { systemPrompt: `${event.systemPrompt}\n\n${block.text}` };
     });
   };

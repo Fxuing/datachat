@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { RunMemory } from "@datachat/shared";
 import type { ChatResult, ChatSql } from "../lib/api";
 import type { QueryPair } from "../lib/pair-queries";
 import type { RunStatusValue } from "../lib/run-events";
@@ -86,7 +87,26 @@ interface ScenarioData {
   tools: TurnTool[];
   queries: QueryPair<ChatResult>[];
   durationMs: number | null;
+  memories?: RunMemory[];
 }
+
+/** The two memories the mock user has: one global preference, one fact. */
+const DEV_MEMORIES: RunMemory[] = [
+  {
+    id: "mem-1",
+    kind: "preference",
+    content: "报表默认按渠道拆分，不要合并成总数；没指定日期就按近 30 天。",
+    core: true,
+    scope: "全局",
+  },
+  {
+    id: "mem-2",
+    kind: "fact",
+    content: "我们只统计已支付订单，退款与取消不计入。",
+    core: false,
+    scope: "数据源 订单库",
+  },
+];
 
 const SCENARIOS: Record<Scenario, ScenarioData> = {
   start: {
@@ -102,6 +122,7 @@ const SCENARIOS: Record<Scenario, ScenarioData> = {
     // The trailing empty entry is the boundary the query left behind: nothing is
     // being reasoned right now, so no line claims to be "思考中".
     thinkingSegments: [THINKING_1, THINKING_2, ""],
+    memories: DEV_MEMORIES.slice(0, 2),
     tools: [
       SCHEMA_TOOL,
       { toolCallId: "tool-query", name: "db_query", status: "running", args: { sql: SQL.sql } },
@@ -122,6 +143,7 @@ const SCENARIOS: Record<Scenario, ScenarioData> = {
   done: {
     status: "ok",
     thinkingSegments: [THINKING_LONG, THINKING_2, THINKING_3],
+    memories: DEV_MEMORIES,
     tools: [
       SCHEMA_TOOL,
       { toolCallId: "tool-query", name: "db_query", status: "ok", durationMs: 1_240 },
@@ -216,6 +238,7 @@ export default function DevTracePage() {
             queries={data.queries}
             durationMs={data.durationMs}
             usage={DEV_USAGE}
+            memories={data.memories}
           />
           <p className="text-sm text-ink">
             {scenario === "error"

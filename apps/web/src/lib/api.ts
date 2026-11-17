@@ -5,6 +5,7 @@ import {
   type Permission,
   type ReportDetail,
   type ReportSummary,
+  type RunMemory,
 } from "@datachat/shared";
 
 export class ApiError extends Error {
@@ -250,6 +251,8 @@ export interface ChatMessage {
   thinking?: string | null;
   /** Reasoning split where tool calls interrupted it, oldest first. */
   thinkingSegments?: string[] | null;
+  /** Memories that were injected into this turn. */
+  memories?: RunMemory[] | null;
   usage?: ChatUsage | null;
   durationMs?: number | null;
   feedback?: ChatFeedback | null;

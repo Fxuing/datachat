@@ -558,6 +558,48 @@ describe("conversation routes", () => {
     }
   });
 
+  it("replays the memories that shaped a turn", async () => {
+    const conversation = createConversation(db, { userId, datasourceId });
+    const run = createRun(db, { conversationId: conversation.id, userId });
+    appendRunEvent(db, {
+      runId: run.id,
+      conversationId: conversation.id,
+      type: "user_message",
+      payload: { content: "画个图" },
+    });
+    appendRunEvent(db, {
+      runId: run.id,
+      conversationId: conversation.id,
+      type: "memory_used",
+      payload: {
+        memories: [
+          {
+            id: "mem-1",
+            kind: "preference",
+            content: "默认使用柱状图",
+            core: true,
+            scope: "全局",
+          },
+        ],
+      },
+    });
+    markRun(db, run.id, { status: "ok", endedAt: Date.now() });
+
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversation.id}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(response.json().messages[0].memories).toEqual([
+        { id: "mem-1", kind: "preference", content: "默认使用柱状图", core: true, scope: "全局" },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("hides a failed turn once it has been replaced by a retry", async () => {
     const conversation = createConversation(db, { userId, datasourceId });
     const failed = createRun(db, { conversationId: conversation.id, userId });

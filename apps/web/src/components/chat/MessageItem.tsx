@@ -209,6 +209,7 @@ export function MessageItem({
   const hasTrace =
     Boolean(message.thinkingSegments?.some((segment) => segment.trim())) ||
     Boolean(message.thinking?.trim()) ||
+    Boolean(message.memories?.length) ||
     message.tools.length > 0 ||
     message.sqls.length > 0;
 
@@ -230,6 +231,7 @@ export function MessageItem({
           queries={pairs}
           durationMs={message.durationMs}
           usage={message.usage ?? null}
+          memories={message.memories}
           onCreateReport={onCreateReport}
           canExport={canExport}
         />

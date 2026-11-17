@@ -10,6 +10,7 @@ import type { Db } from "../db/client.js";
 import type { ConversationRow } from "../db/repositories/conversations.js";
 import { updateConversation } from "../db/repositories/conversations.js";
 import { findDatasource } from "../db/repositories/datasources.js";
+import type { MemoryUsageItem } from "../memory/recall.js";
 import type { ArtifactStore } from "../services/artifacts.js";
 import type { PoolRegistry } from "./datasource/pool.js";
 import { resolveConversationModel } from "./model-runtime.js";
@@ -33,6 +34,8 @@ export interface CreateConversationSessionInput {
   canUseSkills: boolean;
   canUseMcp: boolean;
   canUseMemory: boolean;
+  /** Receives the memories injected into a turn, for the run's trace. */
+  onMemoryUsed?: (items: MemoryUsageItem[]) => void;
   canCreateReports: boolean;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
@@ -80,6 +83,7 @@ export async function createConversationSession(
     canUseSkills: input.canUseSkills,
     canUseMcp: input.canUseMcp,
     canUseMemory: input.canUseMemory,
+    ...(input.onMemoryUsed ? { onMemoryUsed: input.onMemoryUsed } : {}),
     datasourceName: datasource.name,
     datasourceType: datasource.type,
     database: datasource.database,

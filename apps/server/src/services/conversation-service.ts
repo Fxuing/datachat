@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { Column } from "@datachat/shared";
-import { runEventSchema, type RunEvent } from "@datachat/shared";
+import { runEventSchema, type RunEvent, type RunMemory } from "@datachat/shared";
 import type { Db } from "../db/client.js";
 import { artifacts } from "../db/schema.js";
 import {
@@ -80,6 +80,8 @@ export interface ConversationMessage {
   thinking: string | null;
   /** The same transcript split where tool calls interrupted the reasoning. */
   thinkingSegments: string[] | null;
+  /** Memories that were injected into this turn, for the trace. */
+  memories: RunMemory[] | null;
   usage: ConversationUsage | null;
   /** Wall-clock duration of the run, excluding queue time. */
   durationMs: number | null;
@@ -125,6 +127,7 @@ interface MessageGroup {
   assistant: string | null;
   thinking: string | null;
   thinkingSegments: string[] | null;
+  memories: RunMemory[];
   deltas: string[];
   tools: ToolMessage[];
   results: ConversationResultMessage[];
@@ -192,6 +195,7 @@ function groupFor(grouped: Map<string, MessageGroup>, runId: string, createdAt: 
     assistant: null,
     thinking: null,
     thinkingSegments: null,
+    memories: [],
     deltas: [],
     tools: [],
     results: [],
@@ -216,6 +220,9 @@ function applyEvent(group: MessageGroup, event: RunEvent): void {
       group.thinking = event.payload.content;
       // Rows written before segments existed only carry the joined text.
       group.thinkingSegments = event.payload.segments ?? [event.payload.content];
+      break;
+    case "memory_used":
+      group.memories = event.payload.memories;
       break;
     case "text_delta":
       group.deltas.push(event.payload.text);
@@ -287,6 +294,7 @@ export function getConversationDetail(
           : null,
       thinking: group.thinking,
       thinkingSegments: group.thinkingSegments,
+      memories: group.memories.length > 0 ? group.memories : null,
       usage: toUsage(run),
       durationMs:
         run?.startedAt != null && run.endedAt != null

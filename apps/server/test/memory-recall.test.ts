@@ -182,6 +182,57 @@ describe("memory recall", () => {
     expect(block.text).toContain("<user_memory>");
   });
 
+  it("reports what actually reached the prompt", () => {
+    const owner = user("recall-usage");
+    const core = upsertUserMemory(handle.db, {
+      userId: owner.id,
+      kind: "preference",
+      title: "图表",
+      content: "默认使用柱状图",
+      scope: "global",
+      core: true,
+    }).memory;
+    const factual = upsertUserMemory(handle.db, {
+      userId: owner.id,
+      kind: "fact",
+      title: "口径",
+      content: "只统计已支付订单",
+      scope: "datasource",
+      datasourceId: "ds-1",
+      confidence: 90,
+    }).memory;
+    upsertUserMemory(handle.db, {
+      userId: owner.id,
+      kind: "fact",
+      title: "别的库",
+      content: "金额按分展示",
+      scope: "datasource",
+      datasourceId: "ds-2",
+      confidence: 90,
+    });
+
+    const block = buildMemoryBlock({
+      db: handle.db,
+      userId: owner.id,
+      datasourceId: "ds-1",
+      datasourceName: "示例商城",
+      query: "已支付订单有多少",
+    });
+
+    expect(block.used.map((item) => item.id).sort()).toEqual([core.id, factual.id].sort());
+    expect(block.usedIds).toEqual(block.used.map((item) => item.id));
+    expect(block.used.find((item) => item.id === core.id)).toMatchObject({
+      kind: "preference",
+      core: true,
+      scope: "全局",
+    });
+    expect(block.used.find((item) => item.id === factual.id)).toMatchObject({
+      kind: "fact",
+      core: false,
+      scope: "数据源 示例商城",
+    });
+  });
+
   it("appends the block through before_agent_start and records usage", async () => {
     const owner = user("recall-extension");
     const memory = upsertUserMemory(handle.db, {
@@ -200,11 +251,13 @@ describe("memory recall", () => {
       registerTool: () => undefined,
     } as unknown as ExtensionAPI;
 
+    const reported: { id: string; kind: string; content: string }[][] = [];
     createMemoryExtension({
       db: handle.db,
       userId: owner.id,
       datasourceId: "ds-1",
       datasourceName: "示例商城",
+      onMemoryUsed: (items) => reported.push(items),
     })(pi);
     const handler = handlers.get("before_agent_start");
     expect(handler).toBeTypeOf("function");
@@ -218,6 +271,10 @@ describe("memory recall", () => {
 
     expect(result.systemPrompt).toContain("BASE");
     expect(result.systemPrompt).toContain("默认使用柱状图");
+    expect(reported).toHaveLength(1);
+    expect(reported[0]).toEqual([
+      { id: memory.id, kind: "preference", content: "默认使用柱状图", core: true, scope: "全局" },
+    ]);
     expect(
       handle.db.get<{ use_count: number }>(
         sql`select use_count from user_memories where id = ${memory.id}`,

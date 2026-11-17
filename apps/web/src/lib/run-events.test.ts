@@ -44,6 +44,25 @@ describe("runStreamReducer", () => {
     expect(state.thinkingSegments).toEqual(["先确认表结构。", "表里没有 channel 字段。"]);
   });
 
+  it("keeps one entry per memory even when a reconnect replays the event", () => {
+    const event = {
+      type: "memory_used" as const,
+      payload: {
+        memories: [
+          { id: "mem-1", kind: "preference" as const, content: "默认柱状图", core: true, scope: "全局" },
+          { id: "mem-2", kind: "fact" as const, content: "只算已支付", core: false },
+        ],
+      },
+    };
+
+    let state = apply(initialRunStreamState, 1, event);
+    expect(state.memories.map((memory) => memory.id)).toEqual(["mem-1", "mem-2"]);
+
+    state = apply(state, 2, event);
+    expect(state.memories).toHaveLength(2);
+    expect(state.memories[0]?.scope).toBe("全局");
+  });
+
   it("tracks tool start/end updates in place and preserves arguments", () => {
     let state = apply(initialRunStreamState, 1, {
       type: "tool_start",

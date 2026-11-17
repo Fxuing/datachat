@@ -84,6 +84,55 @@ describe("TurnTrace", () => {
     );
   });
 
+  it("shows the memories behind the answer", async () => {
+    const user = userEvent.setup();
+    render(
+      <TurnTrace
+        status="ok"
+        tools={tools}
+        memories={[
+          {
+            id: "mem-1",
+            kind: "preference",
+            content: "报表默认按渠道拆分",
+            core: true,
+            scope: "全局",
+          },
+          {
+            id: "mem-2",
+            kind: "fact",
+            content: "只统计已支付订单",
+            core: false,
+            scope: "数据源 订单库",
+          },
+        ]}
+      />,
+    );
+
+    // The badge sits on the collapsed line, so a reader never has to open it.
+    const summary = screen.getByRole("button", { name: /本轮完成/ });
+    expect(summary).toHaveTextContent("记忆 2");
+    // Memories are context, not steps.
+    expect(summary).toHaveTextContent("2 步");
+
+    await user.click(summary);
+    expect(screen.getByText("记忆 · 2 条")).toBeInTheDocument();
+    expect(screen.getByText("偏好、事实")).toBeInTheDocument();
+    expect(screen.queryByText("报表默认按渠道拆分")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /记忆 · 2 条/ }));
+    expect(screen.getByText("报表默认按渠道拆分")).toBeInTheDocument();
+    expect(screen.getByText("只统计已支付订单")).toBeInTheDocument();
+
+    // Hovering the truncated row shows the rest of the memory, not a native title.
+    const row = screen.getByText("报表默认按渠道拆分");
+    expect(row).not.toHaveAttribute("title");
+    await user.hover(row);
+    const tip = await screen.findByRole("tooltip");
+    expect(tip).toHaveTextContent("报表默认按渠道拆分");
+    expect(tip).toHaveTextContent("全局");
+  });
+
   it("keeps thinking first, then tools and queries in execution order", async () => {
     const user = userEvent.setup();
     render(<TurnTrace status="ok" thinking="先看表结构" tools={tools} queries={queries} />);

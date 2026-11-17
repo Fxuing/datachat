@@ -162,7 +162,8 @@ describe("Trace", () => {
     expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
-  it("puts the token count at the end of the summary", () => {
+  it("puts the token count at the end of the summary", async () => {
+    const user = userEvent.setup();
     render(
       <Trace label="本轮完成" stepCount={7} durationMs={23_000} tokens={26_800} tokensHint="输入 20000">
         <TraceLine title="执行查询" />
@@ -172,6 +173,14 @@ describe("Trace", () => {
     expect(screen.getByRole("button", { name: /本轮完成/ })).toHaveTextContent(
       "7 步 · 23s · 26.8k tokens",
     );
+
+    // The breakdown is a shared tooltip, not a native title on the button.
+    const count = screen.getByText("26.8k tokens");
+    expect(count).not.toHaveAttribute("title");
+    expect(screen.getByRole("button", { name: /本轮完成/ })).not.toHaveAttribute("title");
+
+    await user.hover(count);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("输入 20000");
   });
 
   it("drops the toggle when there is nothing to unfold", () => {

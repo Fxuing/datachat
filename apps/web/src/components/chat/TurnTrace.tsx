@@ -1,10 +1,12 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { FileText } from "lucide-react";
+import type { RunMemory } from "@datachat/shared";
 import type { ChatResult, ChatSql, ChatUsage } from "../../lib/api";
 import type { QueryPair } from "../../lib/pair-queries";
 import type { RunStatusValue } from "../../lib/run-events";
 import { Trace, TraceLine, type TraceStatus } from "../trace";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { ResultCard } from "./ResultCard";
 import { SqlCard } from "./SqlCard";
 import { TOOL_TITLES, traceLabel, traceStatus, type TurnTool } from "./turn-trace-model";
@@ -21,6 +23,8 @@ export interface TurnTraceProps {
   durationMs?: number | null;
   /** Token usage of the turn, shown after the duration on the summary line. */
   usage?: ChatUsage | null;
+  /** Memories the agent was given for this turn. */
+  memories?: RunMemory[] | null;
   onCreateReport?: (artifactId: string) => void;
   canExport?: boolean;
   className?: string;
@@ -119,6 +123,51 @@ function ToolDetail({ tool }: { tool: TurnTool }) {
       ) : null}
     </>
   );
+}
+
+const MEMORY_KIND_LABELS: Record<RunMemory["kind"], string> = {
+  profile: "画像",
+  instruction: "指令",
+  preference: "偏好",
+  fact: "事实",
+};
+
+/** What the agent was told about this user before it started. */
+function memoryStep(memories: RunMemory[]): TurnStep {
+  const kinds = [...new Set(memories.map((memory) => MEMORY_KIND_LABELS[memory.kind]))];
+  return {
+    key: "memory",
+    title: `记忆 · ${memories.length} 条`,
+    status: "done",
+    description: kinds.join("、"),
+    detail: (
+      <ul className="flex flex-col gap-1 text-[11px] leading-relaxed text-muted">
+        {memories.map((memory) => (
+          <li key={memory.id} className="flex items-baseline">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  tabIndex={0}
+                  className="flex min-w-0 items-baseline gap-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
+                  <span className="shrink-0 text-inksoft">
+                    [{MEMORY_KIND_LABELS[memory.kind]}]
+                  </span>
+                  <span className="truncate">{memory.content}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-sm">
+                <span className="block">{memory.content}</span>
+                {memory.scope ? (
+                  <span className="mt-1 block text-canvas/70">{memory.scope}</span>
+                ) : null}
+              </TooltipContent>
+            </Tooltip>
+          </li>
+        ))}
+      </ul>
+    ),
+  };
 }
 
 /** Reasoning arrives in stretches: the model thinks, calls a tool, thinks again. */
@@ -285,6 +334,7 @@ export function TurnTrace({
   queries = [],
   durationMs,
   usage,
+  memories: injectedMemories,
   onCreateReport,
   canExport = true,
   className,
@@ -298,7 +348,11 @@ export function TurnTrace({
     onCreateReport,
     canExport,
   });
-  if (steps.length === 0) return null;
+  // Memories are context, not a step the agent took: they get their own badge
+  // on the summary line instead of inflating "N 步".
+  const memories = injectedMemories ?? [];
+  const rows = memories.length > 0 ? [memoryStep(memories), ...steps] : steps;
+  if (rows.length === 0) return null;
 
   return (
     <Trace
@@ -312,9 +366,16 @@ export function TurnTrace({
           ? `输入 ${usage.input} · 输出 ${usage.output} · 缓存读 ${usage.cacheRead} · 缓存写 ${usage.cacheWrite}`
           : undefined
       }
+      extra={
+        memories.length > 0 ? (
+          <span key="memories" className="tabular-nums">
+            记忆 {memories.length}
+          </span>
+        ) : null
+      }
       className={className}
     >
-      {steps.map((step) => (
+      {rows.map((step) => (
         <TraceLine
           key={step.key}
           title={step.title}

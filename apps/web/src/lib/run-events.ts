@@ -1,4 +1,4 @@
-import type { Column, RunEvent } from "@datachat/shared";
+import type { Column, RunEvent, RunMemory } from "@datachat/shared";
 
 export type RunStatusValue = "idle" | "queued" | "running" | "ok" | "error" | "aborted";
 
@@ -79,6 +79,8 @@ export interface RunStreamState {
   text: string;
   /** Reasoning in the order it arrived; a tool call starts a new segment. */
   thinkingSegments: string[];
+  /** Memories injected into this turn, in the order the prompt lists them. */
+  memories: RunMemory[];
   tools: RunToolState[];
   sqls: RunSqlState[];
   results: RunResultState[];
@@ -100,6 +102,7 @@ export const initialRunStreamState: RunStreamState = {
   connection: "idle",
   text: "",
   thinkingSegments: [""],
+  memories: [],
   tools: [],
   sqls: [],
   results: [],
@@ -197,6 +200,16 @@ export function runStreamReducer(
           const last = segments.length - 1;
           segments[last] = `${segments[last] ?? ""}${event.payload.text}`;
           return { ...base, thinkingSegments: segments };
+        }
+        // Replay after a reconnect re-sends the same event; keep one entry per id.
+        case "memory_used": {
+          const merged = [...state.memories];
+          for (const memory of event.payload.memories) {
+            const index = merged.findIndex((item) => item.id === memory.id);
+            if (index === -1) merged.push(memory);
+            else merged[index] = memory;
+          }
+          return { ...base, memories: merged };
         }
         case "tool_start":
           return {

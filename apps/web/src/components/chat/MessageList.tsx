@@ -349,6 +349,7 @@ export function MessageList({
   );
   const hasTrace =
     stream.thinkingSegments.some((segment) => segment.trim()) ||
+    stream.memories.length > 0 ||
     stream.tools.length > 0 ||
     stream.sqls.length > 0;
   // Charts only settle into their final place once the run finishes. Rendering
@@ -517,6 +518,7 @@ export function MessageList({
                 queries={queryPairs}
                 durationMs={stream.durationMs}
                 usage={stream.usage}
+                memories={stream.memories}
                 onCreateReport={onCreateReport}
                 canExport={canExport}
               />

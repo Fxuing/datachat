@@ -19,6 +19,20 @@ export type Column = z.infer<typeof columnSchema>;
  * this union. `assistant_message` is the history-aggregation event persisted when
  * a run finishes.
  */
+/** One memory the agent was given for a turn. */
+export const runMemorySchema = z.object({
+  id: z.string(),
+  kind: z.enum(["profile", "instruction", "preference", "fact"]),
+  /** The memory text as it was injected; already capped by the recall budget. */
+  content: z.string(),
+  /** Always-on core memory, rather than one recalled for this question. */
+  core: z.boolean(),
+  /** Human label for the scope ("全局" or the datasource name), when known. */
+  scope: z.string().optional(),
+});
+
+export type RunMemory = z.infer<typeof runMemorySchema>;
+
 export const runEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("run_queued"),
@@ -55,6 +69,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * treating `content` as one segment. */
       segments: z.array(z.string()).optional(),
     }),
+  }),
+  /** Memories the memory extension put into this turn's system prompt. */
+  z.object({
+    type: z.literal("memory_used"),
+    payload: z.object({ memories: z.array(runMemorySchema) }),
   }),
   z.object({
     type: z.literal("tool_start"),
