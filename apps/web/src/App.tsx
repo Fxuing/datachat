@@ -25,6 +25,7 @@ const AuditPage = lazy(() => import("./pages/admin/AuditPage"));
 const SettingsPage = lazy(() => import("./pages/admin/SettingsPage"));
 const OpsPage = lazy(() => import("./pages/admin/OpsPage"));
 const ScheduledTasksPage = lazy(() => import("./pages/ScheduledTasksPage"));
+const MemoryPage = lazy(() => import("./pages/MemoryPage"));
 // Prototype-only page for evaluating the Trace call chain; never shipped.
 const DevTracePage = import.meta.env.DEV ? lazy(() => import("./pages/DevTracePage")) : null;
 
@@ -100,6 +101,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ScheduledTasksPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/memory"
+          element={
+            <RequireAuth>
+              <MemoryPage />
             </RequireAuth>
           }
         />

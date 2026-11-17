@@ -1231,3 +1231,85 @@ export async function getPublicShare(token: string): Promise<PublicShare> {
   }
   return (await response.json()) as PublicShare;
 }
+
+export type MemoryKind = "profile" | "instruction" | "preference" | "fact";
+export type MemoryScope = "global" | "datasource";
+
+export interface MemoryItem {
+  id: string;
+  kind: MemoryKind;
+  title: string;
+  content: string;
+  scope: MemoryScope;
+  datasourceId: string | null;
+  core: boolean;
+  enabled: boolean;
+  confidence: number;
+  useCount: number;
+  lastUsedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MemorySettings {
+  enabled: boolean;
+  globalEnabled: boolean;
+}
+
+export interface MemoryFilters {
+  q?: string;
+  kind?: MemoryKind;
+  scope?: MemoryScope;
+  datasourceId?: string;
+}
+
+export interface MemoryInput {
+  kind: MemoryKind;
+  title: string;
+  content: string;
+  scope: MemoryScope;
+  datasourceId?: string;
+  core?: boolean;
+  confidence?: number;
+}
+
+export function listMemories(
+  filters: MemoryFilters = {},
+): Promise<{ memories: MemoryItem[]; settings: MemorySettings; globalEnabled: boolean }> {
+  const search = new URLSearchParams();
+  if (filters.q) search.set("q", filters.q);
+  if (filters.kind) search.set("kind", filters.kind);
+  if (filters.scope) search.set("scope", filters.scope);
+  if (filters.datasourceId) search.set("datasourceId", filters.datasourceId);
+  const suffix = search.size > 0 ? `?${search.toString()}` : "";
+  return apiRequest(`/api/memories${suffix}`);
+}
+
+export function createMemory(
+  input: MemoryInput,
+): Promise<{ memory: MemoryItem; merged: boolean }> {
+  return apiRequest("/api/memories", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateMemory(
+  id: string,
+  input: Partial<Pick<MemoryItem, "title" | "content" | "core" | "enabled" | "confidence">>,
+): Promise<{ memory: MemoryItem }> {
+  return apiRequest(`/api/memories/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export function deleteMemory(id: string): Promise<void> {
+  return apiRequest(`/api/memories/${id}`, { method: "DELETE" });
+}
+
+export function clearMemories(): Promise<{ cleared: number }> {
+  return apiRequest("/api/memories/clear", { method: "POST" });
+}
+
+export function getMemorySettings(): Promise<MemorySettings> {
+  return apiRequest("/api/memories/settings");
+}
+
+export function updateMemorySettings(enabled: boolean): Promise<{ enabled: boolean }> {
+  return apiRequest("/api/memories/settings", { method: "PATCH", body: JSON.stringify({ enabled }) });
+}

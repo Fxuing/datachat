@@ -37,6 +37,8 @@ export const queryKeys = {
   opsMetrics: (days: number) => ["ops-metrics", days] as const,
   opsRetention: ["ops-retention"] as const,
   opsBackups: ["ops-backups"] as const,
+  memories: (filters: Record<string, unknown>) => ["memories", filters] as const,
+  memorySettings: ["memory-settings"] as const,
   scheduledTasks: ["scheduled-tasks"] as const,
   scheduledRuns: (id: string) => ["scheduled-runs", id] as const,
   notifications: ["notifications"] as const,

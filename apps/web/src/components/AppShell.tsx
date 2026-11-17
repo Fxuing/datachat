@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Clock, LogOut, Settings, type LucideIcon } from "lucide-react";
+import { Brain, Clock, LogOut, Settings, type LucideIcon } from "lucide-react";
 import { logout, type SessionUser } from "../lib/api";
 import { cn } from "../lib/utils";
 import { BrandMark } from "./BrandMark";
@@ -69,6 +69,19 @@ export function AppShell({ user, sidebar, topbar, children }: AppShellProps) {
           >
             <Clock className="h-4 w-4 shrink-0" />
             定时任务
+          </Link>
+          <Link
+            to="/memory"
+            aria-current={location.pathname.startsWith("/memory") ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] transition-colors",
+              location.pathname.startsWith("/memory")
+                ? "bg-brandsoft font-medium text-brandtext"
+                : "text-inksoft hover:bg-subtle hover:text-ink",
+            )}
+          >
+            <Brain className="h-4 w-4 shrink-0" />
+            我的记忆
           </Link>
         </nav>
 
