@@ -240,7 +240,7 @@ describe("memory_save tool", () => {
       title: "金额单位",
       content: "金额按万元展示",
       scope: "datasource",
-    });
+    }, undefined, undefined, undefined as never);
     expect(first.details.saved).toBe(true);
     expect(first.details.merged).toBe(false);
 
@@ -249,7 +249,7 @@ describe("memory_save tool", () => {
       title: "金额单位",
       content: "金额按万元展示，保留两位小数",
       scope: "datasource",
-    });
+    }, undefined, undefined, undefined as never);
     expect(merged.details.merged).toBe(true);
     expect(merged.details.id).toBe(first.details.id);
     expect(listUserMemories(handle.db, owner.id)[0]?.datasourceId).toBe("ds-1");
@@ -266,7 +266,7 @@ describe("memory_save tool", () => {
       kind: "fact",
       title: "API",
       content: "token=abcdef1234567890",
-    });
+    }, undefined, undefined, undefined as never);
     expect(secret.isError).toBe(true);
     expect(secret.details.code).toBe("MEMORY_SECRET_DETECTED");
 
@@ -275,7 +275,7 @@ describe("memory_save tool", () => {
       title: "偏好",
       content: "喜欢柱状图",
       core: true,
-    });
+    }, undefined, undefined, undefined as never);
     expect(core.isError).toBe(true);
     expect(core.details.code).toBe("MEMORY_CORE_INVALID");
   });
