@@ -12,6 +12,8 @@ import {
   chartTitleFromSpec,
 } from "../components/chat/ChartCard";
 import { PageSpinner } from "../components/ui/spinner";
+import { MermaidDiagram } from "../components/markdown/MermaidDiagram";
+import { mermaidSourceOf } from "../components/markdown/mermaid-source";
 import {
   ApiError,
   getPublicShare,
@@ -96,10 +98,19 @@ function PublicTable({ columns, rows }: { columns: Column[]; rows: unknown[][] }
   );
 }
 
+function PublicPre({ children }: { children?: ReactNode }) {
+  const chart = mermaidSourceOf(children);
+  return chart ? <MermaidDiagram source={chart} /> : <pre>{children}</pre>;
+}
+
 function PublicMarkdown({ content }: { content: string }) {
   return (
     <div className="prose-report text-sm leading-6 text-inksoft">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }]]}
+        components={{ pre: PublicPre }}
+      >
         {content}
       </ReactMarkdown>
     </div>

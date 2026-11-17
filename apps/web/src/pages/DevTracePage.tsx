@@ -4,9 +4,26 @@ import type { ChatResult, ChatSql } from "../lib/api";
 import type { QueryPair } from "../lib/pair-queries";
 import type { RunStatusValue } from "../lib/run-events";
 import { TurnFooter } from "../components/chat/TurnFooter";
+import { MarkdownText } from "../components/chat/MessageItem";
 import { TurnTrace } from "../components/chat/TurnTrace";
 import type { TurnTool } from "../components/chat/turn-trace-model";
 import { Button } from "../components/ui/button";
+
+const ANSWER = "近 30 天共 42 单：App 21 单、Web 14 单、门店 7 单，其中 App 环比增长 12%。";
+
+/** The done scenario also exercises the mermaid path the way a real answer would. */
+const RELATION_ANSWER = `${ANSWER}
+
+三张表的关系：
+
+\`\`\`mermaid
+erDiagram
+  channels ||--o{ orders : "channel_id"
+  users ||--o{ orders : "user_id"
+  orders ||--o{ order_items : "order_id"
+\`\`\`
+
+口径：近 30 天、已支付订单。`;
 
 const SQL: ChatSql = {
   sql: "select channel, count(*) as orders\nfrom public.orders\nwhere created_at >= now() - interval '30 days'\ngroup by channel\norder by orders desc",
@@ -240,11 +257,13 @@ export default function DevTracePage() {
             usage={DEV_USAGE}
             memories={data.memories}
           />
-          <p className="text-sm text-ink">
-            {scenario === "error"
-              ? "查询没有跑通：orders 表上没有 channel 字段，需要先确认渠道字段在哪张表。"
-              : "近 30 天共 42 单：App 21 单、Web 14 单、门店 7 单，其中 App 环比增长 12%。"}
-          </p>
+          {scenario === "error" ? (
+            <p className="text-sm text-ink">
+              查询没有跑通：orders 表上没有 channel 字段，需要先确认渠道字段在哪张表。
+            </p>
+          ) : (
+            <MarkdownText content={scenario === "done" ? RELATION_ANSWER : ANSWER} />
+          )}
           <TurnFooter
             runId={null}
             status={data.status === "ok" ? "ok" : data.status}

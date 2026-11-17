@@ -11,6 +11,8 @@ import { ConfirmDialog } from "../components/admin/ConfirmDialog";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { ShareDialog } from "../components/ShareDialog";
 import { ReportToc, useReportTocActive } from "../components/report/ReportToc";
+import { MermaidDiagram } from "../components/markdown/MermaidDiagram";
+import { mermaidSourceOf } from "../components/markdown/mermaid-source";
 import { PageSpinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
 import {
@@ -68,6 +70,10 @@ function headingProps(children: ReactNode) {
 
 function ReportMarkdown({ content }: { content: string }) {
   const components: Components = {
+    pre: ({ children }: { children?: ReactNode }) => {
+      const chart = mermaidSourceOf(children);
+      return chart ? <MermaidDiagram source={chart} /> : <pre>{children}</pre>;
+    },
     h1: ({ children }) => <h1 {...headingProps(children)}>{children}</h1>,
     h2: ({ children }) => <h2 {...headingProps(children)}>{children}</h2>,
     h3: ({ children }) => <h3 {...headingProps(children)}>{children}</h3>,
@@ -78,7 +84,7 @@ function ReportMarkdown({ content }: { content: string }) {
       <ReactMarkdown
         components={components}
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }]]}
       >
         {content}
       </ReactMarkdown>

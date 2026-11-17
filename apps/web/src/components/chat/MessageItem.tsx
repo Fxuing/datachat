@@ -19,13 +19,15 @@ import { TurnTrace } from "./TurnTrace";
 import { TurnFooter } from "./TurnFooter";
 import { RetryActions } from "./RetryActions";
 import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
+import { MermaidDiagram } from "../markdown/MermaidDiagram";
+import { mermaidSourceOf } from "../markdown/mermaid-source";
 
 export function MarkdownText({ content }: { content: string }) {
   return (
     <div className="markdown text-sm">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }]]}
         components={{
           code({ className, children, node: _node, ...props }) {
             const text = String(children).trim();
@@ -46,6 +48,8 @@ export function MarkdownText({ content }: { content: string }) {
             );
           },
           pre({ children }) {
+            const chart = mermaidSourceOf(children);
+            if (chart) return <MermaidDiagram source={chart} />;
             return <MarkdownCodeBlock>{children}</MarkdownCodeBlock>;
           },
           a({ href, children, node: _node, ...props }) {
