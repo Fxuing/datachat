@@ -174,6 +174,27 @@ docker compose up -d --build
 WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
 ```
 
+### 使用已构建镜像
+
+服务器上没有源码时，用 `docker load` + `docker compose`：
+
+```bash
+# 在构建机导出（镜像打成一个 tar）
+docker save datachat-server:0.1.0-416134f datachat-web:0.1.0-416134f   | gzip -1 > datachat-images-0.1.0-416134f.tar.gz
+
+# 在服务器
+docker load -i datachat-images-0.1.0-416134f.tar.gz
+mkdir -p /opt/datachat && cd /opt/datachat
+cp /path/to/docker-compose.yml .
+cp /path/to/deploy/env.example .env
+# 编辑 .env：APP_SECRET、ADMIN_PASSWORD、APP_ORIGIN、WEB_PORT、DATACHAT_VERSION
+docker compose up -d
+```
+
+`docker-compose.yml` 同时声明了 `image` 和 `build`：本地 `docker compose up -d --build` 会构建并打上 `${DATACHAT_VERSION:-latest}` 标签；服务器上只要该标签的镜像已 `docker load`，`docker compose up -d` 就不会重新构建。`.env` 中的 `DATACHAT_VERSION` 必须和导入的镜像标签一致。
+
+`deploy/env.example` 是部署模板；本地开发仍用根目录 `.env.example`。
+
 要点：
 
 - 数据（SQLite、artifact、skills、会话）保存在命名卷 `datachat-data`，挂载到容器 `/data`。
