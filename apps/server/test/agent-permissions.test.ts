@@ -57,20 +57,21 @@ function seedSkillDirectory(): string {
 describe("buildResourceSettings", () => {
   it("drops skills and mcp when permissions are absent", () => {
     expect(
-      buildResourceSettings({ canUseSkills: false, canUseMcp: false, skillsDir: "/tmp/skills" }),
-    ).toEqual({ additionalSkillPaths: [], mcpEnabled: false });
+      buildResourceSettings({ canUseSkills: false, canUseMcp: false, canUseMemory: false, skillsDir: "/tmp/skills" }),
+    ).toEqual({ additionalSkillPaths: [], mcpEnabled: false, memoryEnabled: false });
   });
 
   it("keeps skills and mcp when permissions are present", () => {
     expect(
-      buildResourceSettings({ canUseSkills: true, canUseMcp: true, skillsDir: "/tmp/skills" }),
-    ).toEqual({ additionalSkillPaths: ["/tmp/skills"], mcpEnabled: true });
+      buildResourceSettings({ canUseSkills: true, canUseMcp: true, canUseMemory: true, skillsDir: "/tmp/skills" }),
+    ).toEqual({ additionalSkillPaths: ["/tmp/skills"], mcpEnabled: true, memoryEnabled: true });
   });
 
   it("skips the skill path when no directory was materialized", () => {
-    expect(buildResourceSettings({ canUseSkills: true, canUseMcp: true })).toEqual({
+    expect(buildResourceSettings({ canUseSkills: true, canUseMcp: true, canUseMemory: true })).toEqual({
       additionalSkillPaths: [],
       mcpEnabled: true,
+      memoryEnabled: true,
     });
   });
 });
@@ -86,6 +87,7 @@ describe("createConversationResources permissions", () => {
       skillsDir,
       canUseSkills: canUse,
       canUseMcp: canUse,
+      canUseMemory: false,
       datasourceName: "demo",
       datasourceType: "mysql" as const,
       database: "demo",
@@ -122,7 +124,7 @@ describe("skill materialization permissions", () => {
     const skillsDir = await materializeSkillsForPermissions(
       handle.db,
       { conversationId: "c1", datasourceId: "d1", dataDir: root },
-      { skills: false, mcp: true, reports: true },
+      { skills: false, mcp: true, reports: true, memory: false },
     );
 
     expect(skillsDir).toBeUndefined();
@@ -133,7 +135,7 @@ describe("skill materialization permissions", () => {
     const skillsDir = await materializeSkillsForPermissions(
       handle.db,
       { conversationId: "c1", datasourceId: "d1", dataDir: root },
-      { skills: true, mcp: false, reports: true },
+      { skills: true, mcp: false, reports: true, memory: false },
     );
 
     expect(skillsDir).toBe(path.join(root, "skills", "c1"));
@@ -192,11 +194,13 @@ describe("ConversationRuntime permission resolution", () => {
       skills: false,
       mcp: false,
       reports: false,
+      memory: true,
     });
     expect(runtimeFor(userId).permissions).toEqual({
       skills: false,
       mcp: false,
       reports: false,
+      memory: true,
     });
   });
 
@@ -214,12 +218,12 @@ describe("ConversationRuntime permission resolution", () => {
 
   it("keeps skills and mcp for the member preset", () => {
     const userId = userWithRole("user");
-    expect(runtimeFor(userId).permissions).toEqual({ skills: true, mcp: true, reports: true });
+    expect(runtimeFor(userId).permissions).toEqual({ skills: true, mcp: true, reports: true, memory: true });
   });
 
   it("keeps skills and mcp for an admin", () => {
     const userId = userWithRole("admin");
-    expect(runtimeFor(userId).permissions).toEqual({ skills: true, mcp: true, reports: true });
+    expect(runtimeFor(userId).permissions).toEqual({ skills: true, mcp: true, reports: true, memory: true });
   });
 
   it("fails closed for synthetic users without a database row", () => {
@@ -232,6 +236,6 @@ describe("ConversationRuntime permission resolution", () => {
         throw new Error("session creation is not part of this test");
       },
     });
-    expect(runtime.permissions).toEqual({ skills: false, mcp: false, reports: false });
+    expect(runtime.permissions).toEqual({ skills: false, mcp: false, reports: false, memory: false });
   });
 });

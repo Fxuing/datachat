@@ -1,6 +1,7 @@
 import type { AgentSession, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { RunEvent } from "@datachat/shared";
 import { resolveUserAccess } from "../auth/access.js";
+import { isMemoryEnabled } from "../db/repositories/user-memories.js";
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import {
@@ -74,12 +75,13 @@ export function resolveConversationPermissions(
   userId: string,
 ): ConversationPermissions {
   const user = findUserById(db, userId);
-  if (!user) return { skills: false, mcp: false, reports: false };
+  if (!user) return { skills: false, mcp: false, reports: false, memory: false };
   const access = resolveUserAccess(db, user);
   return {
     skills: access.permissions.has("skill.use"),
     mcp: access.permissions.has("mcp.use"),
     reports: access.permissions.has("report.create"),
+    memory: isMemoryEnabled(db, user.id),
   };
 }
 
@@ -541,6 +543,7 @@ export class RuntimeManager {
           skillsDir,
           canUseSkills: permissions.skills,
           canUseMcp: permissions.mcp,
+          canUseMemory: permissions.memory,
           canCreateReports: permissions.reports,
           pools: this.pools,
           artifacts: this.artifacts,

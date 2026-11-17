@@ -11,6 +11,7 @@ import {
 import type { Db } from "../db/client.js";
 import type { AppConfig } from "../config.js";
 import { loadMcpFor } from "./mcp.js";
+import { createMemoryExtension } from "../memory/recall.js";
 import { renderSystemPrompt } from "./prompt.js";
 
 /** Functional permissions that shape the agent's resource loader. */
@@ -18,6 +19,7 @@ export interface ConversationPermissions {
   skills: boolean;
   mcp: boolean;
   reports: boolean;
+  memory: boolean;
 }
 
 export interface ConversationResourcesInput {
@@ -29,6 +31,7 @@ export interface ConversationResourcesInput {
   skillsDir?: string;
   canUseSkills: boolean;
   canUseMcp: boolean;
+  canUseMemory: boolean;
   datasourceName: string;
   datasourceType: "mysql" | "postgres";
   database: string;
@@ -37,6 +40,7 @@ export interface ConversationResourcesInput {
 export interface ResourceSettings {
   additionalSkillPaths: string[];
   mcpEnabled: boolean;
+  memoryEnabled: boolean;
 }
 
 /**
@@ -46,12 +50,14 @@ export interface ResourceSettings {
 export function buildResourceSettings(input: {
   canUseSkills: boolean;
   canUseMcp: boolean;
+  canUseMemory: boolean;
   skillsDir?: string;
 }): ResourceSettings {
   return {
     additionalSkillPaths:
       input.canUseSkills && input.skillsDir ? [input.skillsDir] : [],
     mcpEnabled: input.canUseMcp,
+    memoryEnabled: input.canUseMemory,
   };
 }
 
@@ -104,6 +110,29 @@ export async function createConversationResources(
   );
   const eventBus = createEventBus();
   const settings = buildResourceSettings(input);
+  const extensionFactories = [];
+  if (settings.mcpEnabled) {
+    extensionFactories.push(
+      createMcpExtension({
+        loadConfig: () =>
+          loadMcpFor({
+            db: input.db,
+            config: input.config,
+            datasourceId: input.datasourceId,
+          }),
+      }),
+    );
+  }
+  if (settings.memoryEnabled) {
+    extensionFactories.push(
+      createMemoryExtension({
+        db: input.db,
+        userId: input.userId,
+        datasourceId: input.datasourceId,
+        datasourceName: input.datasourceName,
+      }),
+    );
+  }
   const loader = new DefaultResourceLoader({
     cwd: workspaceDir,
     agentDir: input.config.agentDir,
@@ -120,20 +149,7 @@ export async function createConversationResources(
       datasourceType: input.datasourceType,
       database: input.database,
     }),
-    ...(settings.mcpEnabled
-      ? {
-          extensionFactories: [
-            createMcpExtension({
-              loadConfig: () =>
-                loadMcpFor({
-                  db: input.db,
-                  config: input.config,
-                  datasourceId: input.datasourceId,
-                }),
-            }),
-          ],
-        }
-      : {}),
+    ...(extensionFactories.length > 0 ? { extensionFactories } : {}),
   });
 
   await loader.reload();

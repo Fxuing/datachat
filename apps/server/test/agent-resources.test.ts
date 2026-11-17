@@ -39,6 +39,7 @@ describe("conversation resources", () => {
       skillsDir: path.join(root, "skills"),
       canUseSkills: true,
       canUseMcp: true,
+      canUseMemory: false,
       datasourceName: "demo",
       datasourceType: "mysql",
       database: "demo",

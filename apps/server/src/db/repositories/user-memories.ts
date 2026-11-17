@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, like, or, sql } from "drizzle-orm";
 import type { Db } from "../client.js";
 import { runs, userMemories, userMemorySettings } from "../schema.js";
 import { readSettingRows } from "./settings.js";
@@ -235,8 +235,11 @@ export function clearUserMemories(db: Db, userId: string): number {
 export function listInjectionCandidates(
   db: Db,
   userId: string,
-  datasourceId: string,
+  datasourceId?: string | null,
 ): UserMemoryRow[] {
+  const scope = datasourceId
+    ? or(isNull(userMemories.datasourceId), eq(userMemories.datasourceId, datasourceId))
+    : isNull(userMemories.datasourceId);
   return db
     .select()
     .from(userMemories)
@@ -244,8 +247,8 @@ export function listInjectionCandidates(
       and(
         eq(userMemories.userId, userId),
         eq(userMemories.enabled, 1),
-        sql`${userMemories.confidence} >= 60`,
-        or(isNull(userMemories.datasourceId), eq(userMemories.datasourceId, datasourceId))!,
+        gte(userMemories.confidence, 60),
+        scope,
       ),
     )
     .limit(300)
@@ -344,4 +347,29 @@ function isUniqueViolation(error: unknown): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === "SQLITE_CONSTRAINT_UNIQUE"
   );
+}
+
+/** Core memories eligible for the always-on block (see spec §7.1). */
+export function listCoreMemories(
+  db: Db,
+  userId: string,
+  datasourceId?: string | null,
+): UserMemoryRow[] {
+  const scope = datasourceId
+    ? or(isNull(userMemories.datasourceId), eq(userMemories.datasourceId, datasourceId))
+    : isNull(userMemories.datasourceId);
+  return db
+    .select()
+    .from(userMemories)
+    .where(
+      and(
+        eq(userMemories.userId, userId),
+        eq(userMemories.enabled, 1),
+        eq(userMemories.core, 1),
+        gte(userMemories.confidence, 60),
+        scope,
+      ),
+    )
+    .orderBy(asc(userMemories.updatedAt))
+    .all();
 }

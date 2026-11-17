@@ -306,6 +306,7 @@ describe("createConversationResources", () => {
       skillsDir,
       canUseSkills: true,
       canUseMcp: true,
+      canUseMemory: false,
       datasourceName: "销售库",
       datasourceType: "mysql",
       database: "sales",

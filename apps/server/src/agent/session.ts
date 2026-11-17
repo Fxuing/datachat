@@ -32,6 +32,7 @@ export interface CreateConversationSessionInput {
   skillsDir?: string;
   canUseSkills: boolean;
   canUseMcp: boolean;
+  canUseMemory: boolean;
   canCreateReports: boolean;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
@@ -78,6 +79,7 @@ export async function createConversationSession(
     skillsDir: input.skillsDir,
     canUseSkills: input.canUseSkills,
     canUseMcp: input.canUseMcp,
+    canUseMemory: input.canUseMemory,
     datasourceName: datasource.name,
     datasourceType: datasource.type,
     database: datasource.database,
