@@ -10,7 +10,7 @@ import {
   type ConversationRow,
 } from "../db/repositories/conversations.js";
 import { appendRunEvent } from "../db/repositories/run-events.js";
-import { markRun } from "../db/repositories/runs.js";
+import { findRun, markRun } from "../db/repositories/runs.js";
 import { findUserById } from "../db/repositories/users.js";
 import type { ArtifactStore } from "../services/artifacts.js";
 import type { PoolRegistry } from "./datasource/pool.js";
@@ -20,12 +20,15 @@ import {
   type EventBridge,
   type UsageTotals,
 } from "./event-bridge.js";
-import { createAgentModelRuntime } from "./model-runtime.js";
+import { createAgentModelRuntime, resolveChatModel } from "./model-runtime.js";
 import { QuestionBridge, type AskUserAnswerInput, type AskUserAnswerVerdict } from "./question-bridge.js";
 import type { ConversationPermissions } from "./resources.js";
 import { createConversationSession } from "./session.js";
 import { materializeSkills, type MaterializeSkillsInput } from "./skills.js";
 import type { AgentToolContext } from "./tools/context.js";
+import { enabledProviderIds } from "../services/llm-catalog.js";
+import { extractMemoriesForRun } from "../memory/extraction.js";
+import { createMemoryGenerator } from "../memory/generate.js";
 
 const DISPOSE_ABORT_TIMEOUT_MS = 5_000;
 
@@ -58,6 +61,8 @@ export interface ConversationRuntimeOptions {
   createSession: ConversationSessionFactory;
   /** Resolved by the runtime from the owner's roles when omitted. */
   permissions?: ConversationPermissions;
+  /** Runs in the background after a successful run; failures are swallowed. */
+  onRunComplete?: (runId: string) => void;
   now?: () => number;
 }
 
@@ -106,6 +111,7 @@ export class ConversationRuntime {
   private readonly userId: string;
   private readonly bus: RunEventBus;
   private readonly createSession: ConversationSessionFactory;
+  private readonly onRunComplete: ((runId: string) => void) | undefined;
   private readonly now: () => number;
   private readonly sessionPermissions: ConversationPermissions;
 
@@ -132,6 +138,7 @@ export class ConversationRuntime {
     this.userId = options.userId;
     this.bus = options.bus;
     this.createSession = options.createSession;
+    this.onRunComplete = options.onRunComplete;
     this.now = options.now ?? Date.now;
     this.sessionPermissions =
       options.permissions ?? resolveConversationPermissions(options.db, options.userId);
@@ -411,6 +418,13 @@ export class ConversationRuntime {
       payload: error ? { status, error } : { status },
     });
     this.finalizeRun(runId, status, error, usage);
+    if (status === "ok") {
+      try {
+        this.onRunComplete?.(runId);
+      } catch {
+        // Background maintenance must never affect the run result.
+      }
+    }
   }
 
   private finalizeRun(
@@ -485,6 +499,8 @@ export interface RuntimeManagerOptions {
   getModelRuntime?: () => Promise<ModelRuntime>;
   bus?: RunEventBus;
   createSession?: ConversationSessionFactory;
+  /** Defaults to background memory extraction; injectable for tests. */
+  onRunComplete?: (runId: string) => void;
   maxRuntimes?: number;
   idleMs?: number;
   sweepIntervalMs?: number;
@@ -505,6 +521,7 @@ export class RuntimeManager {
   private readonly artifacts: ArtifactStore;
   private readonly modelRuntimeFactory: (() => Promise<ModelRuntime>) | undefined;
   private readonly createSession: ConversationSessionFactory;
+  private readonly onRunComplete: ((runId: string) => void) | undefined;
   private readonly maxRuntimes: number;
   private readonly idleMs: number;
   private readonly now: () => number;
@@ -521,6 +538,13 @@ export class RuntimeManager {
     this.artifacts = options.artifacts;
     this.modelRuntimeFactory = options.getModelRuntime;
     this.bus = options.bus ?? new RunEventBus();
+    this.onRunComplete =
+      options.onRunComplete ??
+      ((runId) => {
+        void this.extractMemories(runId).catch((error: unknown) => {
+          console.warn("memory extraction failed", error);
+        });
+      });
     this.createSession =
       options.createSession ??
       (async ({ conversation, userId, permissions, questionBridge }) => {
@@ -552,12 +576,31 @@ export class RuntimeManager {
       });
     this.maxRuntimes = options.maxRuntimes ?? 20;
     this.idleMs = options.idleMs ?? 30 * 60_000;
+    this.onRunComplete = options.onRunComplete;
     this.now = options.now ?? Date.now;
     const sweepIntervalMs = options.sweepIntervalMs ?? 60_000;
     if (sweepIntervalMs > 0) {
       this.sweeper = setInterval(() => this.sweepIdle(), sweepIntervalMs);
       this.sweeper.unref?.();
     }
+  }
+
+  private async extractMemories(runId: string): Promise<void> {
+    const run = findRun(this.db, runId);
+    if (!run) return;
+    const conversation = findConversation(this.db, run.conversationId);
+    if (!conversation || !isMemoryEnabled(this.db, run.userId)) return;
+    const modelId = run.modelId ?? conversation.modelId ?? "";
+    if (!modelId) return;
+    const runtime = await this.getModelRuntime();
+    const model = resolveChatModel(runtime, modelId, enabledProviderIds(this.db));
+    if (!model) return;
+    await extractMemoriesForRun({
+      db: this.db,
+      runId,
+      generate: createMemoryGenerator({ config: this.config, runtime, model }),
+      log: (event, data) => console.info(JSON.stringify({ event, ...data })),
+    });
   }
 
   async getOrCreate(conversation: ConversationRow, userId: string): Promise<ConversationRuntime> {
@@ -585,6 +628,7 @@ export class RuntimeManager {
       userId,
       bus: this.bus,
       createSession: this.createSession,
+      onRunComplete: this.onRunComplete,
       now: this.now,
     });
     this.runtimes.set(conversation.id, runtime);

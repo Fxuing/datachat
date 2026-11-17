@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { Db } from "../db/client.js";
+import { findActiveRunForConversation } from "../db/repositories/runs.js";
 import {
   upsertUserMemory,
   type MemoryKind,
@@ -77,6 +78,11 @@ export function createMemorySaveTool(
         });
       }
 
+      const sourceRunId =
+        ctx.sourceRunId ??
+        (ctx.sourceConversationId
+          ? findActiveRunForConversation(ctx.db, ctx.sourceConversationId)?.id
+          : undefined);
       const { memory, merged } = upsertUserMemory(ctx.db, {
         userId: ctx.userId,
         kind,
@@ -87,7 +93,7 @@ export function createMemorySaveTool(
         core: params.core === true,
         confidence: params.confidence ?? 80,
         sourceConversationId: ctx.sourceConversationId,
-        sourceRunId: ctx.sourceRunId,
+        sourceRunId,
       });
       const details: MemorySaveDetails = { saved: true, id: memory.id, merged };
       return textResult(
