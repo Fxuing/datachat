@@ -47,6 +47,47 @@ describe("auth", () => {
     await app.close();
   });
 
+  it("marks the session cookie Secure only for https origins", async () => {
+    const httpApp = await buildApp({
+      config: { ...config, appOrigins: ["http://65.176.4.70:8080"] },
+      db,
+      enableRateLimit: false,
+    });
+    const httpLogin = await httpApp.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "alice", password: "correct-password" },
+    });
+    expect(String(httpLogin.headers["set-cookie"])).not.toContain("Secure");
+    await httpApp.close();
+
+    const httpsApp = await buildApp({
+      config: { ...config, appOrigins: ["https://chat.example.com"] },
+      db,
+      enableRateLimit: false,
+    });
+    const httpsLogin = await httpsApp.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "alice", password: "correct-password" },
+    });
+    expect(String(httpsLogin.headers["set-cookie"])).toContain("Secure");
+    await httpsApp.close();
+
+    const forcedOffApp = await buildApp({
+      config: { ...config, appOrigins: ["https://chat.example.com"], cookieSecure: false },
+      db,
+      enableRateLimit: false,
+    });
+    const forcedLogin = await forcedOffApp.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "alice", password: "correct-password" },
+    });
+    expect(String(forcedLogin.headers["set-cookie"])).not.toContain("Secure");
+    await forcedOffApp.close();
+  });
+
   it("rejects wrong password and missing session", async () => {
     const app = await buildApp({ config, db, enableRateLimit: false });
     const bad = await app.inject({

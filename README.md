@@ -40,6 +40,9 @@ cp .env.example .env
 | `SILICONFLOW_BASE_URL` | 否 | 默认 `https://api.siliconflow.cn/v1` |
 | `ADMIN_USERNAME` | 否 | 首个管理员用户名，默认 `admin` |
 | `ADMIN_PASSWORD` | 首次启动必填 | ≥ 8 位真实密码；仅当数据库中没有管理员时用于创建，之后修改无效 |
+| `APP_ORIGIN` | 否 | 浏览器访问的完整 origin（含端口，多个用逗号分隔）；不匹配会被 CSRF 拒绝 |
+| `COOKIE_SECURE` | 否 | 会话 Cookie 是否带 `Secure`；留空时按 `APP_ORIGIN` 自动判断（http→false，https→true） |
+| `TRUST_PROXY` | 否 | 位于 nginx 后设为 `true`，用于读取 `X-Forwarded-*` |
 
 > 空数据库且未设置 `ADMIN_PASSWORD` 时服务会拒绝启动。该密码只用于 bootstrap，后续管理请使用管理接口。
 
@@ -200,7 +203,8 @@ docker compose up -d
 - 数据（SQLite、artifact、skills、会话）保存在命名卷 `datachat-data`，挂载到容器 `/data`。
 - `web` 对外暴露 80，默认映射到主机 `5173`（`WEB_PORT` 可改）；`server` 不直接暴露，由 nginx 反代。
 - SSE 已在 `deploy/nginx.conf` 关闭缓冲并把读超时调到 3600s，长查询不会被 nginx 截断。
-- 生产环境务必把 `APP_ORIGIN` 设为实际访问地址（多个用逗号分隔），否则登录会被 CSRF 校验拒绝。
+- 生产环境务必把 `APP_ORIGIN` 设为实际访问地址（**包含端口**，如 `http://65.176.4.70:8080`，多个用逗号分隔），否则登录会被 CSRF 校验拒绝。
+- 直接用 IP + HTTP 访问时，`APP_ORIGIN` 用 `http://...`，会话 Cookie 会自动不带 `Secure`；如果前面有 TLS，改成 `https://...`（或显式设置 `COOKIE_SECURE=true`）。
 - 镜像内保留完整 `node_modules`（含 devDependencies），优先保证 better-sqlite3 / argon2 原生模块可用；后续可用 `pnpm deploy` 裁剪体积。
 - 首次启动会自动执行数据库迁移并创建管理员；`ADMIN_PASSWORD` 只在初始化空卷时生效，已有卷改密码请用用户管理。
 - 已在 Docker 29 + Compose v5 实跑：镜像构建、健康检查、nginx 反代、登录、重启与命名卷持久化均通过。

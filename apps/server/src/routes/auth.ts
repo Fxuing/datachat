@@ -65,10 +65,15 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions): 
         targetUserId: user.id,
         ip: request.ip,
       });
+      const secure =
+        config.cookieSecure ??
+        (config.appOrigins.length > 0
+          ? config.appOrigins.every((origin) => origin.startsWith("https://"))
+          : request.protocol === "https");
       reply.setCookie(SESSION_COOKIE, token, {
         httpOnly: true,
         sameSite: "lax",
-        secure: config.isProduction,
+        secure,
         path: "/",
         maxAge: 12 * 60 * 60,
       });

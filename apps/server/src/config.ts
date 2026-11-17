@@ -65,6 +65,14 @@ const envSchema = z
         .default("false")
         .transform((value) => value === "true" || value === "1"),
     ),
+    /** Force the session cookie Secure flag; defaults to https when APP_ORIGIN is configured. */
+    COOKIE_SECURE: z.preprocess(
+      emptyToUndefined,
+      z
+        .enum(["true", "false", "1", "0"])
+        .transform((value) => value === "true" || value === "1")
+        .optional(),
+    ),
     MCP_ALLOW_PRIVATE_HOSTS: z.preprocess(
       emptyToUndefined,
       z
@@ -110,6 +118,8 @@ export interface AppConfig {
   adminUsername: string;
   adminPassword?: string;
   isProduction: boolean;
+  /** Explicit Secure flag for the session cookie; undefined means derive per request. */
+  cookieSecure?: boolean;
   queryMaxRows: number;
   queryPreviewRows: number;
   queryTimeoutMs: number;
@@ -157,6 +167,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     adminUsername: parsed.ADMIN_USERNAME,
     adminPassword: parsed.ADMIN_PASSWORD,
     isProduction: parsed.NODE_ENV === "production",
+    cookieSecure: parsed.COOKIE_SECURE,
     queryMaxRows: parsed.QUERY_MAX_ROWS,
     queryPreviewRows: parsed.QUERY_PREVIEW_ROWS,
     queryTimeoutMs: parsed.QUERY_TIMEOUT_MS,

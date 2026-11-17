@@ -91,6 +91,16 @@ describe("loadConfig", () => {
     ).toBe(false);
   });
 
+  it("parses COOKIE_SECURE overrides", () => {
+    expect(loadConfig({ APP_SECRET: validSecret }).cookieSecure).toBeUndefined();
+    expect(
+      loadConfig({ APP_SECRET: validSecret, COOKIE_SECURE: "false" }).cookieSecure,
+    ).toBe(false);
+    expect(
+      loadConfig({ APP_SECRET: validSecret, COOKIE_SECURE: "true" }).cookieSecure,
+    ).toBe(true);
+  });
+
   it("parses a minimal valid env", () => {
     const config = loadConfig({ APP_SECRET: validSecret });
     expect(config).toMatchObject({
