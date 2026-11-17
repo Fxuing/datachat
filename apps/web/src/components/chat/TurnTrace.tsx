@@ -158,10 +158,9 @@ function thinkingStep({
     reasoning: true,
     status: streaming ? "running" : "done",
     detail: <ThinkingDetail text={text} live={streaming} />,
-    // Always folded: the summary line updates in place, and a streaming detail
-    // body would make the list jump around while the model types. One click
-    // still opens the full text.
-    defaultOpen: false,
+    // Open while this stretch is still being written so the reader can see
+    // progress, then fold once it settles or the next stretch starts.
+    defaultOpen: streaming,
   };
 }
 

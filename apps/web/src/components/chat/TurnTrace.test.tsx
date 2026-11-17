@@ -49,6 +49,12 @@ function expandedNames() {
   return screen.getAllByTestId("trace-line").map((line) => line.textContent ?? "");
 }
 
+function lineTitles() {
+  return screen
+    .getAllByTestId("trace-line")
+    .map((line) => line.querySelector("button")?.textContent ?? "");
+}
+
 describe("TurnTrace", () => {
   it("folds a settled turn into one summary line", async () => {
     const user = userEvent.setup();
@@ -157,18 +163,34 @@ describe("TurnTrace", () => {
     expect(screen.queryByText("查询结果")).not.toBeInTheDocument();
   });
 
-  it("updates the reasoning line in place while it streams", () => {
+  it("opens the live thought so its newest line stays visible", () => {
     render(<TurnTrace status="running" thinking="先确认表结构" />);
 
     expect(screen.getByRole("button", { name: /本轮执行中 1 步/ })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
-    expect(expandedNames()[0]).toContain("先确认表结构");
+    const row = screen.getAllByTestId("trace-line")[0]!;
+    expect(within(row).getByRole("button")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("turn-thinking")).toHaveTextContent("先确认表结构");
     expect(screen.queryByText("思考中")).not.toBeInTheDocument();
-    // Folded even while live: a detail body that grows on every delta makes the
-    // page jump around, so the one-line summary is all that moves.
-    expect(screen.queryByTestId("turn-thinking")).not.toBeInTheDocument();
+  });
+
+  it("folds a thought stretch once the next one starts", () => {
+    const { rerender } = render(
+      <TurnTrace status="running" thinkingSegments={["第一段推理。"]} />,
+    );
+
+    const first = screen.getAllByTestId("trace-line")[0]!;
+    expect(within(first).getByRole("button")).toHaveAttribute("aria-expanded", "true");
+
+    rerender(
+      <TurnTrace status="running" thinkingSegments={["第一段推理。", "第二段推理。"]} />,
+    );
+    const rows = screen.getAllByTestId("trace-line");
+    expect(within(rows[0]!).getByRole("button")).toHaveAttribute("aria-expanded", "false");
+    expect(within(rows[1]!).getByRole("button")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("turn-thinking")).toHaveTextContent("第二段推理。");
   });
 
   it("summarises each reasoning stretch on its own row", async () => {
@@ -207,10 +229,8 @@ describe("TurnTrace", () => {
     expect(detail.scrollTop).toBe(0);
   });
 
-  it("follows the bottom only while the stretch is still being written", async () => {
-    const user = userEvent.setup();
+  it("follows the bottom only while the stretch is still being written", () => {
     const { rerender } = render(<TurnTrace status="running" thinking="先看表结构" />);
-    await user.click(screen.getByRole("button", { name: /先看表结构/ }));
 
     const detail = screen.getByTestId("turn-thinking");
     Object.defineProperty(detail, "scrollHeight", { value: 900, configurable: true });
@@ -218,6 +238,9 @@ describe("TurnTrace", () => {
     rerender(<TurnTrace status="running" thinking="先看表结构，再核对字段口径。" />);
 
     expect(detail.scrollTop).toBe(900);
+
+    rerender(<TurnTrace status="ok" thinking="先看表结构，再核对字段口径。" />);
+    expect(screen.queryByTestId("turn-thinking")).not.toBeInTheDocument();
   });
 
   it("lets the row fill its width instead of stopping at the first sentence", async () => {
@@ -250,10 +273,10 @@ describe("TurnTrace", () => {
     expect(lines[2]).toContain("表里没有 channel 字段，换成渠道维度");
     expect(expandedNames()[2]).toContain("换成渠道维度");
 
-    // Every reasoning stretch stays folded, live or not; the line carries the gist.
+    // Finished stretches fold; only the one still being written stays open.
     const rows = screen.getAllByTestId("trace-line");
     expect(within(rows[0]!).getByRole("button")).toHaveAttribute("aria-expanded", "false");
-    expect(within(rows[2]!).getByRole("button")).toHaveAttribute("aria-expanded", "false");
+    expect(within(rows[2]!).getByRole("button")).toHaveAttribute("aria-expanded", "true");
   });
 
   it("keeps the reasoning folded and unchanged when the run ends", async () => {
@@ -266,7 +289,7 @@ describe("TurnTrace", () => {
       />,
     );
 
-    const lines = expandedNames();
+    const lines = lineTitles();
     expect(lines[0]).toContain("先确认表结构");
     expect(lines[2]).toContain("再统计渠道");
 
@@ -277,7 +300,7 @@ describe("TurnTrace", () => {
     // the reasoning never reorganises itself under the reader.
     expect(screen.queryAllByTestId("trace-line")).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: /本轮完成/ }));
-    expect(expandedNames()).toEqual(lines);
+    expect(lineTitles()).toEqual(lines);
   });
 
   it("links a finished report line to the report", async () => {
