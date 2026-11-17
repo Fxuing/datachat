@@ -11,6 +11,7 @@ import { adminMcpRoutes } from "./routes/admin-mcp.js";
 import { adminAuditRoutes } from "./routes/admin-audit.js";
 import { adminSettingsRoutes } from "./routes/admin-settings.js";
 import { datasourceRoutes } from "./routes/datasources.js";
+import { skillRoutes } from "./routes/skills.js";
 import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
 import { modelsRoutes } from "./routes/models.js";
 import { conversationRoutes } from "./routes/conversations.js";
@@ -158,6 +159,7 @@ export async function buildApp({
     injectedScheduledTasks ??
     createScheduledTaskService({ db, config, pools, artifacts, runtime: agentRuntime });
   await app.register(datasourceRoutes, { config, db, pools });
+  await app.register(skillRoutes, { db });
   await app.register(datasourceSchemaRoutes, { config, db, pools });
   await app.register(modelsRoutes, { config, db, getRuntime: () => modelRuntime.get() });
   await app.register(conversationRoutes, {

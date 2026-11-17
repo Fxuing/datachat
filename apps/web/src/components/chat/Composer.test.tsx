@@ -61,6 +61,25 @@ describe("Composer", () => {
     expect(onSend).toHaveBeenCalledWith("本月收入多少", "monthly-revenue");
   });
 
+  it("opens the skill menu after text has already been typed", async () => {
+    const { onSend } = renderComposer({
+      skills: [{ name: "churn", description: "流失分析", scope: "global" }],
+    });
+    const browser = userEvent.setup();
+
+    const textarea = screen.getByLabelText("输入问题");
+    await browser.type(textarea, "请分析 ");
+    await browser.type(textarea, "/churn");
+    expect(screen.getByRole("listbox", { name: "选择技能" })).toBeInTheDocument();
+
+    await browser.click(screen.getByRole("option", { name: /churn/ }));
+    expect(textarea).toHaveValue("请分析 ");
+
+    await browser.type(textarea, "近三个月流失");
+    await browser.click(screen.getByRole("button", { name: "发送" }));
+    expect(onSend).toHaveBeenCalledWith("请分析 近三个月流失", "churn");
+  });
+
   it("removes a selected skill before sending", async () => {
     const { onSend } = renderComposer({
       skills: [{ name: "churn", description: "流失分析", scope: "global" }],

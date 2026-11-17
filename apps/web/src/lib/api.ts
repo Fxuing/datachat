@@ -405,6 +405,12 @@ export function listConversationSkills(
   return apiRequest(`/api/conversations/${conversationId}/skills`);
 }
 
+export function listDatasourceSkills(
+  datasourceId: string,
+): Promise<{ skills: ConversationSkill[] }> {
+  return apiRequest(`/api/datasources/${datasourceId}/skills`);
+}
+
 export function sendMessage(
   conversationId: string,
   content: string,

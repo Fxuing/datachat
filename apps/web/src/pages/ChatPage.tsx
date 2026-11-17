@@ -22,6 +22,7 @@ import {
   getConversation,
   listDatasources,
   listConversationSkills,
+  listDatasourceSkills,
   listModels,
   retryRun,
   sendMessage,
@@ -30,6 +31,7 @@ import {
   type ConversationDetail,
 } from "../lib/api";
 import { queryKeys } from "../lib/query";
+import { applyContextWindow } from "../lib/context-usage";
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message;
@@ -70,10 +72,17 @@ export default function ChatPage() {
     queryKey: queryKeys.models,
     queryFn: listModels,
   });
+  const skillsDatasourceId =
+    conversationQuery.data?.conversation?.datasourceId ?? draftDatasourceId;
   const skillsQuery = useQuery({
-    queryKey: queryKeys.conversationSkills(conversationId ?? ""),
-    queryFn: () => listConversationSkills(conversationId as string),
-    enabled: Boolean(conversationId) && canUseSkills,
+    queryKey: conversationId
+      ? queryKeys.conversationSkills(conversationId)
+      : queryKeys.datasourceSkills(skillsDatasourceId ?? ""),
+    queryFn: () =>
+      conversationId
+        ? listConversationSkills(conversationId)
+        : listDatasourceSkills(skillsDatasourceId as string),
+    enabled: canUseSkills && Boolean(conversationId || skillsDatasourceId),
     staleTime: 60_000,
   });
 
@@ -109,12 +118,12 @@ export default function ChatPage() {
   });
 
   const startMutation = useMutation({
-    mutationFn: async (input: { content: string; datasourceId: string }) => {
+    mutationFn: async (input: { content: string; datasourceId: string; skill?: string }) => {
       const { conversation: created } = await createConversation({
         datasourceId: input.datasourceId,
       });
       try {
-        const { runId } = await sendMessage(created.id, input.content);
+        const { runId } = await sendMessage(created.id, input.content, input.skill);
         return { conversationId: created.id, runId };
       } catch (error) {
         await deleteConversation(created.id).catch(() => undefined);
@@ -125,11 +134,11 @@ export default function ChatPage() {
       setFailedSend(null);
       queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
       navigate(`/chat/${createdId}`, {
-        state: { pendingRun: { runId, content: input.content } },
+        state: { pendingRun: { runId, content: input.content, skill: input.skill } },
       });
     },
     onError: (error, input) => {
-      setFailedSend({ content: input.content });
+      setFailedSend({ content: input.content, skill: input.skill });
       setSendError(errorMessage(error, "创建会话失败，请稍后重试"));
     },
   });
@@ -271,7 +280,7 @@ export default function ChatPage() {
         return;
       }
       setSendError(null);
-      await startMutation.mutateAsync({ content, datasourceId: draftDatasourceId });
+      await startMutation.mutateAsync({ content, datasourceId: draftDatasourceId, skill });
       return;
     }
     setSendError(null);
@@ -304,6 +313,11 @@ export default function ChatPage() {
       ? "error"
       : "ready";
   const currentModelId = conversation?.modelId ?? models?.defaultId ?? "";
+  const selectedModel = models?.models.find((model) => model.id === currentModelId);
+  const contextUsage = applyContextWindow(
+    stream.state.contextUsage ?? conversationQuery.data?.contextUsage ?? null,
+    selectedModel?.contextWindow,
+  );
   const topbar = (
     <>
       <div className="flex min-w-0 items-center gap-2">
@@ -469,7 +483,7 @@ export default function ChatPage() {
           thinkingLevel={conversation?.thinkingLevel ?? "off"}
           skills={canUseSkills ? skillsQuery.data?.skills ?? [] : []}
           readOnlyReason={canUseChat ? undefined : "当前角色没有对话权限，请联系管理员"}
-          contextUsage={stream.state.contextUsage ?? conversationQuery.data?.contextUsage ?? null}
+          contextUsage={contextUsage}
           onModelChange={(modelId) => modelMutation.mutate(modelId)}
           onThinkingChange={(level) => thinkingMutation.mutate(level)}
           onSend={handleSend}

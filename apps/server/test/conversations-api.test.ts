@@ -836,6 +836,14 @@ description: 月度收入口径
         { name: "churn", description: "流失分析", scope: "datasource" },
       ]);
 
+      const byDatasource = await app.inject({
+        method: "GET",
+        url: `/api/datasources/${datasourceId}/skills`,
+        cookies: { dc_session: cookie },
+      });
+      expect(byDatasource.statusCode).toBe(200);
+      expect(byDatasource.json().skills).toEqual(listed.json().skills);
+
       const unknown = await app.inject({
         method: "POST",
         url: `/api/conversations/${conversationId}/messages`,

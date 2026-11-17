@@ -71,8 +71,11 @@ export function Composer({
   const canType = conversationReady && !readOnly;
   const trimmed = text.trim();
 
-  const slashMatch = /^\/([^\s]*)$/.exec(text);
-  const slashQuery = slashMatch?.[1]?.toLowerCase() ?? "";
+  const slashMatch = /(^|\s)\/([^\s]*)$/.exec(text);
+  const slashQuery = slashMatch?.[2]?.toLowerCase() ?? "";
+  const slashIndex = slashMatch
+    ? slashMatch.index + slashMatch[0].lastIndexOf("/")
+    : -1;
   const menuOpen =
     Boolean(slashMatch) && !slashDismissed && canType && !active && skills.length > 0;
   const filtered = menuOpen
@@ -100,7 +103,7 @@ export function Composer({
 
   const chooseSkill = (skill: ConversationSkill) => {
     setSelectedSkill(skill);
-    setText("");
+    setText(slashIndex >= 0 ? text.slice(0, slashIndex) : "");
     setSlashDismissed(false);
     setActiveIndex(0);
     requestAnimationFrame(() => textareaRef.current?.focus());
