@@ -276,7 +276,7 @@ docker compose up -d
 - 数据库集成测试默认跳过；设置 `RUN_DB_TESTS=1` 并准备 Docker 后运行。
 - 尚无 Playwright E2E；运行指标、保留策略与备份恢复已实现，详见 `docs/roadmap.md`。
 - 备份为本地目录，不含 `.env`；异地/对象存储备份与恢复演练尚未实现。
-- RBAC 仅到角色与数据源级；行级/列级数据权限尚未实现。
+- RBAC 仅到角色与数据源级；行级/列级数据权限尚未实现。部门与行级权限已完成设计草案，见 [`docs/superpowers/specs/2026-11-17-department-data-scope-design.md`](./docs/superpowers/specs/2026-11-17-department-data-scope-design.md)。
 - 定时任务为单机内存调度，不支持分布式执行、IM 推送或任务共享；执行结果只保存在报告与站内信中。
 
 ## 上下文压缩与使用率
