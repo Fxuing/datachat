@@ -100,6 +100,9 @@ describe("ScheduledTasksPage", () => {
   });
 
   it("creates a task from the dialog", async () => {
+    // The dialog defaults to whatever timezone the browser reports, so a literal
+    // "Asia/Shanghai" only holds on a machine set to CST — CI runs in UTC.
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const user = userEvent.setup();
     renderPage();
     await screen.findByText("每日订单");
@@ -117,7 +120,7 @@ describe("ScheduledTasksPage", () => {
           prompt: "统计上周的销售额",
           datasourceId: "ds-1",
           cronExpression: "0 9 * * *",
-          timezone: "Asia/Shanghai",
+          timezone: browserTimezone,
         }),
       ),
     );
