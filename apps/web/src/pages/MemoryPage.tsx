@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brain, Filter, Pencil, Plus, Search, Star, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   clearMemories,
   createMemory,
@@ -157,9 +158,13 @@ export default function MemoryPage() {
       user={meQuery.data?.user ?? { id: "", username: "", displayName: null, role: "user", status: "active" }}
       sidebar={
         <div className="p-2">
-          <a href="/chat" className="block rounded-lg px-2 py-1.5 text-[13px] text-inksoft hover:bg-subtle hover:text-ink">
+          {/* Router link: a plain anchor would reload the whole app. */}
+          <Link
+            to="/chat"
+            className="block rounded-lg px-2 py-1.5 text-[13px] text-inksoft hover:bg-subtle hover:text-ink"
+          >
             ← 返回对话
-          </a>
+          </Link>
           <div className="mt-2 flex items-center justify-between rounded-lg px-2 py-1.5">
             <span className="text-[13px] text-inksoft">记忆注入</span>
             <button

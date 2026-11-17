@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ScheduledTasksPage from "./ScheduledTasksPage";
 import type { ScheduledTaskSummary } from "../lib/api";
@@ -49,7 +49,10 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/scheduled"]}>
-        <ScheduledTasksPage />
+        <Routes>
+          <Route path="/scheduled" element={<ScheduledTasksPage />} />
+          <Route path="/chat" element={<p>会话页</p>} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -137,5 +140,14 @@ describe("ScheduledTasksPage", () => {
     await waitFor(() => expect(button).toBeEnabled());
     button.click();
     await waitFor(() => expect(mocks.deleteScheduledTask).toHaveBeenCalledWith("task-1"));
+  });
+
+  it("returns to the conversation through the router, not a full page load", async () => {
+    renderPage();
+    await screen.findByText("每日订单");
+
+    await userEvent.click(screen.getByRole("link", { name: /返回对话/ }));
+
+    expect(await screen.findByText("会话页")).toBeInTheDocument();
   });
 });

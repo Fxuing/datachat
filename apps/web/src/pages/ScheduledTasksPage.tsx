@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock, Plus } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   createScheduledTask,
   fetchMe,
@@ -112,12 +113,13 @@ export default function ScheduledTasksPage() {
       user={meQuery.data?.user ?? { id: "", username: "", displayName: null, role: "user", status: "active" }}
       sidebar={
         <div className="p-2">
-          <a
-            href="/chat"
+          {/* Router link: a plain anchor would reload the whole app. */}
+          <Link
+            to="/chat"
             className="block rounded-lg px-2 py-1.5 text-[13px] text-inksoft hover:bg-subtle hover:text-ink"
           >
             ← 返回对话
-          </a>
+          </Link>
         </div>
       }
       topbar={
@@ -320,9 +322,9 @@ function TaskHistoryDialog({
                   </td>
                   <td className="py-1.5">
                     {run.reportId ? (
-                      <a className="text-brand hover:underline" href={`/reports/${run.reportId}`}>
+                      <Link className="text-brand hover:underline" to={`/reports/${run.reportId}`}>
                         查看
-                      </a>
+                      </Link>
                     ) : (
                       <span className="text-muted">—</span>
                     )}

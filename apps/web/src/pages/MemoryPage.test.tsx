@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MemoryPage from "./MemoryPage";
 import type { MemoryItem } from "../lib/api";
@@ -36,7 +36,10 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/memory"]}>
-        <MemoryPage />
+        <Routes>
+          <Route path="/memory" element={<MemoryPage />} />
+          <Route path="/chat" element={<p>会话页</p>} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -82,6 +85,15 @@ describe("MemoryPage", () => {
         expect.objectContaining({ title: "订单口径", content: "只统计已支付订单", scope: "global" }),
       ),
     );
+  });
+
+  it("returns to the conversation through the router, not a full page load", async () => {
+    renderPage();
+    await screen.findByText("金额单位");
+
+    await userEvent.click(screen.getByRole("link", { name: /返回对话/ }));
+
+    expect(await screen.findByText("会话页")).toBeInTheDocument();
   });
 
   it("asks before clearing all memories", async () => {
