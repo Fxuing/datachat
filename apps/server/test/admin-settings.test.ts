@@ -142,6 +142,7 @@ describe("admin settings", () => {
       queryTimeoutMs: testConfig.queryTimeoutMs,
       shareMaxDays: 365,
       retentionConversationDays: 0,
+      memoryEnabled: true,
       retentionAuditDays: 0,
     });
   });

@@ -809,6 +809,7 @@ export interface AdminSettings {
   shareMaxDays: number;
   retentionConversationDays: number;
   retentionAuditDays: number;
+  memoryEnabled: boolean;
 }
 
 export type AdminSettingsPatch = {

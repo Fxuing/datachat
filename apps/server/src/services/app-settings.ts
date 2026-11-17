@@ -20,6 +20,7 @@ export const SETTING_KEYS = [
   "shareMaxDays",
   "retentionConversationDays",
   "retentionAuditDays",
+  "memoryEnabled",
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];
@@ -32,6 +33,7 @@ export const settingValueSchemas = {
   shareMaxDays: z.number().int().min(1).max(365),
   retentionConversationDays: z.number().int().min(0).max(3650),
   retentionAuditDays: z.number().int().min(0).max(3650),
+  memoryEnabled: z.boolean(),
 } satisfies Record<SettingKey, z.ZodType<unknown>>;
 
 /** Hard upper bounds applied to query limits, whatever their source (env or settings). */
@@ -55,6 +57,7 @@ export interface AppSettings {
   shareMaxDays: number;
   retentionConversationDays: number;
   retentionAuditDays: number;
+  memoryEnabled: boolean;
 }
 
 /** Values used when a key has never been saved (or was reset). */
@@ -67,6 +70,7 @@ export function defaultSettings(config: AppConfig): AppSettings {
     shareMaxDays: SHARE_MAX_EXPIRES_IN_DAYS,
     retentionConversationDays: 0,
     retentionAuditDays: 0,
+    memoryEnabled: true,
   };
 }
 
@@ -129,6 +133,9 @@ export function effectiveSettings(db: Db, config: AppConfig): AppSettings {
     retentionAuditDays:
       parseStored(rows.get("retentionAuditDays"), settingValueSchemas.retentionAuditDays) ??
       defaults.retentionAuditDays,
+    memoryEnabled:
+      parseStored(rows.get("memoryEnabled"), settingValueSchemas.memoryEnabled) ??
+      defaults.memoryEnabled,
   };
 }
 

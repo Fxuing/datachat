@@ -106,6 +106,7 @@ export const runs = sqliteTable(
     createdAt: integer("created_at").notNull(),
     startedAt: integer("started_at"),
     endedAt: integer("ended_at"),
+    memoryExtractedAt: integer("memory_extracted_at"),
   },
   (t) => [
     index("runs_conversation_idx").on(t.conversationId),
@@ -395,6 +396,41 @@ export const scheduledTaskRuns = sqliteTable(
     index("scheduled_task_runs_created_idx").on(t.createdAt),
   ],
 );
+
+export const userMemories = sqliteTable(
+  "user_memories",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    datasourceId: text("datasource_id"),
+    kind: text("kind", {
+      enum: ["profile", "instruction", "preference", "fact"],
+    }).notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    core: integer("core").notNull().default(0),
+    enabled: integer("enabled").notNull().default(1),
+    confidence: integer("confidence").notNull().default(60),
+    dedupeKey: text("dedupe_key").notNull(),
+    sourceConversationId: text("source_conversation_id"),
+    sourceRunId: text("source_run_id"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    lastUsedAt: integer("last_used_at"),
+    useCount: integer("use_count").notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("user_memories_dedupe_unique").on(t.userId, t.dedupeKey),
+    index("user_memories_user_idx").on(t.userId, t.enabled, t.datasourceId),
+    index("user_memories_updated_idx").on(t.userId, t.updatedAt),
+  ],
+);
+
+export const userMemorySettings = sqliteTable("user_memory_settings", {
+  userId: text("user_id").primaryKey(),
+  enabled: integer("enabled").notNull().default(1),
+  updatedAt: integer("updated_at").notNull(),
+});
 
 export const notifications = sqliteTable(
   "notifications",

@@ -22,6 +22,7 @@ const settings: AdminSettings = {
   queryTimeoutMs: 5_000,
   shareMaxDays: 30,
   retentionConversationDays: 0,
+  memoryEnabled: true,
   retentionAuditDays: 0,
 };
 

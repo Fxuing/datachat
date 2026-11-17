@@ -22,6 +22,7 @@ const settings: AdminSettings = {
   shareMaxDays: 30,
   retentionConversationDays: 30,
   retentionAuditDays: 90,
+  memoryEnabled: true,
 };
 
 function metrics(days: number): OpsMetrics {

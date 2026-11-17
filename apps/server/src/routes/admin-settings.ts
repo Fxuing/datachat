@@ -38,6 +38,7 @@ const putBodySchema = z
     shareMaxDays: settingValueSchemas.shareMaxDays.nullable().optional(),
     retentionConversationDays: settingValueSchemas.retentionConversationDays.nullable().optional(),
     retentionAuditDays: settingValueSchemas.retentionAuditDays.nullable().optional(),
+    memoryEnabled: settingValueSchemas.memoryEnabled.nullable().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, { message: "至少修改一项设置" });

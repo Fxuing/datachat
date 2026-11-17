@@ -44,6 +44,8 @@ const APP_TABLES = [
   "settings",
   "shares",
   "skills",
+  "user_memories",
+  "user_memory_settings",
   "user_roles",
   "users",
 ];
@@ -182,6 +184,7 @@ describe("database lifecycle", () => {
       expect.arrayContaining(["user_id", "conversation_id"]),
     );
     expect(columnNames(sqlite, "runs")).toContain("retry_of_run_id");
+    expect(columnNames(sqlite, "runs")).toContain("memory_extracted_at");
     expect(columnNames(sqlite, "conversations")).toContain("kind");
     expect(columnNames(sqlite, "query_audit")).toEqual(
       expect.arrayContaining(["detail_json", "user_id", "datasource_id"]),
@@ -249,8 +252,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(13);
-    expect(migrateDb(handle.db)).toBe(13);
+    expect(migrateDb(handle.db)).toBe(14);
+    expect(migrateDb(handle.db)).toBe(14);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");
