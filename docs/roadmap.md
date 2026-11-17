@@ -32,6 +32,7 @@
 - **运行治理**：管理员“运维”页（`/admin/ops`）提供 7/30/90 天运行指标（成功率、P50/P95、token、Top 数据源、查询审计）、会话/审计保留天数与预览后手动清理（活跃分享、运行中会话自动跳过）、备份列表与 CLI 备份/恢复；可选 `RETENTION_SWEEP_HOURS` 定时清理。清理会同步删除报告/分享，备份不包含 `.env`，恢复需相同 `APP_SECRET`。
 - **CI 与 lint**：`.github/workflows/ci.yml` 覆盖 lint、typecheck、服务端/共享包测试、web 测试与构建；独立 job 用 Testcontainers 跑真库集成测试；手动/夜间 `eval:nl2sql` job 在配置 `EVAL_API_KEY` 后运行；根级 `pnpm lint` 使用 ESLint 9 + typescript-eslint flat config。首次 GitHub Actions 运行已通过（2026-11-11，含 7 项 MySQL/PostgreSQL 集成测试）。
 - **定时任务**：用户按 cron + 时区保存问题，服务每 60 秒调度；隐藏会话执行、自动生成报告、站内信通知，连续失败 3 次自动停用；全局并发 2 / 单用户 1、单次 10 分钟。单机内存调度，不做分布式锁与 IM 推送。
+- **用户记忆**：自动沉淀 + `memory_save` 去重、全局/数据源作用域、核心常驻与相关召回（2000+1500 字）、`/memory` 管理页、用户开关与管理员全局停用；按用户隔离，不进入报告/分享。
 - **RBAC 角色与权限**：14 个功能/系统权限、多角色并集、角色-数据源授权（与直授取并集）、内置成员角色与旧用户迁移；`/admin/roles`、`/admin/users` 管理页；HTTP、Agent Skills/MCP 与聊天 UI 全部按权限门禁，权限修改即时生效（Agent 下一次会话生效）。系统管理权限仍仅管理员可用，行列权限延后。
 
 ## 已知缺口

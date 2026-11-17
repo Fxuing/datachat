@@ -83,12 +83,13 @@ const SECTIONS: Array<{ id: Section; label: string; icon: typeof Settings }> = [
   { id: "share", label: "分享", icon: Share2 },
 ];
 
-type Draft = Record<NumberKey, string> & { defaultModelId: string };
+type Draft = Record<NumberKey, string> & { defaultModelId: string; memoryEnabled: boolean };
 type DraftErrors = Partial<Record<keyof Draft, string>>;
 
 function toDraft(settings: AdminSettings): Draft {
   return {
     defaultModelId: settings.defaultModelId ?? "",
+    memoryEnabled: settings.memoryEnabled,
     queryMaxRows: String(settings.queryMaxRows),
     queryPreviewRows: String(settings.queryPreviewRows),
     queryTimeoutMs: String(settings.queryTimeoutMs),
@@ -99,6 +100,7 @@ function toDraft(settings: AdminSettings): Draft {
 function toPatch(draft: Draft): AdminSettingsPatch {
   return {
     defaultModelId: draft.defaultModelId || null,
+    memoryEnabled: draft.memoryEnabled,
     queryMaxRows: Number(draft.queryMaxRows),
     queryPreviewRows: Number(draft.queryPreviewRows),
     queryTimeoutMs: Number(draft.queryTimeoutMs),
@@ -404,6 +406,23 @@ export default function SettingsPage() {
                             {describeApiError(modelsQuery.error, "模型列表加载失败")}
                           </p>
                         ) : null}
+
+                        <div className="mt-6 border-t border-line pt-4">
+                          <label className="flex cursor-pointer items-start gap-2.5">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 h-3.5 w-3.5 accent-brand"
+                              checked={draft.memoryEnabled}
+                              onChange={(event) => updateDraft({ memoryEnabled: event.target.checked })}
+                            />
+                            <span>
+                              <span className="block text-sm font-medium text-inksoft">启用用户记忆</span>
+                              <span className="mt-0.5 block text-xs text-muted">
+                                关闭后停止注入和自动提取，已有记忆保留；用户仍可在“我的记忆”中删除。
+                              </span>
+                            </span>
+                          </label>
+                        </div>
                       </div>
                     ) : null}
 

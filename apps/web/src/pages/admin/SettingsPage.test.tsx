@@ -156,6 +156,7 @@ describe("SettingsPage", () => {
         queryPreviewRows: 200,
         queryTimeoutMs: 5_000,
         shareMaxDays: 14,
+        memoryEnabled: true,
       },
     ]);
   });
