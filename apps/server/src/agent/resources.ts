@@ -128,6 +128,7 @@ export async function createConversationResources(
       createMemoryExtension({
         db: input.db,
         userId: input.userId,
+        conversationId: input.conversationId,
         datasourceId: input.datasourceId,
         datasourceName: input.datasourceName,
       }),

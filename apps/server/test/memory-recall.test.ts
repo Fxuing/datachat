@@ -6,6 +6,7 @@ import { migrateDb } from "../src/db/migrate.js";
 import { insertUser } from "../src/db/repositories/users.js";
 import { datasources } from "../src/db/schema.js";
 import {
+  listUserMemories,
   setUserMemorySettings,
   upsertUserMemory,
 } from "../src/db/repositories/user-memories.js";
@@ -15,6 +16,7 @@ import {
   createMemoryExtension,
   memoryTokens,
 } from "../src/memory/recall.js";
+import { createMemorySaveTool } from "../src/memory/tool.js";
 
 let handle: DbHandle;
 
@@ -195,6 +197,7 @@ describe("memory recall", () => {
       on: (event: string, handler: (value: unknown) => Promise<unknown>) => {
         handlers.set(event, handler);
       },
+      registerTool: () => undefined,
     } as unknown as ExtensionAPI;
 
     createMemoryExtension({
@@ -220,5 +223,60 @@ describe("memory recall", () => {
         sql`select use_count from user_memories where id = ${memory.id}`,
       )?.use_count,
     ).toBe(1);
+  });
+});
+
+describe("memory_save tool", () => {
+  it("saves a scoped memory and merges duplicates", async () => {
+    const owner = user("memory-tool");
+    const tool = createMemorySaveTool({
+      db: handle.db,
+      userId: owner.id,
+      datasourceId: "ds-1",
+      sourceConversationId: "conv-1",
+    });
+    const first = await tool.execute("call-1", {
+      kind: "preference",
+      title: "金额单位",
+      content: "金额按万元展示",
+      scope: "datasource",
+    });
+    expect(first.details.saved).toBe(true);
+    expect(first.details.merged).toBe(false);
+
+    const merged = await tool.execute("call-2", {
+      kind: "preference",
+      title: "金额单位",
+      content: "金额按万元展示，保留两位小数",
+      scope: "datasource",
+    });
+    expect(merged.details.merged).toBe(true);
+    expect(merged.details.id).toBe(first.details.id);
+    expect(listUserMemories(handle.db, owner.id)[0]?.datasourceId).toBe("ds-1");
+  });
+
+  it("rejects secrets and invalid core settings", async () => {
+    const owner = user("memory-tool-secret");
+    const tool = createMemorySaveTool({
+      db: handle.db,
+      userId: owner.id,
+      datasourceId: "ds-1",
+    });
+    const secret = await tool.execute("call-secret", {
+      kind: "fact",
+      title: "API",
+      content: "token=abcdef1234567890",
+    });
+    expect(secret.isError).toBe(true);
+    expect(secret.details.code).toBe("MEMORY_SECRET_DETECTED");
+
+    const core = await tool.execute("call-core", {
+      kind: "preference",
+      title: "偏好",
+      content: "喜欢柱状图",
+      core: true,
+    });
+    expect(core.isError).toBe(true);
+    expect(core.details.code).toBe("MEMORY_CORE_INVALID");
   });
 });

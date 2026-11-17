@@ -8,6 +8,7 @@ import {
   type MemoryKind,
   type UserMemoryRow,
 } from "../db/repositories/user-memories.js";
+import { createMemorySaveTool } from "./tool.js";
 
 export const MEMORY_CORE_BUDGET = 2000;
 export const MEMORY_RECALL_BUDGET = 1500;
@@ -181,6 +182,7 @@ export function buildMemoryBlock(input: MemoryBlockInput): MemoryBlock {
 export interface MemoryExtensionOptions {
   db: Db;
   userId: string;
+  conversationId?: string;
   datasourceId: string;
   datasourceName?: string;
 }
@@ -188,6 +190,14 @@ export interface MemoryExtensionOptions {
 /** One inline extension per conversation; refreshes recall before every user turn. */
 export function createMemoryExtension(options: MemoryExtensionOptions) {
   return (pi: ExtensionAPI): void => {
+    pi.registerTool(
+      createMemorySaveTool({
+        db: options.db,
+        userId: options.userId,
+        datasourceId: options.datasourceId,
+        sourceConversationId: options.conversationId,
+      }),
+    );
     pi.on("before_agent_start", async (event) => {
       if (event.messageType !== "user") return undefined;
       const block = buildMemoryBlock({
