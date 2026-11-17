@@ -77,7 +77,7 @@ export function Composer({
     ? slashMatch.index + slashMatch[0].lastIndexOf("/")
     : -1;
   const menuOpen =
-    Boolean(slashMatch) && !slashDismissed && canType && !active && skills.length > 0;
+    Boolean(slashMatch) && !slashDismissed && canType && skills.length > 0;
   const filtered = menuOpen
     ? skills.filter(
         (skill) =>
