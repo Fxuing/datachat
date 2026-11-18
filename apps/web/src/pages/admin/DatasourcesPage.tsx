@@ -1,11 +1,13 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DatasourceInput } from "@datachat/shared";
-import { CheckCircle2, Plus, RefreshCw, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Plus, ShieldAlert } from "lucide-react";
 import { AdminShell } from "../../components/admin/AdminShell";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { DatasourceEditor } from "../../components/admin/DatasourceEditor";
 import { DatasourceGrantsDialog } from "../../components/admin/DatasourceGrantsDialog";
+import { DatasourceRowActions } from "../../components/admin/DatasourceRowActions";
 import { DatasourceSchemaDrawer } from "../../components/admin/DatasourceSchemaDrawer";
 import { Button } from "../../components/ui/button";
 import { PageSpinner } from "../../components/ui/spinner";
@@ -68,6 +70,7 @@ function typeLabel(type: DatasourceSummary["type"]): string {
 
 export default function DatasourcesPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [schemaTarget, setSchemaTarget] = useState<DatasourceSummary | null>(null);
@@ -342,55 +345,20 @@ export default function DatasourcesPage() {
                           {formatClock(datasource.lastCheckedAt) || "—"}
                         </td>
                         <td className="px-4 py-2.5">
-                          <div className="flex flex-wrap items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={testing}
-                              onClick={() => testMutation.mutate(datasource)}
-                            >
-                              {testing ? "测试中…" : "测试连接"}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="gap-1"
-                              disabled={refreshing}
-                              onClick={() => refreshSchemaMutation.mutate(datasource)}
-                            >
-                              <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-                              {refreshing ? "刷新中…" : "刷新 schema"}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSchemaTarget(datasource)}
-                            >
-                              查看结构
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setGrantsTarget(datasource)}
-                            >
-                              授权
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openEditor({ mode: "edit", datasource })}
-                            >
-                              编辑
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-danger hover:bg-dangersoft hover:text-danger"
-                              onClick={() => openDelete(datasource)}
-                            >
-                              删除
-                            </Button>
-                          </div>
+                          <DatasourceRowActions
+                            datasource={datasource}
+                            testing={testing}
+                            refreshing={refreshing}
+                            onTest={() => testMutation.mutate(datasource)}
+                            onRefresh={() => refreshSchemaMutation.mutate(datasource)}
+                            onViewSchema={() => setSchemaTarget(datasource)}
+                            onGrants={() => setGrantsTarget(datasource)}
+                            onScope={() =>
+                              navigate(`/admin/datasources/${datasource.id}/scope`)
+                            }
+                            onEdit={() => openEditor({ mode: "edit", datasource })}
+                            onDelete={() => openDelete(datasource)}
+                          />
                         </td>
                       </tr>
                     );

@@ -157,6 +157,14 @@ function requestBody(fetchMock: ReturnType<typeof stubApi>, url: string, method:
   return JSON.parse(String(call![1]!.body));
 }
 
+async function openRowMenu(
+  browser: ReturnType<typeof userEvent.setup>,
+  index = 0,
+): Promise<HTMLElement> {
+  await browser.hover(screen.getAllByRole("button", { name: /更多操作/ })[index]!);
+  return screen.findByRole("menu");
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -180,7 +188,13 @@ describe("DatasourcesPage", () => {
       "最近一次连接测试失败，请检查网络、账号或 SSL 配置。",
     );
     expect(screen.getAllByRole("button", { name: "测试连接" })).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "查看结构" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "编辑" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "查看结构" })).not.toBeInTheDocument();
+
+    const menu = await openRowMenu(browser);
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(5);
+    expect(within(menu).getByRole("menuitem", { name: "查看结构" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "行级权限" })).toBeInTheDocument();
   });
 
   it("edits without sending a password when the field is blank", async () => {
@@ -270,7 +284,8 @@ describe("DatasourcesPage", () => {
     renderPage();
 
     await screen.findByText("analytics");
-    await browser.click(screen.getAllByRole("button", { name: "删除" })[0]!);
+    const menu = await openRowMenu(browser);
+    await browser.click(within(menu).getByRole("menuitem", { name: "删除" }));
     const confirm = await screen.findByRole("dialog", { name: "删除数据源" });
     await browser.click(within(confirm).getByRole("button", { name: "确认删除" }));
 
@@ -286,7 +301,8 @@ describe("DatasourcesPage", () => {
     renderPage();
 
     await screen.findByText("analytics");
-    await browser.click(screen.getAllByRole("button", { name: "授权" })[0]!);
+    const menu = await openRowMenu(browser);
+    await browser.click(within(menu).getByRole("menuitem", { name: "授权" }));
     const dialog = await screen.findByRole("dialog", { name: "analytics 的授权" });
 
     expect(await within(dialog).findByText("Alice")).toBeInTheDocument();
@@ -317,7 +333,8 @@ describe("DatasourcesPage", () => {
     renderPage();
 
     await screen.findByText("analytics");
-    await browser.click(screen.getAllByRole("button", { name: "查看结构" })[0]!);
+    const menu = await openRowMenu(browser);
+    await browser.click(within(menu).getByRole("menuitem", { name: "查看结构" }));
     const drawer = await screen.findByRole("dialog", { name: "analytics 的表结构" });
     expect(await within(drawer).findByText("public.orders")).toBeInTheDocument();
 
