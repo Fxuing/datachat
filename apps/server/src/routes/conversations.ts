@@ -56,6 +56,7 @@ const idParamsSchema = z.object({ id: z.string().uuid() });
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
   before: z.string().trim().min(1).optional(),
+  q: z.string().trim().max(100).optional(),
 });
 const createBodySchema = z.object({
   datasourceId: z.string().uuid(),
@@ -151,6 +152,7 @@ export async function conversationRoutes(
       return listConversationPage(opts.db, request.user!.sub, {
         limit: query.data.limit,
         before: before ?? undefined,
+        q: query.data.q,
       });
     },
   );

@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, ListFilter, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   ApiError,
   createConversation,
@@ -75,10 +75,14 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [deleting, setDeleting] = useState<Conversation | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterInput, setFilterInput] = useState("");
+  const [filterQuery, setFilterQuery] = useState("");
+  const filterInputRef = useRef<HTMLInputElement>(null);
 
   const conversationsQuery = useQuery({
-    queryKey: queryKeys.conversations,
-    queryFn: listConversations,
+    queryKey: filterQuery ? queryKeys.conversationList(filterQuery) : queryKeys.conversations,
+    queryFn: () => listConversations(filterQuery ? { q: filterQuery } : {}),
   });
   const datasourcesQuery = useQuery({
     queryKey: queryKeys.datasources,
@@ -101,6 +105,27 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
     createMutation.reset();
   };
 
+  const closeFilter = () => {
+    setFilterOpen(false);
+    setFilterInput("");
+    setFilterQuery("");
+  };
+
+  const submitFilter = () => {
+    const q = filterInput.trim();
+    if (!q) {
+      closeFilter();
+      return;
+    }
+    setFilterQuery(q);
+  };
+
+  const clearFilterInput = () => {
+    setFilterInput("");
+    setFilterQuery("");
+    filterInputRef.current?.focus();
+  };
+
   const createMutation = useMutation({
     mutationFn: (id: string) => createConversation({ datasourceId: id }),
     onSuccess: ({ conversation }) => {
@@ -113,6 +138,9 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
       );
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
       closeDialog();
+      setFilterOpen(false);
+      setFilterInput("");
+      setFilterQuery("");
       navigate(`/chat/${conversation.id}`);
     },
   });
@@ -159,16 +187,67 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="p-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full justify-start gap-2"
-          onClick={() => setDialogOpen(true)}
-        >
-          <Plus className="h-4 w-4" />
-          新建对话
-        </Button>
+      <div className="flex items-center gap-1.5 p-2">
+        {filterOpen ? (
+          <form
+            className="relative min-w-0 flex-1"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitFilter();
+            }}
+          >
+            <Input
+              ref={filterInputRef}
+              autoFocus
+              aria-label="筛选对话关键词"
+              placeholder="筛选对话…"
+              value={filterInput}
+              maxLength={100}
+              onChange={(event) => setFilterInput(event.target.value)}
+              onBlur={() => {
+                if (!filterInput.trim()) closeFilter();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") closeFilter();
+              }}
+              className="h-8 pr-7 text-xs"
+            />
+            {filterInput ? (
+              <button
+                type="button"
+                aria-label="清除筛选关键词"
+                onClick={clearFilterInput}
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted hover:bg-line hover:text-ink"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </form>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-w-0 flex-1 justify-start gap-2"
+            onClick={() => setDialogOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            新建对话
+          </Button>
+        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={filterOpen ? "secondary" : "outline"}
+              size="icon"
+              aria-label={filterOpen ? "关闭筛选" : "筛选对话"}
+              aria-pressed={filterOpen}
+              onClick={() => (filterOpen ? closeFilter() : setFilterOpen(true))}
+            >
+              {filterOpen ? <X className="h-4 w-4" /> : <ListFilter className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{filterOpen ? "关闭筛选" : "筛选对话"}</TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -186,7 +265,16 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
             </button>
           </div>
         ) : conversations.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-muted">还没有会话，点击上方新建对话开始。</p>
+          filterQuery ? (
+            <p className="px-2 py-3 text-xs text-muted">
+              没有匹配“{filterQuery}”的会话。
+              <button type="button" className="ml-1 underline" onClick={closeFilter}>
+                清除筛选
+              </button>
+            </p>
+          ) : (
+            <p className="px-2 py-3 text-xs text-muted">还没有会话，点击上方新建对话开始。</p>
+          )
         ) : (
           <ul className="flex flex-col gap-0.5">
             {conversations.map((conversation) => {

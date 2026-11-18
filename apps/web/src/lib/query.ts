@@ -17,6 +17,7 @@ export const queryClient = new QueryClient({
 export const queryKeys = {
   me: ["me"] as const,
   conversations: ["conversations"] as const,
+  conversationList: (q: string) => ["conversations", "search", q] as const,
   conversation: (id: string) => ["conversation", id] as const,
   conversationSkills: (id: string) => ["conversation-skills", id] as const,
   datasourceSkills: (id: string) => ["datasource-skills", id] as const,

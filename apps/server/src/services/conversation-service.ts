@@ -151,10 +151,10 @@ export function toConversationResponse(row: ConversationRow): ConversationRespon
 export function listConversationPage(
   db: Db,
   userId: string,
-  opts: { limit?: number; before?: { sortTime: number; id: string } } = {},
+  opts: { limit?: number; before?: { sortTime: number; id: string }; q?: string } = {},
 ): ConversationListPage {
   const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
-  const rows = listConversations(db, userId, { limit, before: opts.before });
+  const rows = listConversations(db, userId, { limit, before: opts.before, q: opts.q });
   const items = rows.map(toConversationResponse);
   const last = rows.at(-1);
   const nextCursor =

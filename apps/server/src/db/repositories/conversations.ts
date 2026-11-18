@@ -59,24 +59,30 @@ export function createConversation(db: Db, input: CreateConversationInput): Conv
 export function listConversations(
   db: Db,
   userId: string,
-  opts: { limit?: number; before?: ConversationCursor } = {},
+  opts: { limit?: number; before?: ConversationCursor; q?: string } = {},
 ): ConversationRow[] {
   const sortTime = sql<number>`coalesce(${conversations.lastMessageAt}, ${conversations.createdAt})`;
-  const where = opts.before
-    ? and(
-        eq(conversations.userId, userId),
-        eq(conversations.kind, "chat"),
-        or(
-          lt(sortTime, opts.before.sortTime),
-          and(eq(sortTime, opts.before.sortTime), lt(conversations.id, opts.before.id)),
-        ),
-      )
-    : eq(conversations.userId, userId);
+  const conditions = [eq(conversations.userId, userId), eq(conversations.kind, "chat")];
+  const keyword = opts.q?.trim();
+  if (keyword) {
+    // instr keeps % and _ literal, unlike LIKE; lower() covers ASCII case.
+    conditions.push(
+      sql<boolean>`instr(lower(coalesce(${conversations.title}, '')), lower(${keyword})) > 0`,
+    );
+  }
+  if (opts.before) {
+    conditions.push(
+      or(
+        lt(sortTime, opts.before.sortTime),
+        and(eq(sortTime, opts.before.sortTime), lt(conversations.id, opts.before.id)),
+      )!,
+    );
+  }
 
   return db
     .select()
     .from(conversations)
-    .where(and(where, eq(conversations.kind, "chat")))
+    .where(and(...conditions))
     .orderBy(desc(sortTime), desc(conversations.id))
     .limit(opts.limit ?? 50)
     .all();

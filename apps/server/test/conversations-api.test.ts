@@ -219,6 +219,57 @@ describe("conversation routes", () => {
     }
   });
 
+  it("filters conversation titles for the current user", async () => {
+    const app = await makeApp();
+    try {
+      for (const title of ["订单分析", "用户留存", "订单退款", "100%完成"]) {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/conversations",
+          cookies: { dc_session: cookie },
+          payload: { datasourceId, title },
+        });
+        expect(created.statusCode).toBe(201);
+      }
+      createConversation(db, {
+        userId: otherUserId,
+        datasourceId,
+        title: "订单越权",
+      });
+
+      const filtered = await app.inject({
+        method: "GET",
+        url: `/api/conversations?q=${encodeURIComponent("订单")}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(filtered.statusCode).toBe(200);
+      expect(filtered.json().items.map((item: { title: string }) => item.title).sort()).toEqual([
+        "订单分析",
+        "订单退款",
+      ]);
+
+      const literalPercent = await app.inject({
+        method: "GET",
+        url: `/api/conversations?q=${encodeURIComponent("%")}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(literalPercent.statusCode).toBe(200);
+      expect(literalPercent.json().items.map((item: { title: string }) => item.title)).toEqual([
+        "100%完成",
+      ]);
+
+      const empty = await app.inject({
+        method: "GET",
+        url: `/api/conversations?q=${encodeURIComponent("不存在")}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(empty.statusCode).toBe(200);
+      expect(empty.json().items).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("aggregates messages from run events", async () => {
     const conversation = createConversation(db, { userId, datasourceId });
     const run = createRun(db, {

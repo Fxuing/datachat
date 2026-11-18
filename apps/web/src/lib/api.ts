@@ -347,11 +347,12 @@ export function logout(): Promise<{ ok: boolean }> {
   return apiRequest("/api/auth/logout", { method: "POST" });
 }
 
-export function listConversations(): Promise<{
+export function listConversations(params: { q?: string } = {}): Promise<{
   items: Conversation[];
   nextCursor: string | null;
 }> {
-  return apiRequest("/api/conversations");
+  const q = params.q?.trim();
+  return apiRequest(q ? `/api/conversations?q=${encodeURIComponent(q)}` : "/api/conversations");
 }
 
 export function createConversation(input: {
