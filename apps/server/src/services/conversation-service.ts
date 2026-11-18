@@ -13,10 +13,13 @@ import {
   findActiveRunForConversation,
   findRun,
   listReplacedRunIds,
+  type RunRow,
   type RunStatus,
 } from "../db/repositories/runs.js";
 import { listFeedbackForRuns } from "../db/repositories/run-feedback.js";
 import type { ArtifactStore } from "./artifacts.js";
+import { parseScopeSnapshot } from "./data-scope.js";
+import { artifactRunVisible, runScopeVisible } from "./scope-access.js";
 
 export interface ConversationResponse {
   id: string;
@@ -90,6 +93,8 @@ export interface ConversationMessage {
   tools: ToolMessage[];
   results: ConversationResultMessage[];
   sqls: SqlMessage[];
+  /** Department range that filtered this run; null when nothing was rewritten. */
+  scope: { departments: string[] } | null;
   /** Terminal run error, so a reloaded history can explain what went wrong. */
   error: string | null;
   createdAt: number;
@@ -255,10 +260,28 @@ function applyEvent(group: MessageGroup, event: RunEvent): void {
   }
 }
 
+export interface ConversationViewer {
+  userId: string;
+  isAdmin: boolean;
+}
+
+/** The visible department range for a run that actually rewrote at least one table. */
+function toMessageScope(run: RunRow | null | undefined): ConversationMessage["scope"] {
+  const snapshot = parseScopeSnapshot(run?.scopeSnapshot ?? null);
+  if (!snapshot || snapshot.departments.length === 0) return null;
+  if (!snapshot.scopedTables || snapshot.scopedTables.length === 0) return null;
+  const names =
+    snapshot.departmentNames && snapshot.departmentNames.length > 0
+      ? snapshot.departmentNames
+      : snapshot.departments;
+  return { departments: names };
+}
+
 export function getConversationDetail(
   db: Db,
   artifactsStore: ArtifactStore,
   conversation: ConversationRow,
+  viewer?: ConversationViewer,
 ): ConversationDetail {
   const grouped = new Map<string, MessageGroup>();
   const retriedRunIds = listReplacedRunIds(db, conversation.id);
@@ -283,6 +306,7 @@ export function getConversationDetail(
   for (const group of [...grouped.values()].sort((a, b) => a.createdAt - b.createdAt)) {
     if (group.user === null) continue;
     const run = findRun(db, group.runId);
+    if (viewer && run && !runScopeVisible(db, run, viewer.isAdmin)) continue;
     messages.push({
       runId: group.runId,
       status: toRunStatus(run?.status),
@@ -304,6 +328,7 @@ export function getConversationDetail(
       tools: group.tools,
       results: group.results,
       sqls: group.sqls,
+      scope: toMessageScope(run),
       error: run?.error ?? null,
       createdAt: group.createdAt,
     });
@@ -324,7 +349,11 @@ export function getConversationDetail(
     .where(eq(artifacts.conversationId, conversation.id))
     .orderBy(artifacts.createdAt)
     .all()
-    .filter((row) => row.runId === null || !retriedRunIds.has(row.runId));
+    .filter(
+      (row) =>
+        (row.runId === null || !retriedRunIds.has(row.runId)) &&
+        (row.runId === null || !viewer || artifactRunVisible(db, row.runId, viewer.isAdmin)),
+    );
 
   return {
     conversation: toConversationResponse(conversation),

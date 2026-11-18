@@ -2,9 +2,10 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { REPORT_MAX_ARTIFACTS, REPORT_MAX_MARKDOWN_LENGTH } from "@datachat/shared";
 import type { Db } from "../db/client.js";
-import { deleteReport, findReport } from "../db/repositories/reports.js";
+import { deleteReport, findReport, parseReportArtifactIds } from "../db/repositories/reports.js";
 import { canReadReport, createReport, toReportDetail, type ReportErrorCode } from "../services/reports.js";
 import type { ArtifactStore } from "../services/artifacts.js";
+import { artifactRunVisible } from "../services/scope-access.js";
 
 export interface ReportRouteOptions {
   db: Db;
@@ -32,6 +33,19 @@ const ERROR_STATUS: Record<ReportErrorCode, number> = {
 
 function error(code: string, message: string) {
   return { error: { code, message } };
+}
+
+/** A report is only readable while every artifact run stays inside the viewer's scope. */
+function reportScopeVisible(
+  opts: ReportRouteOptions,
+  report: { artifactIdsJson: string },
+  isAdmin: boolean,
+): boolean {
+  if (isAdmin) return true;
+  return parseReportArtifactIds(report).every((id) => {
+    const meta = opts.artifacts.findMeta(id);
+    return Boolean(meta) && artifactRunVisible(opts.db, meta!.runId, false);
+  });
 }
 
 export async function reportRoutes(
@@ -73,7 +87,11 @@ export async function reportRoutes(
     }
     const user = request.user!;
     const report = findReport(opts.db, params.data.id);
-    if (!report || !canReadReport(report, user.sub, user.role === "admin")) {
+    if (
+      !report ||
+      !canReadReport(report, user.sub, user.role === "admin") ||
+      !reportScopeVisible(opts, report, user.role === "admin")
+    ) {
       return reply.code(404).send(error("NOT_FOUND", "报告不存在"));
     }
     return { report: toReportDetail(report) };

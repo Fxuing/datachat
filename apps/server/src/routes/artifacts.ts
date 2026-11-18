@@ -8,6 +8,7 @@ import { findConversation } from "../db/repositories/conversations.js";
 import { recordAudit } from "../services/audit.js";
 import type { ArtifactRecord, ArtifactStore } from "../services/artifacts.js";
 import { csvStream, EXPORT_MAX_ROWS, xlsxStream } from "../services/export.js";
+import { artifactRunVisible } from "../services/scope-access.js";
 
 export interface ArtifactRouteOptions {
   db: Db;
@@ -48,6 +49,7 @@ function findReadableArtifact(
 ): ArtifactRecord | null {
   const artifact = opts.artifacts.findMeta(id);
   if (!artifact || !canReadArtifact(artifact, user)) return null;
+  if (!artifactRunVisible(opts.db, artifact.runId, user.role === "admin")) return null;
   return artifact;
 }
 

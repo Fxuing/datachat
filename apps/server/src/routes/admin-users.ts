@@ -23,6 +23,7 @@ import {
   UnknownRoleError,
 } from "../db/repositories/roles.js";
 import { safeRecordAuditEvent } from "../services/audit.js";
+import { listUserDepartmentRows } from "../db/repositories/departments.js";
 
 class LastAdminError extends Error {}
 
@@ -64,6 +65,7 @@ function toAdminUser(db: Db, row: UserRow) {
     createdAt: row.createdAt,
     roleIds: listRoleIdsForUser(db, row.id),
     roles: listRolesForUser(db, row.id).map((role) => ({ id: role.id, name: role.name })),
+    departments: listUserDepartmentRows(db, row.id),
   };
 }
 

@@ -41,6 +41,7 @@ const tokenParamsSchema = z.object({ token: z.string().min(1).max(512) });
 const ERROR_STATUS: Record<ShareErrorCode, number> = {
   VALIDATION: 400,
   NOT_FOUND: 404,
+  SHARE_DISABLED_BY_SCOPE: 409,
 };
 
 function error(code: string, message: string) {
@@ -76,7 +77,7 @@ export async function shareRoutes(
         const status = ERROR_STATUS[result.code];
         return reply
           .code(status)
-          .send(error(status === 404 ? "NOT_FOUND" : "VALIDATION", result.message));
+          .send(error(result.code, result.message));
       }
       return reply.code(201).send({ share: result.share });
     },

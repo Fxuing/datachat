@@ -1,6 +1,10 @@
 import { Type, type Static } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { findDatasource } from "../../db/repositories/datasources.js";
+import { findUserById } from "../../db/repositories/users.js";
+import { listScopePolicies } from "../../db/repositories/data-scope.js";
+import { normalizeTableName } from "../sql/scope.js";
+import { userDepartmentScope } from "../../services/data-scope.js";
 import {
   SCHEMA_CACHE_TTL_MS,
   loadSchemaEntry,
@@ -203,7 +207,32 @@ export function createDbSchemaTool(ctx: AgentToolContext): ToolDefinition<typeof
         );
       }
 
-      const { tables, total } = selectTables(snapshot, params);
+      // Scope hides the existence of tables this viewer could never query.
+      let visibleSnapshot = snapshot;
+      const datasource = findDatasource(ctx.db, ctx.datasourceId);
+      if (datasource?.dataScopeMode === "enabled" && findUserById(ctx.db, ctx.userId)?.role !== "admin") {
+        if (userDepartmentScope(ctx.db, ctx.userId).size === 0) {
+          const message = "当前数据源已启用部门数据权限，但你还没有加入任何部门";
+          return errorResult<DbSchemaDetails>("DATA_SCOPE_NO_DEPARTMENT", message, {
+            tableCount: 0,
+            returned: 0,
+            truncated: false,
+            code: "DATA_SCOPE_NO_DEPARTMENT",
+            message,
+          });
+        }
+        const allowed = new Set(
+          listScopePolicies(ctx.db, ctx.datasourceId)
+            .filter((policy) => policy.enabled && policy.mode !== "denied")
+            .map((policy) => normalizeTableName(policy.tableName)),
+        );
+        visibleSnapshot = {
+          ...snapshot,
+          tables: snapshot.tables.filter((table) => allowed.has(normalizeTableName(table.name))),
+        };
+      }
+
+      const { tables, total } = selectTables(visibleSnapshot, params);
       const { text, truncated } = renderTables(tables);
       return textResult(text, {
         tableCount: total,

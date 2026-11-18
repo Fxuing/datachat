@@ -6,6 +6,11 @@ import { executeReadOnly, SqlAbortedError, SqlTimeoutError } from "../sql/execut
 import { guardSql } from "../sql/guard.js";
 import { recordAudit } from "../../services/audit.js";
 import { authorizeDatasourceAccess } from "../../services/query-service.js";
+import { ScopeRewriteError } from "../sql/scope.js";
+import {
+  ScopeResolveError,
+  applyScopeToSql,
+} from "../../services/data-scope.js";
 import {
   errorMessage,
   errorResult,
@@ -131,11 +136,31 @@ export function createDbExplainTool(
           sslMode: datasource.sslMode,
         });
 
+        // EXPLAIN must see the same filtered rows as a real query.
+        let scoped;
+        try {
+          scoped = applyScopeToSql({
+            db: ctx.db,
+            datasourceId: datasource.id,
+            mode: datasource.dataScopeMode,
+            userId: ctx.userId,
+            sql: guarded.sql,
+            dialect: datasource.type,
+          });
+        } catch (error) {
+          if (error instanceof ScopeResolveError || error instanceof ScopeRewriteError) {
+            audit("rejected", Date.now() - started, { errorMessage: error.message });
+            return failed(error.code, error.message);
+          }
+          throw error;
+        }
+
         const result = await executeReadOnly(
           {
             dialect: datasource.type,
             pool: datasource.type === "mysql" ? handle.mysql! : handle.pg!,
-            sql: guarded.sql,
+            sql: scoped.sql,
+            params: scoped.params.length > 0 ? scoped.params : undefined,
             maxRows: ctx.config.queryMaxRows,
             previewRows: ctx.config.queryPreviewRows,
             timeoutMs: ctx.config.queryTimeoutMs,

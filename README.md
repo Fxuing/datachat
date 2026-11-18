@@ -119,13 +119,14 @@ EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -
 
 管理员在“管理 → 角色”和“管理 → 用户”中维护 RBAC：
 
-- **权限**：6 个功能权限（`chat.use`、`skill.use`、`mcp.use`、`report.create`、`share.create`、`export.data`）和 8 个系统权限（`admin.users`、`admin.roles`、`admin.datasources`、`admin.skills`、`admin.mcp`、`admin.settings`、`admin.audit`、`admin.ops`）。
+- **权限**：6 个功能权限（`chat.use`、`skill.use`、`mcp.use`、`report.create`、`share.create`、`export.data`）和 9 个系统权限（`admin.users`、`admin.roles`、`admin.departments`、`admin.datasources`、`admin.skills`、`admin.mcp`、`admin.settings`、`admin.audit`、`admin.ops`）。
 - **管理员**：`admin` 账号拥有全部功能权限与全部数据源，不受角色限制；系统管理权限只对管理员开放。
 - **内置成员**：现有非管理员迁移后自动获得“成员”角色（全部功能权限、无数据源），可改权限与数据源，不可改名或删除；新用户默认分配成员角色。
 - **自定义角色**：功能权限 + 数据源授权；可多角色，权限与数据源取并集，并与原有的按用户直授 `datasource_grants` 取并集。
 - **即时性**：角色/权限修改对 HTTP 接口和界面立即生效；已打开的 Agent 会话在**下一次新建会话**时应用新的 Skills / MCP 权限。
 - **撤销语义**：撤销 `report.create` / `share.create` / `export.data` 只阻止新建；已有报告仍可查看/删除，已有分享仍可撤销。
 - **删除角色**：角色仍分配给用户时不可删除，需先在用户页解除分配；内置角色不可删除或改名。
+- **部门与行级权限**：管理员在“管理 → 部门”建部门树、分配成员与部门数据源授权（沿树向下继承）；在数据源行点“行级权限”配置表策略与过滤条件。用户的有效范围是所属部门子树的并集，查询在守卫后、执行前改写成派生表过滤；无部门、缺映射、未分类表都会被拒绝。启用后历史结果按生成时的部门快照判断可见性，并禁止该数据源的公开分享。详见 [部门与行级数据权限](docs/subsystems/data-scope.md)。
 
 迁移会用 `role_member` 回填现有 `role=user` 用户；升级前建议先执行 `pnpm ops:backup`。
 
@@ -148,7 +149,7 @@ EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -
 - **执行**：服务每 60 秒检查到期任务（全局并发 2、单用户 1、单次超时 10 分钟），在隐藏会话（`conversations.kind = scheduled`）中复用完整 Agent 链路，结果自动生成报告。
 - **通知**：成功/失败/自动停用写入站内信，左下角铃铛显示未读数（30 秒轮询）；连续失败 3 次自动停用。
 - **权限**：创建和执行都要求 `chat.use` + `report.create`，并在执行时重新检查数据源访问；权限或数据源失效会跳过本次执行并停用任务。
-- **运维**：调度为单进程内存实现，不做分布式锁；暂不支持 IM 推送、任务共享或行/列级权限。
+- **运维**：调度为单进程内存实现，不做分布式锁；暂不支持 IM 推送或任务共享；任务每次执行都按当前部门/行级范围重新解析。
 
 ## 运维与数据保留
 
@@ -278,6 +279,7 @@ docker compose up -d
 - [x] GitHub Actions 覆盖 lint、typecheck、单测、构建与真库集成测试；金标集支持手动/夜间运行。
 - [x] 运维页可查看 7/30/90 天运行指标；保留策略可预览后清理，活跃分享/运行中会话自动跳过。
 - [x] 角色/用户管理可配置功能权限、数据源授权与系统管理员；HTTP、Skills/MCP 与聊天 UI 均按权限门禁。
+- [x] 部门树 + 行级数据权限：部门数据源授权向下继承，查询按部门子树改写过滤，受控数据源禁止公开分享，历史结果按快照鉴权。
 - [x] `pnpm ops:backup` / `ops:restore` 可备份并恢复 SQLite 与 artifact，恢复前校验完整性并保留 rollback。
 - [x] 定时任务可按 cron 自动执行、生成报告并发送站内信；连续失败 3 次自动停用，权限失效时跳过。
 - [x] 用户记忆支持自动沉淀、去重、相关召回、手动管理、关闭与管理员全局停用；按用户隔离且不进入报告/分享。

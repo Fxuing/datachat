@@ -54,6 +54,11 @@ export function markRun(db: Db, id: string, patch: MarkRunPatch): void {
   db.update(runs).set(changes).where(eq(runs.id, id)).run();
 }
 
+/** Stored on the run so later department moves can invalidate historical reads. */
+export function saveRunScopeSnapshot(db: Db, id: string, snapshotJson: string): void {
+  db.update(runs).set({ scopeSnapshot: snapshotJson }).where(eq(runs.id, id)).run();
+}
+
 export function findRun(db: Db, id: string): RunRow | undefined {
   return db.select().from(runs).where(eq(runs.id, id)).get();
 }

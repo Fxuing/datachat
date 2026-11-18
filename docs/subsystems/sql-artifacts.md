@@ -8,7 +8,8 @@
 | --- | --- | --- |
 | 守卫 | 解析/白名单校验语句、拒绝写入/系统访问、注入带上限的 limit | [`guard.ts`](../../apps/server/src/agent/sql/guard.ts) |
 | 执行器 | 在只读 pool 上执行一条语句、流式返回行、执行超时/中止 | [`executor.ts`](../../apps/server/src/agent/sql/executor.ts) |
-| 查询服务 | 授权、读取设置、守卫、执行、写 artifact、记审计 | [`query-service.ts`](../../apps/server/src/services/query-service.ts) |
+| 查询服务 | 授权、读取设置、守卫、范围改写、执行、写 snapshot/artifact、记审计 | [`query-service.ts`](../../apps/server/src/services/query-service.ts) |
+| 范围改写 | 按部门策略包派生表并绑定过滤参数 | [`scope.ts`](../../apps/server/src/agent/sql/scope.ts)、[`data-scope.ts` 服务](../../apps/server/src/services/data-scope.ts) |
 | Artifact 存储 | JSONL 行 + 元数据；图表 spec；读取/预览/导出 | [`artifacts.ts`](../../apps/server/src/services/artifacts.ts) |
 | 审计 | 为 ok/rejected/error 写 `query_audit` | [`audit.ts`](../../apps/server/src/services/audit.ts) |
 | 导出 HTTP | 授权、流式发送、完成后审计 | [`artifacts.ts` 路由](../../apps/server/src/routes/artifacts.ts) |
@@ -25,8 +26,12 @@ tool/route
   → guardSql({ sql, dialect, maxRows })
       ├─ rejected → audit(rejected) → errorResult（不建连接、不访问 pool）
       └─ ok
+  → applyScopeToSql({ datasourceId, mode, userId, sql, dialect })
+      ├─ scope 错误 → audit(rejected, scopeReason) → errorResult（不建连接）
+      └─ ok → { sql: executableSql, params, snapshot }
+  → saveRunScopeSnapshot(db, runId, snapshot)
   → ArtifactStore.openResult()
-  → executeReadOnly(pool, guardedSql, limits, signal, onRow)
+  → executeReadOnly(pool, executableSql, limits, signal, onRow, params)
   → writer.finish({ columns, rowCount, truncated })
   → audit(ok, duration, rowCount)
   → { artifactId, columns, previewRows, rowCount, truncated, guardedSql }
@@ -34,7 +39,7 @@ tool/route
 
 - `guardSql` 只允许只读语句类型；拒绝写入/DDL、系统 schema、锁、hint、危险函数和过多表。它返回实际发送的 SQL，包括注入的 limit。
 - `executeReadOnly` 使用数据源的只读 pool，把每一行流式写给 artifact writer，内存只保留预览窗口。`rowCount` 统计所有返回行；`truncated` 表示是否碰到上限。
-- 被拒绝的查询会带原因写审计，并且从不建立连接。
+- 被拒绝的查询会带原因写审计，并且从不建立连接。行级范围错误同样在取连接前返回，审计的 `scope_reason` 记录具体错误码；成功查询若发生改写，`scope_reason = "SCOPED"`。
 - artifact 落盘完成后才写审计。审计失败不能删除或作废已经成功的结果。
 
 ## Artifact 契约
@@ -48,7 +53,7 @@ tool/route
 
 ## 审计契约
 
-`query_audit` 记录用户、数据源、会话/run、动作（`query`/`explain`）、SQL 文本、状态（`ok`/`rejected`/`error`）、行数、耗时和错误信息。审计行只追加；不要把成功记录改成拒绝。管理端审计页/分页读取这些行；索引和筛选条件要保持稳定。
+`query_audit` 记录用户、数据源、会话/run、动作（`query`/`explain` 等）、SQL 文本、状态（`ok`/`rejected`/`error`）、行数、耗时、错误信息，以及可空的 `scope_reason`（错误码或 `SCOPED`）。审计行只追加；不要把成功记录改成拒绝。管理端审计页/分页读取这些行；索引和筛选条件要保持稳定。
 
 ## 失败行为
 

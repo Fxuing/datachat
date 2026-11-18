@@ -25,9 +25,15 @@ const JOURNAL_PATH = path.join(SOURCE_MIGRATIONS_DIR, "meta", "_journal.json");
 const APP_TABLES = [
   "artifacts",
   "conversations",
+  "data_scope_policies",
+  "data_scope_rules",
   "datasource_grants",
   "datasource_schema_cache",
   "datasources",
+  "department_closure",
+  "department_datasource_grants",
+  "department_org_map",
+  "departments",
   "llm_providers",
   "mcp_servers",
   "notifications",
@@ -44,6 +50,7 @@ const APP_TABLES = [
   "settings",
   "shares",
   "skills",
+  "user_departments",
   "user_memories",
   "user_memory_settings",
   "user_roles",
@@ -53,17 +60,30 @@ const APP_TABLES = [
 const INTEGRITY_INDEXES: Record<string, string[]> = {
   artifacts: ["artifacts_run_idx", "artifacts_user_idx"],
   conversations: ["conversations_user_last_message_idx"],
+  data_scope_policies: [
+    "data_scope_policies_table_unique",
+    "data_scope_policies_datasource_idx",
+  ],
+  data_scope_rules: ["data_scope_rules_policy_idx"],
   datasource_grants: [
     "datasource_grants_datasource_user_unique",
     "datasource_grants_user_idx",
   ],
   datasources: ["datasources_name_nocase_unique"],
+  department_closure: ["department_closure_descendant_idx"],
+  department_datasource_grants: ["department_datasource_grants_datasource_idx"],
+  department_org_map: [
+    "department_org_map_datasource_department_unique",
+    "department_org_map_datasource_idx",
+  ],
+  departments: ["departments_code_unique", "departments_parent_idx"],
   query_audit: [
     "query_audit_datasource_created_idx",
     "query_audit_created_idx",
   ],
   role_datasource_grants: ["role_datasource_grants_datasource_idx"],
   roles: ["roles_name_unique"],
+  user_departments: ["user_departments_department_idx"],
   user_roles: ["user_roles_role_idx"],
   run_events: ["run_events_conversation_seq_idx", "run_events_run_seq_unique"],
   runs: ["runs_conversation_idx", "runs_conversation_created_idx"],
@@ -252,8 +272,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(14);
-    expect(migrateDb(handle.db)).toBe(14);
+    expect(migrateDb(handle.db)).toBe(16);
+    expect(migrateDb(handle.db)).toBe(16);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

@@ -6,6 +6,9 @@ import { canAccessDatasource, resolveUserAccess } from "../auth/access.js";
 import { decryptSecret, deriveSecretKey } from "../agent/datasource/crypto.js";
 import type { PoolRegistry } from "../agent/datasource/pool.js";
 import { guardSql, type GuardErrorCode } from "../agent/sql/guard.js";
+import { ScopeRewriteError } from "../agent/sql/scope.js";
+import { ScopeResolveError, applyScopeToSql, type ScopeResolveCode } from "./data-scope.js";
+import { saveRunScopeSnapshot } from "../db/repositories/runs.js";
 import { SqlAbortedError, SqlTimeoutError, executeReadOnly } from "../agent/sql/executor.js";
 import type { ArtifactStore, ColumnInfo } from "./artifacts.js";
 import { resolveQueryLimits } from "./app-settings.js";
@@ -23,6 +26,8 @@ export interface RunQueryInput {
 
 export type QueryFailureCode =
   | GuardErrorCode
+  | ScopeResolveCode
+  | "SCOPE_REWRITE_FAILED"
   | "FORBIDDEN"
   | "SQL_ERROR"
   | "SQL_TIMEOUT"
@@ -129,6 +134,54 @@ export async function runGuardedQuery(
     return { ok: false, code: guard.code, reason: guard.reason, auditId };
   }
 
+  // Department scope is resolved after the guard (so only safe statements reach the
+  // AST rewrite) but before any connection or artifact is opened.
+  let executableSql = guard.sql;
+  let params: string[] | undefined;
+  let appliedTables: string[] = [];
+  let scopeSnapshotJson: string | null = null;
+  try {
+    const scoped = applyScopeToSql({
+      db,
+      datasourceId: input.datasource.id,
+      mode: input.datasource.dataScopeMode,
+      userId: input.userId,
+      sql: guard.sql,
+      dialect: input.datasource.type,
+    });
+    executableSql = scoped.sql;
+    params = scoped.params.length > 0 ? scoped.params : undefined;
+    appliedTables = scoped.appliedTables;
+    scopeSnapshotJson = JSON.stringify({
+      ...scoped.snapshot,
+      scopedTables: appliedTables,
+    });
+  } catch (error) {
+    if (error instanceof ScopeResolveError || error instanceof ScopeRewriteError) {
+      const auditId = recordAudit(db, {
+        runId: input.runId,
+        conversationId: input.conversationId,
+        userId: input.userId,
+        datasourceId: input.datasource.id,
+        action,
+        sqlText: guard.sql,
+        status: "rejected",
+        errorMessage: error.message,
+        scopeReason: error.code,
+      });
+      return { ok: false, code: error.code, reason: error.message, auditId };
+    }
+    throw error;
+  }
+
+  if (input.runId && scopeSnapshotJson) {
+    try {
+      saveRunScopeSnapshot(db, input.runId, scopeSnapshotJson);
+    } catch {
+      // A missing snapshot degrades to legacy visibility; it must not fail the run.
+    }
+  }
+
   const started = Date.now();
   const writer = artifacts.openResult({
     userId: input.userId,
@@ -156,7 +209,8 @@ export async function runGuardedQuery(
       {
         dialect: input.datasource.type,
         pool: input.datasource.type === "mysql" ? handle.mysql! : handle.pg!,
-        sql: guard.sql,
+        sql: executableSql,
+        params,
         maxRows: limits.maxRows,
         previewRows: limits.previewRows,
         timeoutMs: limits.timeoutMs,
@@ -180,10 +234,16 @@ export async function runGuardedQuery(
         userId: input.userId,
         datasourceId: input.datasource.id,
         action,
-        sqlText: guard.sql,
+        sqlText: executableSql,
         status: "ok",
         rowCount: result.rowCount,
         durationMs: Date.now() - started,
+        ...(appliedTables.length > 0
+          ? {
+              scopeReason: "SCOPED",
+              detail: { scopeTables: appliedTables },
+            }
+          : {}),
       });
     } catch {
       // Keep the successful result; only the audit row is lost.
@@ -196,7 +256,7 @@ export async function runGuardedQuery(
       rowCount: result.rowCount,
       truncated: result.truncated,
       durationMs: Date.now() - started,
-      guardedSql: guard.sql,
+      guardedSql: executableSql,
       auditId,
     };
   } catch (error) {
@@ -211,7 +271,7 @@ export async function runGuardedQuery(
         userId: input.userId,
         datasourceId: input.datasource.id,
         action,
-        sqlText: guard.sql,
+        sqlText: executableSql,
         status: timeout ? "timeout" : "error",
         durationMs: Date.now() - started,
         errorMessage: error instanceof Error ? error.message : String(error),

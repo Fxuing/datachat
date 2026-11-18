@@ -9,7 +9,7 @@
 | 页面状态 | 会话/消息/run 查询、输入框、活跃流 | [`ChatPage.tsx`](../../apps/web/src/pages/ChatPage.tsx) |
 | 流 | 重连、回放、按序号合并事件、取消/清理 | [`useRunStream.ts`](../../apps/web/src/hooks/useRunStream.ts) |
 | 消息列表 | 排序、滚动锚定、流式尾部、“有新内容” | [`MessageList.tsx`](../../apps/web/src/components/chat/MessageList.tsx)、[`message-scroll.ts`](../../apps/web/src/lib/message-scroll.ts) |
-| 单条消息 | Markdown、分段、执行过程、用量、操作 | [`MessageItem.tsx`](../../apps/web/src/components/chat/MessageItem.tsx) |
+| 单条消息 | Markdown、分段、执行过程、用量、操作、部门范围提示 | [`MessageItem.tsx`](../../apps/web/src/components/chat/MessageItem.tsx) |
 | 解析器 | 切分 markdown/artifact/chart/result 段 | [`report-markdown.ts`](../../apps/web/src/lib/report-markdown.ts) |
 | 数据表格 | 预览、加载更多、导出、SQL 详情 | [`ResultTable.tsx`](../../apps/web/src/components/chat/ResultTable.tsx)、[`ResultDetailDialog.tsx`](../../apps/web/src/components/chat/ResultDetailDialog.tsx) |
 | 行内结果 | 链接 + 详情弹窗 | [`ResultLink.tsx`](../../apps/web/src/components/chat/ResultLink.tsx) |
@@ -60,6 +60,7 @@ Mermaid 代码块由 `MermaidDiagram` 在聊天、报告和公开分享中渲染
 - 网络断开：退避重试，从最后序号回放，保留部分轮次。
 - 未知 artifact/result id：显示不可用状态，不要留空白卡片。
 - run 失败：保留 trace，显示错误和重试/换模型操作；重试通过 `retry_of_run_id` 替换失败轮次。
+- 部门过滤：`message.scope` 存在且非空时，在回答上方显示数据范围提示；没有 `scope` 的历史轮次不显示，不要用当前部门反推。
 - 图表/报告 JSON 损坏：显示错误/回退；一个坏 artifact 不能让消息列表崩溃。
 
 ## 验证

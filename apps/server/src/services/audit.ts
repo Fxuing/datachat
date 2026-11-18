@@ -15,6 +15,9 @@ export type AuditAction =
   | "datasource_update"
   | "datasource_delete"
   | "grant_update"
+  | "department_change"
+  | "data_scope_change"
+  | "data_scope_enable"
   | "skill_change"
   | "mcp_change"
   | "role_change"
@@ -32,6 +35,8 @@ export interface AuditInput {
   durationMs?: number;
   errorMessage?: string;
   detail?: Record<string, unknown> | null;
+  /** Machine-readable reason for a scope rejection or narrowing. */
+  scopeReason?: string;
 }
 
 /** Keep audit rows bounded even when a caller submits a near-100k SQL string. */
@@ -59,6 +64,7 @@ export function recordAudit(db: Db, input: AuditInput): string {
       durationMs: input.durationMs ?? null,
       errorMessage: input.errorMessage ? redactSecrets(input.errorMessage) : null,
       detailJson: input.detail ? JSON.stringify(input.detail) : null,
+      scopeReason: input.scopeReason ?? null,
       createdAt: Date.now(),
     })
     .run();

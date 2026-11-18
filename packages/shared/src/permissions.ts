@@ -9,6 +9,7 @@ export const FUNCTIONAL_PERMISSIONS = [
 
 export const SYSTEM_PERMISSIONS = [
   "admin.users",
+  "admin.departments",
   "admin.roles",
   "admin.datasources",
   "admin.skills",
@@ -32,6 +33,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   "share.create": "创建分享链接",
   "export.data": "导出 CSV / Excel",
   "admin.users": "用户管理",
+  "admin.departments": "部门管理",
   "admin.roles": "角色管理",
   "admin.datasources": "数据源管理",
   "admin.skills": "技能管理",

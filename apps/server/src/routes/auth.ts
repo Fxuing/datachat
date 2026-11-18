@@ -6,6 +6,7 @@ import type { Db } from "../db/client.js";
 import { users } from "../db/schema.js";
 import { findUserByUsername, toPublicUser } from "../db/repositories/users.js";
 import { listRolesForUser } from "../db/repositories/roles.js";
+import { listUserDepartments, listUserDepartmentRows } from "../db/repositories/departments.js";
 import { resolveUserAccess } from "../auth/access.js";
 import { verifyPassword } from "../auth/password.js";
 import { SESSION_COOKIE } from "../auth/guard.js";
@@ -92,6 +93,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions): 
       user: toPublicUser(user),
       permissions: [...resolveUserAccess(db, user).permissions],
       roles: listRolesForUser(db, user.id).map((role) => ({ id: role.id, name: role.name })),
+      departments: listUserDepartments(db, user.id).map((id) => ({ id })),
+      departmentNames: listUserDepartmentRows(db, user.id).map((row) => row.name),
     };
   });
 }

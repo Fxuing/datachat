@@ -8,6 +8,8 @@
 
 **Tech Stack:** TypeScript、Fastify、Drizzle/SQLite、node-sql-parser、React 19、TanStack Query、Radix UI、Vitest。
 
+**状态（2026-11-18）：已完成。** 实际行为与本文的差异记在 spec 头部与 [`docs/subsystems/data-scope.md`](../../subsystems/data-scope.md)。
+
 **Spec:** `docs/superpowers/specs/2026-11-17-department-data-scope-design.md`
 
 ---

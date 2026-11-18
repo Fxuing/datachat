@@ -32,6 +32,8 @@ export interface ExecuteInput {
   dialect: "mysql" | "postgres";
   pool: MysqlPool | PgPool;
   sql: string;
+  /** Bound values for placeholders produced by the scope rewrite. */
+  params?: unknown[];
   maxRows: number;
   previewRows: number;
   timeoutMs: number;
@@ -213,11 +215,12 @@ async function streamMysql(
       connection as unknown as { connection?: { query: (options: unknown) => unknown } }
     ).connection;
     const querySource = (rawConnection ?? connection) as unknown as {
-      query: (options: { sql: string; rowsAsArray: boolean }) => unknown;
+      query: (options: { sql: string; rowsAsArray: boolean; values?: unknown[] }) => unknown;
     };
     const query = querySource.query({
       sql,
       rowsAsArray: true,
+      values: input.params,
     }) as unknown as {
       on(event: "fields", listener: (fields: Array<{ name: string }>) => void): unknown;
       stream(options?: { highWaterMark?: number }): AsyncIterable<unknown[]>;
@@ -325,7 +328,7 @@ async function streamPostgres(
 
     await client.query(`SET statement_timeout = ${Math.max(1, Math.floor(input.timeoutMs))}`);
     cursor = client.query(
-      new Cursor(sql, [], { rowMode: "array" }) as never,
+      new Cursor(sql, input.params ?? [], { rowMode: "array" }) as never,
     ) as unknown as Cursor;
 
     let columns: ColumnInfo[] = [];

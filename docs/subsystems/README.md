@@ -7,6 +7,7 @@
 | 会话运行时、队列、Pi 会话、运行事件与 SSE | [聊天运行时](chat-runtime.md) |
 | SQL 守卫/执行器、查询服务、artifact、审计 | [SQL 与 artifact](sql-artifacts.md) |
 | 登录/会话、角色、权限、数据源授权、公开分享 | [认证与权限](auth-permissions.md) |
+| 部门树、部门授权、行级表策略、查询改写与历史快照 | [部门与行级数据权限](data-scope.md) |
 | 数据源连接、探测、内省与 schema 缓存 | [数据源与 schema](datasources.md) |
 | 聊天界面、消息分段、结果/图表/报告渲染、滚动 | [聊天界面](chat-ui.md) |
 | 记忆召回、`memory_save`、提取、用户/管理员设置 | [记忆](memory.md) |

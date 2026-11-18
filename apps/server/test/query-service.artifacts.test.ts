@@ -44,6 +44,7 @@ function datasourceRow(): DatasourceRow {
     optionsJson: null,
     readOnlyVerified: 1,
     allowWriteAccount: 0,
+    dataScopeMode: "off",
     status: "ok",
     lastCheckedAt: null,
     createdBy: "u1",

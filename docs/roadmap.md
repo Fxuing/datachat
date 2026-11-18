@@ -14,6 +14,7 @@
 | [`2026-11-11-nl2sql-golden-set.md`](./superpowers/plans/2026-11-11-nl2sql-golden-set.md) | NL2SQL 金标集与回归评分 | 已交付 |
 | [`2026-11-11-operations-governance.md`](./superpowers/plans/2026-11-11-operations-governance.md) | 保留策略、运行指标、备份恢复 | 已交付 |
 | [`2026-11-13-rbac-roles.md`](./superpowers/plans/2026-11-13-rbac-roles.md) | 角色、权限矩阵、用户角色分配、路由与 UI 门禁 | 已交付 |
+| [`2026-11-17-department-data-scope.md`](./superpowers/plans/2026-11-17-department-data-scope.md) | 部门树、部门数据源授权、表策略与行级查询改写、历史快照与分享限制 | 已交付 |
 
 ## 计划外已交付
 
@@ -33,7 +34,8 @@
 - **CI 与 lint**：`.github/workflows/ci.yml` 覆盖 lint、typecheck、服务端/共享包测试、web 测试与构建；独立 job 用 Testcontainers 跑真库集成测试；手动/夜间 `eval:nl2sql` job 在配置 `EVAL_API_KEY` 后运行；根级 `pnpm lint` 使用 ESLint 9 + typescript-eslint flat config。首次 GitHub Actions 运行已通过（2026-11-11，含 7 项 MySQL/PostgreSQL 集成测试）。
 - **定时任务**：用户按 cron + 时区保存问题，服务每 60 秒调度；隐藏会话执行、自动生成报告、站内信通知，连续失败 3 次自动停用；全局并发 2 / 单用户 1、单次 10 分钟。单机内存调度，不做分布式锁与 IM 推送。
 - **用户记忆**：自动沉淀 + `memory_save` 去重、全局/数据源作用域、核心常驻与相关召回（2000+1500 字）、`/memory` 管理页、用户开关与管理员全局停用；按用户隔离，不进入报告/分享。
-- **RBAC 角色与权限**：14 个功能/系统权限、多角色并集、角色-数据源授权（与直授取并集）、内置成员角色与旧用户迁移；`/admin/roles`、`/admin/users` 管理页；HTTP、Agent Skills/MCP 与聊天 UI 全部按权限门禁，权限修改即时生效（Agent 下一次会话生效）。系统管理权限仍仅管理员可用，行列权限延后。
+- **RBAC 角色与权限**：15 个功能/系统权限、多角色并集、角色-数据源授权（与直授取并集）、内置成员角色与旧用户迁移；`/admin/roles`、`/admin/users` 管理页；HTTP、Agent Skills/MCP 与聊天 UI 全部按权限门禁，权限修改即时生效（Agent 下一次会话生效）。系统管理权限仍仅管理员可用。
+- **部门与行级数据权限**：`departments` 树 + 闭包表、`user_departments`、`department_datasource_grants`（向下继承）、`department_org_map`、`data_scope_policies`；查询在守卫后改写为派生表过滤（绑定参数），`db_schema` 同步收敛可见表；`runs.scope_snapshot` 控制历史 artifact/报告可见性；受控数据源禁止公开分享；`/admin/departments`、`/admin/datasources/:id/scope`、用户部门分配与聊天范围徽标。前置文档见 [部门与行级数据权限](./subsystems/data-scope.md)。
 
 ## 已知缺口
 

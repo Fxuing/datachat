@@ -221,7 +221,10 @@ export async function conversationRoutes(
       if (!conversation) {
         return reply.code(404).send(error("NOT_FOUND", "会话不存在"));
       }
-      return getConversationDetail(opts.db, opts.artifacts, conversation);
+      return getConversationDetail(opts.db, opts.artifacts, conversation, {
+        userId: request.user!.sub,
+        isAdmin: request.user!.role === "admin",
+      });
     },
   );
 

@@ -9,12 +9,12 @@
 | 会话 cookie | 签名/校验 `dc_session`；过期/续期 | [`jwt.ts`](../../apps/server/src/auth/jwt.ts) |
 | 登录 | 校验密码、签发 cookie、限流 | [`routes/auth.ts`](../../apps/server/src/routes/auth.ts)、[`password.ts`](../../apps/server/src/auth/password.ts) |
 | 守卫 | `authenticate`、`requirePermission`、`requireAdmin` | [`guard.ts`](../../apps/server/src/auth/guard.ts) |
-| 访问解析 | 角色 + 直授权限取并集；admin 绕过 | [`access.ts`](../../apps/server/src/auth/access.ts) |
+| 访问解析 | 角色 + 直授 + 部门数据源授权取并集；admin 绕过 | [`access.ts`](../../apps/server/src/auth/access.ts) |
 | 权限清单 | 共享权限字符串/标签 | [`permissions.ts`](../../packages/shared/src/permissions.ts) |
-| 角色/用户管理 | 角色、分配、数据源授权 | [`routes/admin-roles.ts`](../../apps/server/src/routes/admin-roles.ts)、[`admin-users.ts`](../../apps/server/src/routes/admin-users.ts) |
+| 角色/用户管理 | 角色、分配、数据源授权、用户部门 | [`routes/admin-roles.ts`](../../apps/server/src/routes/admin-roles.ts)、[`admin-users.ts`](../../apps/server/src/routes/admin-users.ts)、[`admin-departments.ts`](../../apps/server/src/routes/admin-departments.ts) |
 | 公开分享 | 匿名 token + 只读投影 | [`shares.ts`](../../apps/server/src/services/shares.ts) |
 
-`users.role = "admin"` 是系统管理员标志。自定义角色是叠加的；没有自定义角色的用户回退到内置成员预设。数据源访问权是角色授权和直接 `datasource_grants` 的并集。
+`users.role = "admin"` 是系统管理员标志。自定义角色是叠加的；没有自定义角色的用户回退到内置成员预设。数据源访问权是角色授权、直接 `datasource_grants` 和部门授权（沿部门树向下继承）的并集。`resolveUserAccess` 同时返回 `departmentIds`（所属部门子树并集，admin 为 null），供行级数据权限使用；数据边界见 [部门与行级数据权限](data-scope.md)。
 
 ## 请求路径
 
@@ -28,7 +28,9 @@
 
 - 功能权限包括聊天、技能、MCP、报告、分享、导出和管理区域。见 `packages/shared/src/permissions.ts`；新增权限要同步更新 `ALL_PERMISSIONS`、角色预设、路由/工具门禁、管理界面和测试。
 - 数据源授权与功能权限分离：用户既需要 `chat.use`（或对应功能权限），也需要该数据源的访问权。
-- Admin 绕过依据是 `admin` 标志，不是角色名。管理员可以管理用户、角色、数据源、设置和审计；但不会自动读取其他用户的记忆内容。
+- 部门不是角色：部门只决定数据边界，不授予功能权限。部门授权只授予数据源访问权；表级与行级策略在查询路径中单独解析。
+- Admin 绕过依据是 `admin` 标志，不是角色名。管理员可以管理用户、角色、部门、数据源、设置和审计；但不会自动读取其他用户的记忆内容。行级数据权限同样对管理员放行。
+- `admin.departments` 控制部门管理 API 与 `/admin/departments` 页面；它不改变任何数据可见范围。
 - 公开分享不是绕过其他 API 登录的通道。它只解析分享 token，返回受过期/撤销约束的只读投影。
 
 ## CSRF、cookie 与部署
@@ -44,6 +46,7 @@
 - 已认证但缺少权限：`403 PERMISSION_DENIED`，并带 `permission`。
 - 资源不属于当前用户：`404 NOT_FOUND`。
 - 数据源被撤销/禁用：工具/查询返回权限错误；不要回退到其他数据源。
+- 部门相关失败：无部门、缺映射、未分类表等返回稳定的 `DATA_SCOPE_*` 错误码，并在建立连接前拒绝；完整列表见 [部门与行级数据权限](data-scope.md#失败行为)。
 - 管理员删除正在使用的角色：`409`；删除用户后，下一次请求重读用户会使其会话失效，并清理其拥有的资源。
 
 ## 验证

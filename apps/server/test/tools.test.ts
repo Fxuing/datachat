@@ -59,6 +59,7 @@ function datasourceRow(overrides: Partial<DatasourceRow> = {}): DatasourceRow {
     optionsJson: null,
     readOnlyVerified: 1,
     allowWriteAccount: 0,
+    dataScopeMode: "off",
     status: "ok",
     lastCheckedAt: null,
     createdBy: "u1",

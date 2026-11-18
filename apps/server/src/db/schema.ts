@@ -39,6 +39,10 @@ export const datasources = sqliteTable("datasources", {
   /** Admin opted in to a write-capable account; the query guard is unaffected. */
   allowWriteAccount: integer("allow_write_account").notNull().default(0),
   status: text("status").notNull().default("unknown"),
+  /** Data-scope enforcement state; see docs/subsystems/auth-permissions.md. */
+  dataScopeMode: text("data_scope_mode", { enum: ["off", "configuring", "enabled"] })
+    .notNull()
+    .default("off"),
   lastCheckedAt: integer("last_checked_at"),
   createdBy: text("created_by").notNull(),
   createdAt: integer("created_at").notNull(),
@@ -69,6 +73,163 @@ export const datasourceSchemaCache = sqliteTable("datasource_schema_cache", {
   refreshedAt: integer("refreshed_at").notNull(),
   error: text("error"),
 });
+
+export const departments = sqliteTable(
+  "departments",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    /** Stable business code; `app_code` row filtering reads this column directly. */
+    code: text("code").notNull(),
+    parentId: text("parent_id"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    status: text("status", { enum: ["active", "archived"] }).notNull().default("active"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("departments_code_unique").on(t.code),
+    index("departments_parent_idx").on(t.parentId),
+    check("departments_status_check", sql`${t.status} in ('active', 'archived')`),
+  ],
+);
+
+/** Transitive parent/child pairs; depth 0 is the department itself. */
+export const departmentClosure = sqliteTable(
+  "department_closure",
+  {
+    ancestorId: text("ancestor_id").notNull(),
+    descendantId: text("descendant_id").notNull(),
+    depth: integer("depth").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.ancestorId, t.descendantId] }),
+    index("department_closure_descendant_idx").on(t.descendantId, t.depth),
+    check("department_closure_depth_check", sql`${t.depth} >= 0`),
+  ],
+);
+
+export const userDepartments = sqliteTable(
+  "user_departments",
+  {
+    userId: text("user_id").notNull(),
+    departmentId: text("department_id").notNull(),
+    /** Primary membership is display-only; every membership grants its subtree. */
+    isPrimary: integer("is_primary").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.departmentId] }),
+    index("user_departments_department_idx").on(t.departmentId),
+    check("user_departments_primary_check", sql`${t.isPrimary} in (0, 1)`),
+  ],
+);
+
+export const departmentDatasourceGrants = sqliteTable(
+  "department_datasource_grants",
+  {
+    departmentId: text("department_id").notNull(),
+    datasourceId: text("datasource_id").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.departmentId, t.datasourceId] }),
+    index("department_datasource_grants_datasource_idx").on(t.datasourceId),
+  ],
+);
+
+export const departmentOrgMap = sqliteTable(
+  "department_org_map",
+  {
+    id: text("id").primaryKey(),
+    datasourceId: text("datasource_id").notNull(),
+    departmentId: text("department_id").notNull(),
+    externalId: text("external_id"),
+    externalCode: text("external_code"),
+    externalOrgCode: text("external_org_code"),
+    source: text("source", { enum: ["manual", "import"] }).notNull().default("manual"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("department_org_map_datasource_department_unique").on(
+      t.datasourceId,
+      t.departmentId,
+    ),
+    index("department_org_map_datasource_idx").on(t.datasourceId),
+    check("department_org_map_source_check", sql`${t.source} in ('manual', 'import')`),
+    check(
+      "department_org_map_external_check",
+      sql`(coalesce(${t.externalId}, '') <> '') or (coalesce(${t.externalCode}, '') <> '') or (coalesce(${t.externalOrgCode}, '') <> '')`,
+    ),
+  ],
+);
+
+export const dataScopePolicies = sqliteTable(
+  "data_scope_policies",
+  {
+    id: text("id").primaryKey(),
+    datasourceId: text("datasource_id").notNull(),
+    tableName: text("table_name").notNull(),
+    mode: text("mode", { enum: ["scoped", "public", "denied"] }).notNull(),
+    enabled: integer("enabled").notNull().default(1),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("data_scope_policies_table_unique").on(t.datasourceId, t.tableName),
+    index("data_scope_policies_datasource_idx").on(t.datasourceId),
+    check("data_scope_policies_mode_check", sql`${t.mode} in ('scoped', 'public', 'denied')`),
+    check("data_scope_policies_enabled_check", sql`${t.enabled} in (0, 1)`),
+  ],
+);
+
+/**
+ * Conditions for a scoped table. All rules of one policy are ANDed. Literal
+ * rules apply to every user (including admins); identity rules are skipped for
+ * admins, who already have unrestricted access.
+ */
+export const dataScopeRules = sqliteTable(
+  "data_scope_rules",
+  {
+    id: text("id").primaryKey(),
+    policyId: text("policy_id").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    columnName: text("column_name").notNull(),
+    operator: text("operator", {
+      enum: ["eq", "in", "not_in", "gt", "gte", "lt", "lte"],
+    }).notNull(),
+    valueMode: text("value_mode", {
+      enum: [
+        "literal",
+        "department_id",
+        "department_code",
+        "external_id",
+        "external_code",
+        "external_org_code",
+        "user_id",
+        "username",
+        "role",
+      ],
+    }).notNull(),
+    /** JSON string array; only used when valueMode is literal. */
+    literalValuesJson: text("literal_values_json"),
+    /** NULL rows stay visible (unassigned records) unless disabled. */
+    nullVisible: integer("null_visible").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("data_scope_rules_policy_idx").on(t.policyId, t.sortOrder),
+    check(
+      "data_scope_rules_operator_check",
+      sql`${t.operator} in ('eq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte')`,
+    ),
+    check(
+      "data_scope_rules_value_mode_check",
+      sql`${t.valueMode} in ('literal', 'department_id', 'department_code', 'external_id', 'external_code', 'external_org_code', 'user_id', 'username', 'role')`,
+    ),
+    check("data_scope_rules_null_visible_check", sql`${t.nullVisible} in (0, 1)`),
+  ],
+);
 
 export const conversations = sqliteTable(
   "conversations",
@@ -107,6 +268,8 @@ export const runs = sqliteTable(
     startedAt: integer("started_at"),
     endedAt: integer("ended_at"),
     memoryExtractedAt: integer("memory_extracted_at"),
+    /** Frozen data scope at run start; legacy runs have no snapshot. */
+    scopeSnapshot: text("scope_snapshot"),
   },
   (t) => [
     index("runs_conversation_idx").on(t.conversationId),
@@ -172,6 +335,9 @@ export const queryAudit = sqliteTable(
         "datasource_update",
         "datasource_delete",
         "grant_update",
+        "department_change",
+        "data_scope_change",
+        "data_scope_enable",
         "skill_change",
         "mcp_change",
         "role_change",
@@ -187,6 +353,8 @@ export const queryAudit = sqliteTable(
     durationMs: integer("duration_ms"),
     errorMessage: text("error_message"),
     detailJson: text("detail_json"),
+    /** Why a query was rejected or narrowed by data scope. */
+    scopeReason: text("scope_reason"),
     createdAt: integer("created_at").notNull(),
   },
   (t) => [

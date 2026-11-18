@@ -1,8 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { runEventSchema, type RunEvent } from "@datachat/shared";
 import type { Db } from "../db/client.js";
-import { shares } from "../db/schema.js";
+import { conversations, reports, shares } from "../db/schema.js";
 import {
   findConversation,
   type ConversationRow,
@@ -13,6 +13,7 @@ import {
   type ReportRow,
 } from "../db/repositories/reports.js";
 import { listConversationEvents } from "../db/repositories/run-events.js";
+import { findDatasource } from "../db/repositories/datasources.js";
 import type { ArtifactStore, ColumnInfo } from "./artifacts.js";
 
 export const SHARE_MIN_EXPIRES_IN_DAYS = 1;
@@ -65,7 +66,7 @@ export interface PublicReportShare {
 
 export type PublicShare = PublicConversationShare | PublicReportShare;
 
-export type ShareErrorCode = "VALIDATION" | "NOT_FOUND";
+export type ShareErrorCode = "VALIDATION" | "NOT_FOUND" | "SHARE_DISABLED_BY_SCOPE";
 
 export type CreateShareResult =
   | { ok: true; share: CreatedShare }
@@ -73,7 +74,7 @@ export type CreateShareResult =
 
 export type ResolveShareResult =
   | { ok: true; share: PublicShare }
-  | { ok: false; code: "SHARE_GONE"; message: string };
+  | { ok: false; code: "SHARE_GONE" | "SHARE_DISABLED_BY_SCOPE"; message: string };
 
 export type RevokeShareResult =
   | { ok: true }
@@ -138,6 +139,24 @@ function isTargetFound(
   return Boolean(report && report.userId === userId);
 }
 
+/** Public projection is refused once a datasource enforces department scope. */
+function shareTargetScopeEnforced(
+  db: Db,
+  conversationId: string | undefined,
+  reportId: string | undefined,
+): boolean {
+  const conversation = conversationId
+    ? findConversation(db, conversationId)
+    : reportId
+      ? (() => {
+          const report = findReport(db, reportId);
+          return report?.conversationId ? findConversation(db, report.conversationId) : undefined;
+        })()
+      : undefined;
+  if (!conversation) return false;
+  return findDatasource(db, conversation.datasourceId)?.dataScopeMode === "enabled";
+}
+
 export function createShare(input: CreateShareInput): CreateShareResult {
   const targetCount = (input.conversationId ? 1 : 0) + (input.reportId ? 1 : 0);
   if (targetCount !== 1) {
@@ -153,6 +172,10 @@ export function createShare(input: CreateShareInput): CreateShareResult {
 
   if (!isTargetFound(input.db, input.userId, input.conversationId, input.reportId)) {
     return error("NOT_FOUND", "分享目标不存在");
+  }
+
+  if (shareTargetScopeEnforced(input.db, input.conversationId, input.reportId)) {
+    return error("SHARE_DISABLED_BY_SCOPE", "该数据源已启用部门数据权限，不能公开分享");
   }
 
   const now = input.now ?? Date.now();
@@ -201,6 +224,14 @@ export async function resolveShare(input: ResolveShareInput): Promise<ResolveSha
 
   if (!share || share.revokedAt !== null || share.expiresAt <= now) {
     return { ok: false, code: "SHARE_GONE", message: SHARE_GONE_MESSAGE };
+  }
+
+  if (shareTargetScopeEnforced(input.db, share.conversationId ?? undefined, share.reportId ?? undefined)) {
+    return {
+      ok: false,
+      code: "SHARE_DISABLED_BY_SCOPE",
+      message: "该数据源已启用部门数据权限，分享已失效",
+    };
   }
 
   if (share.conversationId) {
@@ -368,4 +399,37 @@ async function buildReportShare(
     artifacts: items,
     createdAt: report.createdAt,
   };
+}
+
+/**
+ * Enabling department scope revokes every public link that could expose rows from
+ * the datasource. Returns the number of links revoked.
+ */
+export function revokeSharesForDatasource(db: Db, datasourceId: string): number {
+  const conversationIds = db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(eq(conversations.datasourceId, datasourceId))
+    .all()
+    .map((row) => row.id);
+  if (conversationIds.length === 0) return 0;
+  const reportIds = db
+    .select({ id: reports.id })
+    .from(reports)
+    .where(inArray(reports.conversationId, conversationIds))
+    .all()
+    .map((row) => row.id);
+  const target =
+    reportIds.length > 0
+      ? or(
+          inArray(shares.conversationId, conversationIds),
+          inArray(shares.reportId, reportIds),
+        )
+      : inArray(shares.conversationId, conversationIds);
+  const result = db
+    .update(shares)
+    .set({ revokedAt: Date.now() })
+    .where(and(isNull(shares.revokedAt), target))
+    .run();
+  return Number(result.changes ?? 0);
 }

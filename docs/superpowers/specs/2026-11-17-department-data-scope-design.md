@@ -1,10 +1,10 @@
 # 部门与行级数据权限设计
 
 - 日期：2026-11-17
-- 状态：草案（待评审）
+- 状态：已实现（2026-11-18）。实现差异：迁移为 `0014_departments_scope.sql`（0013 已被用户记忆占用）；`app_id`/`app_code` 直接取本系统部门 id/code；过滤值使用绑定参数而非 SQL 字面量；`nullVisible` 当前只生成 `IS NULL`。当前行为以 [`docs/subsystems/data-scope.md`](../../subsystems/data-scope.md) 为准。
 - 范围：部门组织、部门-数据源授权、表级数据范围分类、行级过滤、范围快照与存量数据迁移
 - 关联：[`2026-11-13-rbac-roles-design.md`](./2026-11-13-rbac-roles-design.md)、[`../roadmap.md`](../roadmap.md)
-- 后续：评审通过后拆实施计划；本文不包含代码改动
+- 后续：实施计划见 [`../plans/2026-11-17-department-data-scope.md`](../plans/2026-11-17-department-data-scope.md)
 
 ## 1. 背景
 
