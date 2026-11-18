@@ -1,34 +1,29 @@
-# SQL, artifacts and audit
+# SQL、artifact 与审计
 
-Every user-facing query goes through one guarded path. This page covers the SQL
-boundary and the files that hold results; prompt wording and chat rendering are in
-[Chat UI](chat-ui.md).
+所有面向用户的查询都必须经过同一条受守卫的路径。本文覆盖 SQL 边界和保存结果的文件；prompt 写法和聊天渲染见 [聊天界面](chat-ui.md)。
 
-## Responsibilities and sources of truth
+## 职责与事实来源
 
-| Part | Responsibility | Source |
+| 部分 | 职责 | 源码 |
 | --- | --- | --- |
-| Guard | Parse/allow-list a statement, reject writes/system access, inject a bounded limit | [`guard.ts`](../../apps/server/src/agent/sql/guard.ts) |
-| Executor | Run one statement on the read-only pool, stream rows, enforce timeout/abort | [`executor.ts`](../../apps/server/src/agent/sql/executor.ts) |
-| Query service | Authorize, read settings, guard, execute, write artifact, record audit | [`query-service.ts`](../../apps/server/src/services/query-service.ts) |
-| Artifact store | JSONL rows + metadata; chart specs; read/preview/export | [`artifacts.ts`](../../apps/server/src/services/artifacts.ts) |
-| Audit | Write `query_audit` for ok/rejected/error | [`audit.ts`](../../apps/server/src/services/audit.ts) |
-| Export HTTP | Authorize, stream, audit completion | [`artifacts.ts` route](../../apps/server/src/routes/artifacts.ts) |
-| Chart tool | Build a spec from a result artifact | [`make-chart.ts`](../../apps/server/src/agent/tools/make-chart.ts) |
+| 守卫 | 解析/白名单校验语句、拒绝写入/系统访问、注入带上限的 limit | [`guard.ts`](../../apps/server/src/agent/sql/guard.ts) |
+| 执行器 | 在只读 pool 上执行一条语句、流式返回行、执行超时/中止 | [`executor.ts`](../../apps/server/src/agent/sql/executor.ts) |
+| 查询服务 | 授权、读取设置、守卫、执行、写 artifact、记审计 | [`query-service.ts`](../../apps/server/src/services/query-service.ts) |
+| Artifact 存储 | JSONL 行 + 元数据；图表 spec；读取/预览/导出 | [`artifacts.ts`](../../apps/server/src/services/artifacts.ts) |
+| 审计 | 为 ok/rejected/error 写 `query_audit` | [`audit.ts`](../../apps/server/src/services/audit.ts) |
+| 导出 HTTP | 授权、流式发送、完成后审计 | [`artifacts.ts` 路由](../../apps/server/src/routes/artifacts.ts) |
+| 图表工具 | 从结果 artifact 构建图表 spec | [`make-chart.ts`](../../apps/server/src/agent/tools/make-chart.ts) |
 
-Limits (`maxRows`, `previewRows`, `timeoutMs`) come from app settings via
-`resolveQueryLimits`; read them once per query so a settings change applies to the
-next run. The datasource connection is encrypted at rest and decrypted only inside
-the query path.
+限制（`maxRows`、`previewRows`、`timeoutMs`）来自应用设置，通过 `resolveQueryLimits` 解析；每次查询读一次，这样设置修改会在下一轮生效。数据源连接在存储时加密，只在查询路径内解密。
 
-## Runtime path
+## 运行路径
 
 ```text
 tool/route
   → authorizeDatasourceAccess(user, datasource)
   → resolveQueryLimits()
   → guardSql({ sql, dialect, maxRows })
-      ├─ rejected → audit(rejected) → errorResult (no pool, no connection)
+      ├─ rejected → audit(rejected) → errorResult（不建连接、不访问 pool）
       └─ ok
   → ArtifactStore.openResult()
   → executeReadOnly(pool, guardedSql, limits, signal, onRow)
@@ -37,55 +32,33 @@ tool/route
   → { artifactId, columns, previewRows, rowCount, truncated, guardedSql }
 ```
 
-- `guardSql` allows read-only statement types only; rejects writes/DDL, system
-  schemas, locking, hints, unsafe functions, and excessive table counts. It returns
-  the SQL actually sent, including the injected limit.
-- `executeReadOnly` uses the datasource’s read-only pool, streams each row to the
-  artifact writer, and bounds memory to the preview window. `rowCount` counts all
-  returned rows; `truncated` says the cap was reached.
-- A rejected query is audited with the reason and never opens a connection.
-- The artifact is durable before the audit is written. An audit failure must not
-  delete or invalidate a successful result.
+- `guardSql` 只允许只读语句类型；拒绝写入/DDL、系统 schema、锁、hint、危险函数和过多表。它返回实际发送的 SQL，包括注入的 limit。
+- `executeReadOnly` 使用数据源的只读 pool，把每一行流式写给 artifact writer，内存只保留预览窗口。`rowCount` 统计所有返回行；`truncated` 表示是否碰到上限。
+- 被拒绝的查询会带原因写审计，并且从不建立连接。
+- artifact 落盘完成后才写审计。审计失败不能删除或作废已经成功的结果。
 
-## Artifact contracts
+## Artifact 契约
 
-- `artifacts.kind` is `result` or `chart`. Result rows live in
-  `DATA_DIR/artifacts/*.jsonl` (gzip where applicable); SQLite stores id, owner,
-  conversation/run, columns, row count, truncation, relative storage path and
-  timestamps.
-- Values are encoded/decoded for BigInt, Date, Buffer, Decimal and non-finite
-  numbers (`encodeValue`/`decodeValue`). Do not `JSON.stringify` driver rows
-  directly.
-- Preview rows are a bounded slice for the UI. Full rows are read by the artifact
-  API with pagination; exports stream the file.
-- Artifacts are scoped by `userId` and optionally conversation/run. A download or
-  chart must verify access; never accept an arbitrary file path.
-- Chart input is capped (`MAX_CHART_INPUT_ROWS = 50_000`) and reads only a result
-  artifact. A chart spec is stored as an artifact of kind `chart`, not as SQLite
-  row data.
-- Deleting a conversation/user cleans artifact files and rows; do not orphan files.
+- `artifacts.kind` 为 `result` 或 `chart`。结果行保存在 `DATA_DIR/artifacts/*.jsonl`（视情况 gzip）；SQLite 存 id、属主、会话/run、列、行数、截断标记、相对存储路径和时间戳。
+- 值会针对 BigInt、Date、Buffer、Decimal 和非有限数字做编码/解码（`encodeValue`/`decodeValue`）。不要直接对驱动返回的行做 `JSON.stringify`。
+- 预览行是给 UI 的有界切片。完整行通过 artifact API 分页读取；导出直接流式发送文件。
+- artifact 按 `userId` 作用域，并可选按会话/run 作用域。下载或图表必须校验访问权；绝不能接受任意文件路径。
+- 图表输入有上限（`MAX_CHART_INPUT_ROWS = 50_000`），且只读取结果 artifact。图表 spec 作为 `kind=chart` 的 artifact 保存，不存成 SQLite 行数据。
+- 删除会话/用户时清理 artifact 文件和记录；不要留下孤儿文件。
 
-## Audit contracts
+## 审计契约
 
-`query_audit` records user, datasource, conversation/run, action (`query`/
-`explain`), SQL text, status (`ok`/`rejected`/`error`), row count, duration, error
-message. Audit rows are append-only; do not update a success into a rejection.
-The admin audit page/pagination reads these rows; keep indexes and filters stable.
+`query_audit` 记录用户、数据源、会话/run、动作（`query`/`explain`）、SQL 文本、状态（`ok`/`rejected`/`error`）、行数、耗时和错误信息。审计行只追加；不要把成功记录改成拒绝。管理端审计页/分页读取这些行；索引和筛选条件要保持稳定。
 
-## Failure behavior
+## 失败行为
 
-- Guard rejection: stable code (`SQL_NOT_ALLOWED`, etc.), human-readable reason,
-  audit row, no connection.
-- Datasource not verified/read-only: fail closed unless explicitly
-  `allowWriteAccount`; still execute only read-only statements.
-- Timeout/abort: executor throws a typed error; the artifact writer is aborted and
-  partial files are removed/finalized consistently.
-- Export disconnect: stream cleanup runs and exactly one audit row is written with
-  `ok` or `error`.
-- Malformed artifact JSON/columns: return a controlled error; do not crash the
-  detail page.
+- 守卫拒绝：稳定错误码（如 `SQL_NOT_ALLOWED`）、可读原因、审计行、不建立连接。
+- 数据源未验证/非只读：默认拒绝，除非显式 `allowWriteAccount`；即便如此也只执行只读语句。
+- 超时/中止：执行器抛类型化错误；artifact writer 被中止，部分文件按一致规则删除或收尾。
+- 导出断线：流清理会执行，并且只写一条 `ok` 或 `error` 审计。
+- artifact JSON/列格式损坏：返回受控错误；不要让详情页崩溃。
 
-## Verification
+## 验证
 
 ```bash
 pnpm exec vitest run apps/server/test/query-service.test.ts \
@@ -99,5 +72,4 @@ RUN_DB_TESTS=1 pnpm exec vitest run apps/server/test/query-service.integration.t
   apps/server/test/sql/executor.integration.test.ts
 ```
 
-For a new dialect/statement shape, add a guard test and a real-database integration
-case. For a new artifact consumer, test the cross-user/export denial path.
+新增方言/语句形态时，要加守卫测试和真实数据库集成用例。新增 artifact 消费端时，要测跨用户/导出拒绝路径。

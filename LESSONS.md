@@ -1,130 +1,92 @@
-# Lessons
+# 教训
 
-Real regressions and near-misses in DataChat. Before changing code, find the rule
-that matches the area. Add an entry when a bug ships or is caught in review; name
-the rule that would have caught it, not only the symptom.
+这里记录 DataChat 真实发生过的回归和险情。改代码前，先找与当前区域匹配的规则。bug 上线或评审中发现后新增一条：写清“本可提前发现它的规则”，不要只写症状。
 
-## Prompt and skills
+## Prompt 与技能
 
-**A built-in skill edit does not reach an existing database.**
-`seedSkills` imports `agent/skills/<name>/SKILL.md` only when that name is absent
-([skills.ts](apps/server/src/agent/skills.ts)); existing rows are skipped, including
-datasource overrides. Editing the source file changes new installs only.
-Rule: update existing deployments through `/admin/skills`, a migration, or a
-versioned sync; do not claim a built-in skill changed until one of those ran.
+**改了内置技能源文件，不会更新已有数据库。**
+`seedSkills` 只在该名称不存在时导入 `agent/skills/<name>/SKILL.md`
+（[skills.ts](apps/server/src/agent/skills.ts)）；已有记录会被跳过，数据源覆盖也一样。改源文件只影响新安装。
+规则：已有部署要通过 `/admin/skills`、迁移或带版本的同步来更新；在这些动作执行前，不要说“内置技能已改”。
 
-**A prompt rule can be made false by a capability added beside it.**
-The prompt used to say “only `[[chart:<id>]]` puts a chart in the body”; adding
-Mermaid fences made that sentence misleading. The fix separated data charts
-(`make_chart`) from structural diagrams (Mermaid) and re-read every “only/always”
-near the change ([system.md](agent/prompts/system.md), commits `91485e0`, `43b5773`).
-Rule: when adding a rendering channel or placeholder, grep the prompt for absolute
-claims and merge them instead of appending a new paragraph.
+**新增在旁边的一个能力，可能让原来的 prompt 规则变成假话。**
+prompt 原来写“只有 `[[chart:<id>]]` 能把图表放进正文”；加入 Mermaid 代码块后，这句话就误导了。修复把数据图表（`make_chart`）和结构示意图（Mermaid）分开，并重新检查了改动附近所有“只有/始终”表述（[system.md](agent/prompts/system.md)，提交 `91485e0`、`43b5773`）。
+规则：新增一种渲染通道或占位符时，先在 prompt 里搜绝对化表述并合并语义，不要只在后面追加一段。
 
-**An inline placeholder has four consumers, not one.**
-A chat-only `[[result:<id>]]` must be parsed by chat text, streaming text, reports,
-and public shares; reports keep it literal while chat resolves it
-([report-markdown.ts](apps/web/src/lib/report-markdown.ts),
-[MessageItem.tsx](apps/web/src/components/chat/MessageItem.tsx),
-[MessageList.tsx](apps/web/src/components/chat/MessageList.tsx)). Missing one
-shows raw syntax or drops content.
-Rule: change the parser and every consumer together; add a streaming half-marker
-test.
+**一个行内占位符有四个消费端，不是一个。**
+聊天专用的 `[[result:<id>]]` 必须由聊天文本、流式文本、报告和公开分享共同解析；报告保持字面量，聊天负责解析
+（[report-markdown.ts](apps/web/src/lib/report-markdown.ts)、
+[MessageItem.tsx](apps/web/src/components/chat/MessageItem.tsx)、
+[MessageList.tsx](apps/web/src/components/chat/MessageList.tsx)）。漏掉一个就会显示原始语法或丢内容。
+规则：解析器和所有消费端一起改；补一个“流式收到半个标记”的测试。
 
-**A skill is not in the prompt just because its file exists.**
-Skills are materialized per conversation from the DB only with `skill.use`, and
-the model reads them with the sandboxed `read` tool. An explicit `/skill` also
-injects the body via `composeSkillInstruction`.
-Rule: verify the permission, the materialized directory, and the explicit
-injection path before debugging model behavior ([resources.ts](apps/server/src/agent/resources.ts),
-[skills.ts](apps/server/src/agent/skills.ts)).
+**技能文件存在，不代表它已经在 prompt 里。**
+技能只有在具备 `skill.use` 时才按会话从数据库物化，模型再用沙箱 `read` 工具读取。显式 `/skill` 还会通过 `composeSkillInstruction` 注入正文。
+规则：排查模型行为前，先确认权限、物化目录和显式注入路径（[resources.ts](apps/server/src/agent/resources.ts)、
+[skills.ts](apps/server/src/agent/skills.ts)）。
 
-## Tests and verification
+## 测试与验证
 
-**The root test command is not the whole test suite.**
-`pnpm test` runs `apps/*/test` and `packages/**/test` only; web tests live under
-`apps/web/src/**/*.test.tsx`. A green root run can leave the web broken.
-Rule: use `pnpm verify`, or run the web command separately
-([vitest.config.ts](vitest.config.ts), [web vitest config](apps/web/vitest.config.ts)).
+**根目录的测试命令不是完整测试集。**
+`pnpm test` 只跑 `apps/*/test` 和 `packages/**/test`；Web 测试在 `apps/web/src/**/*.test.tsx`。根目录全绿时，Web 仍可能是坏的。
+规则：用 `pnpm verify`，或单独跑 Web 命令
+（[vitest.config.ts](vitest.config.ts)、[Web vitest 配置](apps/web/vitest.config.ts)）。
 
-**A new table or index is not done until `db.test.ts` knows it.**
-`APP_TABLES` and `INTEGRITY_INDEXES` are schema guards, not documentation. A
-migration without updating them leaves the guard passing against an incomplete
-picture ([db.test.ts](apps/server/test/db.test.ts)).
-Rule: update both lists and add an upgrade/idempotency case when behavior changes.
+**新增表或索引后，`db.test.ts` 不知道就不算完成。**
+`APP_TABLES` 和 `INTEGRITY_INDEXES` 是 schema 守卫，不是文档。迁移后不更新它们，守卫仍会基于不完整的图景通过
+（[db.test.ts](apps/server/test/db.test.ts)）。
+规则：两处列表都更新；行为变化时再加一个升级/幂等用例。
 
-**A frontend mutation callback receives `(variables, context)`.**
-React Query v5 passes a second argument; tests that assert a single argument fail
-or, worse, miss a call shape. The memory-page test had to use
-`toHaveBeenCalledWith(false, expect.anything())`.
-Rule: assert the variables you care about and allow the context argument.
+**前端 mutation 回调收到的是 `(variables, context)`。**
+React Query v5 会传第二个参数；只断言一个参数的测试会失败，更糟的是漏掉真实的调用形状。记忆页测试不得不写成
+`toHaveBeenCalledWith(false, expect.anything())`。
+规则：断言你关心的变量，同时允许 context 参数。
 
-## Runtime and data
+## 运行时与数据
 
-**Results are files, not rows.**
-`db_query` streams rows into an artifact (JSONL + metadata); SQLite stores the
-artifact row, not the full result. Putting thousands of rows in SQLite, `run_events`,
-or the prompt defeats pagination, export, and share projections
-([artifacts.ts](apps/server/src/services/artifacts.ts)).
-Rule: keep the data path artifact-first; use the result dialog/table for rows.
+**结果是文件，不是行。**
+`db_query` 把行流式写入 artifact（JSONL + 元数据）；SQLite 只存 artifact 记录，不存完整结果。把几千行塞进 SQLite、`run_events` 或 prompt，会破坏分页、导出和分享投影
+（[artifacts.ts](apps/server/src/services/artifacts.ts)）。
+规则：数据路径以 artifact 为先；行数据通过结果弹窗/表格展示。
 
-**SSE is two paths.**
-Live events go through `RunEventBus`; reconnects replay `run_events` by `seq`.
-A new event that only publishes live disappears on reload; one that only persists
-freezes the open page ([event-bridge.ts](apps/server/src/agent/event-bridge.ts),
-[runs.ts](apps/server/src/routes/runs.ts)).
-Rule: append + publish + replay + consume, and end every terminal path with
-`run_end`.
+**SSE 有两条路径。**
+实时事件走 `RunEventBus`；断线重连按 `seq` 回放 `run_events`。只发布不持久化的事件刷新后消失；只持久化不发布的事件会让已打开页面卡住
+（[event-bridge.ts](apps/server/src/agent/event-bridge.ts)、
+[runs.ts](apps/server/src/routes/runs.ts)）。
+规则：追加 + 发布 + 回放 + 消费，所有终止路径都以 `run_end` 结束。
 
-**A run’s `runId` is execution state, not a constructor argument.**
-The tool context is shared across runs in a conversation; the runtime updates
-`toolContext.runId` before each prompt so artifacts and audit rows belong to the
-current run ([runtime.ts](apps/server/src/agent/runtime.ts)).
-Rule: never capture `runId` once in a tool factory and reuse it across prompts.
+**`runId` 是执行状态，不是构造参数。**
+工具上下文在会话的多个 run 之间共享；runtime 在每次 prompt 前更新 `toolContext.runId`，这样 artifact 和审计行才属于当前 run
+（[runtime.ts](apps/server/src/agent/runtime.ts)）。
+规则：不要在工具工厂里捕获一次 `runId` 然后跨 prompt 复用。
 
-**Permissions are re-read per request, but session resources are a snapshot.**
-`resolveUserAccess` runs on each HTTP request and queued/scheduled work re-checks
-the database. Skills/MCP/report tools, however, are built into a session when it
-is created; revoking a role does not rewrite an already-open session.
-Rule: enforce at execution where possible; when a permission change must take
-effect immediately, recreate the session/runtime instead of assuming the old tool
-set changed.
+**权限按请求重读，但会话资源是快照。**
+`resolveUserAccess` 每个 HTTP 请求都会执行，排队/定时任务也会重查数据库。但技能/MCP/报告工具是在创建会话时装配进去的；撤销角色不会重写已经打开的会话。
+规则：尽量在执行时再校验；如果权限变更必须立即生效，重建会话/runtime，不要假设旧工具集会变。
 
-## Deployment and UI
+## 部署与界面
 
-**`APP_ORIGIN` must include the public port.**
-CSRF/cookie checks compare the browser origin; an origin without `:9528` (or the
-deployed port) rejects login. `COOKIE_SECURE` follows the origin protocol unless
-explicitly overridden. The HTTP + IP deployment failed login until `21cc5d5`
-fixed the derivation.
-Rule: test the actual public URL, not only `localhost`; keep compose/env examples
-in sync.
+**`APP_ORIGIN` 必须包含公开端口。**
+CSRF/cookie 校验比较浏览器 origin；少了 `:9528`（或部署端口）就会拒绝登录。`COOKIE_SECURE` 默认跟随 origin 协议，除非显式覆盖。HTTP + IP 部署直到 `21cc5d5` 修正推导后才恢复登录。
+规则：用真实公开 URL 测试，不要只测 `localhost`；compose/env 示例保持一致。
 
-**A filter over the loaded page is not a filter over the conversation list.**
-The sidebar loads 30 rows; filtering only that array hides conversations the user
-cannot see. The list API now takes `q` and the repo uses `instr(lower(...))` so
-`%`/`_` stay literal ([conversations.ts](apps/server/src/db/repositories/conversations.ts)).
-Rule: put list filters in the query key and the server query, not only in component
-state.
+**对已加载页做过滤，不等于对会话列表做过滤。**
+侧栏只加载 30 行；只过滤这个数组会隐藏用户本应看到的会话。列表 API 现在接收 `q`，仓储用 `instr(lower(...))`，让 `%`/`_` 保持字面量
+（[conversations.ts](apps/server/src/db/repositories/conversations.ts)）。
+规则：列表筛选要同时进入 query key 和服务端查询，不能只放在组件 state 里。
 
-**An empty filter that loses focus should not keep a dead input.**
-Replacing “新建对话” with a filter input is only usable if an empty, unfocused
-filter restores the primary action; a non-empty filter stays open. This is a
-state-machine detail, not a styling detail
-([ConversationSidebar.tsx](apps/web/src/components/chat/ConversationSidebar.tsx)).
-Rule: define open/empty/querying/closed states and test blur, Escape, and clear.
+**空筛选框失焦后，不应该留下一个死输入框。**
+把“新建对话”换成筛选输入框后，只有“空且失焦时恢复主操作、有内容时保持展开”才好用。这是状态机细节，不是样式细节
+（[ConversationSidebar.tsx](apps/web/src/components/chat/ConversationSidebar.tsx)）。
+规则：明确 open/empty/querying/closed 状态，并测试 blur、Escape 和清除。
 
-## Change discipline
+## 改动纪律
 
-**A fix reaches every sibling.**
-The same placeholder is parsed in chat/report/share; the same permission gate is
-needed on HTTP and tools; the same model resolution is used by conversation,
-scheduled task, and memory extraction. Fixing one call site leaves the others
-lying ([architecture references](docs/subsystems/README.md)).
-Rule: grep for the predicate/parser/gate name and change every caller in the same
-commit.
+**一个修复要覆盖所有同类位置。**
+同一个占位符会在聊天/报告/分享中解析；同一个权限门禁在 HTTP 和工具上都需要；同一套模型解析被会话、定时任务和记忆提取共用。只改一个调用点，其他位置就会埋雷
+（[架构参考](docs/subsystems/README.md)）。
+规则：用谓词/解析器/门禁的名称全局搜索，在同一个 commit 改完所有调用方。
 
-**A commit’s file list is checked against its goal.**
-Before pushing, read `git show --stat HEAD`. A file the change never meant to
-touch, or a stale tree, means stop and rebase rather than pushing unrelated work.
-Rule: one goal per commit; name what was run in the body.
+**提交前拿文件清单对照目标。**
+push 前先读 `git show --stat HEAD`。如果出现本次目标之外的文件，或工作树是旧的，先停下来 rebase，不要顺手推不相关的改动。
+规则：一个 commit 只做一个目标；在正文写明跑了什么验证。

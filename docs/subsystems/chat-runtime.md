@@ -1,76 +1,49 @@
-# Chat runtime: queue, session, events and SSE
+# 聊天运行时：队列、会话、事件与 SSE
 
-One conversation owns one Pi session and runs one turn at a time. This page covers
-the server-side path from `POST /api/conversations/:id/messages` to persisted run
-events and the live SSE stream. Prompt/skill contents and SQL execution are
-separate references.
+一个会话拥有一个 Pi 会话，并且一次只跑一轮。本文覆盖服务端从 `POST /api/conversations/:id/messages` 到持久化运行事件和实时 SSE 流的路径。Prompt/技能内容和 SQL 执行分别在其他参考里。
 
-## Responsibilities and sources of truth
+## 职责与事实来源
 
-| Part | Responsibility | Source |
+| 部分 | 职责 | 源码 |
 | --- | --- | --- |
-| Enqueue | Create a run, reject a full queue, return position | [`conversations.ts`](../../apps/server/src/routes/conversations.ts), [`RuntimeManager`](../../apps/server/src/agent/runtime.ts) |
-| Per-conversation queue | Serialize runs, retain the Pi session, abort/dispose | [`ConversationRuntime`](../../apps/server/src/agent/runtime.ts) |
-| Session | Resolve model/resources, build tools, bind extensions | [`session.ts`](../../apps/server/src/agent/session.ts), [`resources.ts`](../../apps/server/src/agent/resources.ts) |
-| Event bridge | Translate Pi events to shared `RunEvent`, persist, publish | [`event-bridge.ts`](../../apps/server/src/agent/event-bridge.ts), [`event-bus.ts`](../../apps/server/src/agent/event-bus.ts) |
-| Replay | Read `run_events` after a sequence number | [`run-events.ts`](../../apps/server/src/db/repositories/run-events.ts) |
-| SSE | Replay then subscribe, keepalive, cleanup | [`runs.ts`](../../apps/server/src/routes/runs.ts) |
-| Web consumer | Reconnect and merge live/history state | [`useRunStream.ts`](../../apps/web/src/hooks/useRunStream.ts) |
+| 入队 | 创建 run、拒绝满队列、返回位置 | [`conversations.ts`](../../apps/server/src/routes/conversations.ts)、[`RuntimeManager`](../../apps/server/src/agent/runtime.ts) |
+| 单会话队列 | 串行执行 run、保留 Pi 会话、中止/释放 | [`ConversationRuntime`](../../apps/server/src/agent/runtime.ts) |
+| 会话 | 解析模型/资源、构建工具、绑定扩展 | [`session.ts`](../../apps/server/src/agent/session.ts)、[`resources.ts`](../../apps/server/src/agent/resources.ts) |
+| 事件桥 | 把 Pi 事件转换成共享 `RunEvent`、持久化、发布 | [`event-bridge.ts`](../../apps/server/src/agent/event-bridge.ts)、[`event-bus.ts`](../../apps/server/src/agent/event-bus.ts) |
+| 回放 | 按序号读取 `run_events` | [`run-events.ts`](../../apps/server/src/db/repositories/run-events.ts) |
+| SSE | 先回放再订阅、保活、清理 | [`runs.ts`](../../apps/server/src/routes/runs.ts) |
+| Web 消费端 | 重连并合并实时/历史状态 | [`useRunStream.ts`](../../apps/web/src/hooks/useRunStream.ts) |
 
-`runs` rows hold status/usage/error; `run_events` is the durable event log.
-`RunEventBus` is process-local and not a source of truth.
+`runs` 行保存状态/用量/错误；`run_events` 是持久事件日志。`RunEventBus` 只在进程内有效，不是事实来源。
 
-## Runtime path
+## 运行路径
 
-1. The route verifies conversation ownership, datasource access, skill validity and
-   queue capacity, then creates a `runs` row and calls `runtime.enqueue()`.
-2. `ConversationRuntime` emits `run_queued` and returns the position immediately
-   (HTTP 202). A conversation with an active run queues; a different conversation
-   may run in parallel.
-3. On the first turn, `createConversationSession()` resolves the model, materializes
-   skills/resources, builds the tool context, and creates the Pi session. The
-   session is retained for later turns.
-4. Before each prompt, the runtime sets `toolContext.runId` to the current run.
-   Tools therefore write artifacts/audit/events for this run, not a captured one.
-5. `EventBridge` subscribes to Pi events, maps supported events to `RunEvent`,
-   appends each to `run_events`, and publishes it to the bus.
-6. The SSE endpoint (`GET /api/runs/:id/stream`) verifies ownership, replays events
-   after `Last-Event-ID`/`after`, then subscribes to live events. Keepalives keep
-   proxies from closing an idle stream.
-7. On terminal state the runtime writes `runs.status`, `endedAt`, usage/error and a
-   final `run_end`; it then releases the queue and may trigger memory extraction.
+1. 路由校验会话归属、数据源权限、技能有效性和队列容量，然后创建 `runs` 行并调用 `runtime.enqueue()`。
+2. `ConversationRuntime` 发出 `run_queued`，立即返回位置（HTTP 202）。同一会话已有活跃 run 时排队；不同会话可以并行。
+3. 第一轮时，`createConversationSession()` 解析模型、物化技能/资源、构建工具上下文并创建 Pi 会话。该会话会保留给后续轮次。
+4. 每次 prompt 前，runtime 把 `toolContext.runId` 设为当前 run。这样工具写入的 artifact/审计/事件属于本轮，而不是某个被捕获的旧 run。
+5. `EventBridge` 订阅 Pi 事件，把支持的事件映射成 `RunEvent`，逐条追加到 `run_events`，再发布到事件总线。
+6. SSE 端点（`GET /api/runs/:id/stream`）校验归属，按 `Last-Event-ID`/`after` 回放事件，然后订阅实时事件。保活消息防止代理关闭空闲连接。
+7. 进入终止状态时，runtime 写入 `runs.status`、`endedAt`、用量/错误，并发出最终的 `run_end`；随后释放队列，并可能触发记忆提取。
 
-## Contracts
+## 契约
 
-- **One active run per conversation.** Do not call `session.prompt()` directly or
-  create a second runtime for the same conversation.
-- **`runId` is per-prompt.** `AgentToolContext` is shared across runs; update it
-  before each prompt, never in a tool factory.
-- **Every terminal path emits `run_end`.** Success, model error, tool error, abort,
-  timeout, and dispose all need a terminal event; otherwise the UI keeps streaming.
-- **Events are serializable and replayable.** A new event type must be added to
-  `packages/shared/src/run-events.ts`, mapped in `event-bridge.ts`, persisted, and
-  handled by `useRunStream`/the UI. Do not publish live-only state.
-- **Abort is cooperative.** The route calls `runtime.abort`; the session is aborted
-  and the queue item removed. A queued (not active) run is ended immediately.
-- **Session resources are a snapshot.** Skills/MCP/report tools are built at session
-  creation. A later permission change affects new requests but not the existing
-  tool set; recreate the session when the contract requires immediate effect.
-- **Queue full is a client-visible error.** The route marks the run failed and
-  returns a stable code; do not silently drop a message.
+- **每个会话同一时间只有一个活跃 run。** 不要直接调用 `session.prompt()`，也不要为同一会话创建第二个 runtime。
+- **`runId` 是每轮 prompt 的状态。** `AgentToolContext` 跨 run 共享；每次 prompt 前更新它，绝不要在工具工厂里捕获一次。
+- **所有终止路径都必须发出 `run_end`。** 成功、模型错误、工具错误、中止、超时和 dispose 都需要终止事件；否则 UI 会一直显示流式状态。
+- **事件必须可序列化、可回放。** 新事件类型要加入 `packages/shared/src/events.ts`，在 `event-bridge.ts` 映射、持久化，并由 `useRunStream`/UI 处理。不要发布只存在于实时的状态。
+- **中止是协作式的。** 路由调用 `runtime.abort`；会话被中止，队列项被移除。还在排队（未活跃）的 run 会立即结束。
+- **会话资源是快照。** 技能/MCP/报告工具在创建会话时装配。之后的权限变化影响新请求，但不会改变已有工具集；契约要求立即生效时，重建会话。
+- **队列满是对客户端可见的错误。** 路由把 run 标记为失败并返回稳定错误码；不要静默丢弃消息。
 
-## Failure behavior
+## 失败行为
 
-- Pi session creation failure marks the run `error` and emits `run_end`; the next
-  turn retries session creation.
-- A model/tool error is recorded on the run and surfaced in the trace; retry is a
-  new run linked by `retry_of_run_id`, not an in-place reset.
-- SSE disconnects are normal; replay covers the gap. A malformed persisted event is
-  skipped rather than crashing the stream.
-- Runtime disposal aborts the active session and clears the queue with terminal
-  states. Timers/intervals must be cleared in tests.
+- Pi 会话创建失败会把 run 标成 `error` 并发出 `run_end`；下一轮会重试创建会话。
+- 模型/工具错误记录在 run 上并显示在 trace 中；重试是新的 run，通过 `retry_of_run_id` 关联，不是原地重置。
+- SSE 断线是正常的；回放会补上缺口。持久化事件格式错误时跳过，而不是让整个流崩溃。
+- runtime 释放会中止活跃会话，并用终止状态清空队列。测试里必须清理定时器/interval。
 
-## Verification
+## 验证
 
 ```bash
 pnpm exec vitest run apps/server/test/runtime.test.ts \
@@ -80,6 +53,4 @@ pnpm exec vitest run apps/server/test/runtime.test.ts \
   apps/server/test/conversations-api.test.ts
 ```
 
-When changing the SSE or event contract, also run the web chat tests and inspect a
-real run's trace/reload. A replay test must prove events are not duplicated after
-reconnect.
+修改 SSE 或事件契约时，还要跑 Web 聊天测试，并实际检查一次运行 trace 和刷新后的回放。回放测试必须证明重连后事件不会重复。

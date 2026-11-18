@@ -1,79 +1,56 @@
-# Scheduled tasks
+# 定时任务
 
-A scheduled task runs a saved prompt against one datasource, produces a report, and
-notifies its owner. Scheduled runs use the same runtime, SQL guard, artifacts, and
-permission checks as interactive chat.
+定时任务针对一个数据源运行保存的 prompt，生成报告并通知属主。定时运行和交互式聊天使用同一套运行时、SQL 守卫、artifact 和权限检查。
 
-## Responsibilities and sources of truth
+## 职责与事实来源
 
-| Part | Responsibility | Source |
+| 部分 | 职责 | 源码 |
 | --- | --- | --- |
-| Tables | `scheduled_tasks`, `scheduled_task_runs`, `notifications` | [`schema.ts`](../../apps/server/src/db/schema.ts) |
-| Schedule parser | 5-field cron, IANA timezone, minimum interval, next run | [`schedule.ts`](../../apps/server/src/services/schedule.ts) |
-| Service | CRUD, sweep, execute, retry/failure policy, report creation | [`scheduled-tasks.ts`](../../apps/server/src/services/scheduled-tasks.ts) |
-| Sweeper | 60s interval, non-overlapping sweeps | [`scheduler.ts`](../../apps/server/src/agent/scheduler.ts) |
-| Routes | User-scoped tasks/runs, run-now, notifications | [`scheduled-tasks.ts` route](../../apps/server/src/routes/scheduled-tasks.ts), [`notifications.ts`](../../apps/server/src/routes/notifications.ts) |
-| UI | Task list/editor, run history, notification bell | [`ScheduledTasksPage.tsx`](../../apps/web/src/pages/ScheduledTasksPage.tsx) |
+| 表 | `scheduled_tasks`、`scheduled_task_runs`、`notifications` | [`schema.ts`](../../apps/server/src/db/schema.ts) |
+| 调度解析 | 5 段 cron、IANA 时区、最小间隔、下次运行时间 | [`schedule.ts`](../../apps/server/src/services/schedule.ts) |
+| 服务 | CRUD、扫描、执行、重试/失败策略、创建报告 | [`scheduled-tasks.ts`](../../apps/server/src/services/scheduled-tasks.ts) |
+| 扫描器 | 60 秒间隔、不重叠扫描 | [`scheduler.ts`](../../apps/server/src/agent/scheduler.ts) |
+| 路由 | 用户范围的 task/run、立即运行、通知 | [`scheduled-tasks.ts` 路由](../../apps/server/src/routes/scheduled-tasks.ts)、[`notifications.ts`](../../apps/server/src/routes/notifications.ts) |
+| UI | 任务列表/编辑器、运行历史、通知铃铛 | [`ScheduledTasksPage.tsx`](../../apps/web/src/pages/ScheduledTasksPage.tsx) |
 
-Constants: `SCHEDULED_TASK_LIMIT = 20` per user, `SCHEDULED_SWEEP_INTERVAL_MS =
-60_000`, `SCHEDULED_RUN_TIMEOUT_MS = 10 * 60_000`, `SCHEDULED_MAX_FAILURES = 3`,
-`MIN_SCHEDULE_INTERVAL_MS = 5 * 60_000`.
+常量：每个用户 `SCHEDULED_TASK_LIMIT = 20`、`SCHEDULED_SWEEP_INTERVAL_MS = 60_000`、`SCHEDULED_RUN_TIMEOUT_MS = 10 * 60_000`、`SCHEDULED_MAX_FAILURES = 3`、`MIN_SCHEDULE_INTERVAL_MS = 5 * 60_000`。
 
-## Runtime path
+## 运行路径
 
-1. The create/update route validates name/prompt/cron/timezone/datasource and the
-   user’s `chat.use`/`report.create` permissions, then stores `nextRunAt` in UTC.
-2. The sweeper calls `sweep()` every 60 seconds. A sweep does not overlap a previous
-   one. Due tasks are selected by `enabled=1 AND nextRunAt <= now`.
-3. Before execution, re-read the user and access: disabled user, lost permission, or
-   lost datasource grant marks the task run `skipped`, disables the task, and sends a
-   notification. Never execute with stale permission.
-4. Create a hidden conversation (`kind="scheduled"`, title `定时任务：<name>`), a
-   `runs` row, and a `scheduled_task_runs` row. Subscribe to the run event bus, then
-   enqueue the prompt through `RuntimeManager`.
-5. On `run_end`, collect the run’s artifacts. No artifact is a failure. Otherwise
-   create a report with up to `REPORT_MAX_ARTIFACTS` results, mark success, reset
-   `consecutiveFailures`, and notify with a link to the report.
-6. On error/timeout, abort the run, mark the task run failed, increment consecutive
-   failures, notify, and disable after 3. Failures do not delete history.
-7. Clean up the timer, event subscription and runtime. The hidden conversation
-   remains for traceability; it is not shown in the normal chat list.
+1. 创建/更新路由校验名称/prompt/cron/时区/数据源，以及用户的 `chat.use`/`report.create` 权限，然后按 UTC 存 `nextRunAt`。
+2. 扫描器每 60 秒调用一次 `sweep()`。扫描不重叠。通过 `enabled=1 AND nextRunAt <= now` 选出到期任务。
+3. 执行前重新读取用户和权限：用户被禁用、权限丢失或数据源授权丢失时，把任务运行标成 `skipped`，禁用任务并发送通知。绝不能带着旧权限执行。
+4. 创建隐藏会话（`kind="scheduled"`，标题 `定时任务：<name>`）、`runs` 行和 `scheduled_task_runs` 行。订阅 run 事件总线，然后通过 `RuntimeManager` 入队 prompt。
+5. `run_end` 时收集本轮 artifact。没有 artifact 视为失败。否则用最多 `REPORT_MAX_ARTIFACTS` 个结果创建报告，标记成功，重置 `consecutiveFailures`，并发送带报告链接的通知。
+6. 出错/超时时，中止 run、标记任务运行失败、累加连续失败数、发通知，连续 3 次后禁用。失败不删除历史。
+7. 清理定时器、事件订阅和 runtime。隐藏会话保留用于追溯；它不出现在普通聊天列表里。
 
-One active run per user and one per task are enforced in-process (`activeUsers` /
-`activeTasks`). A manual “run now” uses the same execute path and is subject to the
-same permission/timeout rules.
+每个用户一个活跃 run、每个任务一个活跃 run，都在进程内强制（`activeUsers` / `activeTasks`）。手动“立即运行”走同一执行路径，也受同样的权限/超时规则约束。
 
-## Contracts
+## 契约
 
-- **Recheck permissions at execution time**, not only when the task is created.
-  Revocation must skip and disable, not run with the old access.
-- **A scheduled task needs a report.** A successful model turn with no query result
-  is a failed task run; do not notify success without a report.
-- **Cron is 5 fields and timezone-aware.** The next time is computed from the task’s
-  IANA timezone; do not use server-local time. Reject intervals under 5 minutes.
-- **Exactly one terminal notification per task run.** Avoid double notifications
-  from timeout + abort + run_end.
-- **Hidden conversations are still real conversations.** They follow ownership,
-  artifact, run-event and deletion rules; do not special-case security checks.
-- **Task deletion does not delete run history silently.** Define/keep the chosen
-  behavior and test it; do not orphan `scheduled_task_runs`.
-- **Sweep is single-flight.** A slow run must not start overlapping sweeps or
-  duplicate executions; use the active maps/DB state.
+- **执行时重新检查权限**，不只在创建任务时检查。权限撤销必须跳过并禁用，而不是用旧权限继续跑。
+- **定时任务必须有报告。** 模型成功但没有查询结果，视为任务运行失败；没有报告就不要通知成功。
+- **Cron 是 5 段且带时区。** 下次时间按任务的 IANA 时区计算；不要用服务器本地时间。拒绝小于 5 分钟的间隔。
+- **每个任务运行只发一条终止通知。** 避免超时 + 中止 + `run_end` 造成重复通知。
+- **隐藏会话仍然是真实会话。** 它遵守归属、artifact、run-event 和删除规则；不要在安全检查上做特殊分支。
+- **删除任务不能静默删除运行历史。** 明确并保持选定的行为，不要留下孤儿 `scheduled_task_runs`。
+- **扫描是单飞的。** 慢运行不能启动重叠扫描或重复执行；使用 active map/数据库状态。
 
-## Failure behavior
+## 失败行为
 
-| Case | Behavior |
+| 情况 | 行为 |
 | --- | --- |
-| Invalid cron/timezone/interval | `400` with code; no task saved |
-| Task limit reached | `409`/limit error |
-| User disabled | Task run `skipped`; task disabled; notification |
-| Lost permission/datasource | Task run `skipped`; task disabled; notification |
-| No artifacts | Failed run; error “没有生成可保存的查询结果” |
-| Timeout | Abort run, fail task run, notify |
-| 3 consecutive failures | Disable task, send “自动停用” notification |
-| Overlapping sweep | Skip this sweep; do not queue duplicates |
+| cron/时区/间隔无效 | `400` 带错误码；不保存任务 |
+| 达到任务上限 | `409`/上限错误 |
+| 用户被禁用 | 任务运行 `skipped`；禁用任务；通知 |
+| 权限/数据源丢失 | 任务运行 `skipped`；禁用任务；通知 |
+| 没有 artifact | 失败；错误“没有生成可保存的查询结果” |
+| 超时 | 中止 run，任务运行失败，通知 |
+| 连续 3 次失败 | 禁用任务，发送“自动停用”通知 |
+| 扫描重叠 | 跳过本次；不要排重复任务 |
 
-## Verification
+## 验证
 
 ```bash
 pnpm exec vitest run apps/server/test/scheduled-execution.test.ts \
@@ -83,5 +60,4 @@ pnpm exec vitest run apps/server/test/scheduled-execution.test.ts \
   apps/server/test/notifications-routes.test.ts
 ```
 
-A scheduling change needs a timezone/DST or minimum-interval test. An execution
-change needs a skipped-permission test and a timeout test proving cleanup.
+调度改动需要时区/夏令时或最小间隔测试。执行改动需要权限跳过测试，以及证明清理完成的超时测试。

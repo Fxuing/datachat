@@ -11,7 +11,7 @@
 | `packages/shared` | 前后端共享类型与校验 |
 | `agent/models.json` | 模型目录模板；运行时由“设置 → 模型服务”生成到 `DATA_DIR/agent/models.json` |
 | `evals/nl2sql` | NL2SQL 金标集：fixture、15 条用例、本地评分报告 |
-| `AGENTS.md` | 编码 agent 入口：高风险约束、子系统路由、完成定义 |
+| `AGENTS.md` | 编码 agent 入口：高风险约束、子系统路由、验证门禁 |
 | `CLAUDE.md` | Claude 兼容入口，导入 `AGENTS.md` 与 `LESSONS.md` |
 | `LESSONS.md` | 真实事故与“本可提前发现”的规则 |
 | `docs/code-standards.md` | 可执行的评审标准 |

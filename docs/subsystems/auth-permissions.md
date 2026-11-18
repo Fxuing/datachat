@@ -1,73 +1,52 @@
-# Auth and permissions
+# 认证与权限
 
-Authentication is a signed cookie; authorization is re-resolved from SQLite on
-every request. The browser is never the authority.
+认证使用签名 cookie；授权在每个请求上从 SQLite 重新解析。浏览器永远不是权限的事实来源。
 
-## Responsibilities and sources of truth
+## 职责与事实来源
 
-| Part | Responsibility | Source |
+| 部分 | 职责 | 源码 |
 | --- | --- | --- |
-| Session cookie | Sign/verify `dc_session`; expiry/renewal | [`jwt.ts`](../../apps/server/src/auth/jwt.ts) |
-| Login | Verify password, issue cookie, rate limit | [`routes/auth.ts`](../../apps/server/src/routes/auth.ts), [`password.ts`](../../apps/server/src/auth/password.ts) |
-| Guards | `authenticate`, `requirePermission`, `requireAdmin` | [`guard.ts`](../../apps/server/src/auth/guard.ts) |
-| Access resolution | Union roles + direct grants; admin bypass | [`access.ts`](../../apps/server/src/auth/access.ts) |
-| Permission list | Shared permission strings/labels | [`permissions.ts`](../../packages/shared/src/permissions.ts) |
-| Role/user admin | Roles, assignments, datasource grants | [`routes/admin-roles.ts`](../../apps/server/src/routes/admin-roles.ts), [`admin-users.ts`](../../apps/server/src/routes/admin-users.ts) |
-| Public share | Anonymous token + snapshot | [`shares.ts`](../../apps/server/src/services/shares.ts) |
+| 会话 cookie | 签名/校验 `dc_session`；过期/续期 | [`jwt.ts`](../../apps/server/src/auth/jwt.ts) |
+| 登录 | 校验密码、签发 cookie、限流 | [`routes/auth.ts`](../../apps/server/src/routes/auth.ts)、[`password.ts`](../../apps/server/src/auth/password.ts) |
+| 守卫 | `authenticate`、`requirePermission`、`requireAdmin` | [`guard.ts`](../../apps/server/src/auth/guard.ts) |
+| 访问解析 | 角色 + 直授权限取并集；admin 绕过 | [`access.ts`](../../apps/server/src/auth/access.ts) |
+| 权限清单 | 共享权限字符串/标签 | [`permissions.ts`](../../packages/shared/src/permissions.ts) |
+| 角色/用户管理 | 角色、分配、数据源授权 | [`routes/admin-roles.ts`](../../apps/server/src/routes/admin-roles.ts)、[`admin-users.ts`](../../apps/server/src/routes/admin-users.ts) |
+| 公开分享 | 匿名 token + 只读投影 | [`shares.ts`](../../apps/server/src/services/shares.ts) |
 
-`users.role = "admin"` is the system-admin flag. Custom roles are additive; a user
-with no custom role falls back to the built-in member preset. Datasource access is
-the union of role grants and direct `datasource_grants`.
+`users.role = "admin"` 是系统管理员标志。自定义角色是叠加的；没有自定义角色的用户回退到内置成员预设。数据源访问权是角色授权和直接 `datasource_grants` 的并集。
 
-## Request path
+## 请求路径
 
-1. `authenticate` reads `dc_session`, verifies the signature, then **re-reads the
-   user from SQLite**. A disabled/deleted user is rejected even if the JWT is valid.
-2. `request.user` and `request.access` are set; `resolveUserAccess` computes
-   permissions and allowed datasource ids. Roles/status are not trusted from the
-   token.
-3. `requirePermission(permission)` calls `authenticate`, then checks
-   `request.access.permissions`; failure is `403 PERMISSION_DENIED` with the
-   missing permission.
-4. The route/service checks resource ownership and datasource grants. A resource
-   belonging to another user is `404`, not `403` (do not leak existence).
-5. Agent tools receive `userId`/`datasourceId` from the session, not from model
-   arguments, and re-check access before querying. A queued or scheduled run
-   re-resolves access at execution time.
+1. `authenticate` 读取 `dc_session`，校验签名，然后**从 SQLite 重新读取用户**。即使用户已被禁用/删除但 JWT 仍然有效，也会被拒绝。
+2. 设置 `request.user` 和 `request.access`；`resolveUserAccess` 计算权限和允许的数据源 id。不信任 token 里的角色/状态。
+3. `requirePermission(permission)` 先调用 `authenticate`，再检查 `request.access.permissions`；失败返回 `403 PERMISSION_DENIED`，并带上缺失的权限。
+4. 路由/服务检查资源归属和数据源授权。访问其他用户的资源返回 `404`，不是 `403`（不泄露资源是否存在）。
+5. Agent 工具从会话上下文中拿 `userId`/`datasourceId`，不从模型参数里拿，并在查询前重新检查权限。排队中或定时运行的 run 在执行时重新解析权限。
 
-## Permission model
+## 权限模型
 
-- Functional permissions include chat, skills, MCP, reports, shares, export, and
-  admin areas. See `packages/shared/src/permissions.ts`; add new permissions to
-  `ALL_PERMISSIONS`, role presets, route/tool gates, admin UI, and tests.
-- Datasource grants are separate from functional permissions: a user needs both
-  `chat.use` (or the relevant feature) and access to that datasource.
-- Admin bypass is by the `admin` flag, not a role name. Admins can manage users,
-  roles, datasources, settings, and audit; they do not automatically read other
-  users’ memory contents.
-- A public share is not a login bypass for other APIs. It resolves only the share
-  token and returns the stored snapshot, subject to expiry/revocation.
+- 功能权限包括聊天、技能、MCP、报告、分享、导出和管理区域。见 `packages/shared/src/permissions.ts`；新增权限要同步更新 `ALL_PERMISSIONS`、角色预设、路由/工具门禁、管理界面和测试。
+- 数据源授权与功能权限分离：用户既需要 `chat.use`（或对应功能权限），也需要该数据源的访问权。
+- Admin 绕过依据是 `admin` 标志，不是角色名。管理员可以管理用户、角色、数据源、设置和审计；但不会自动读取其他用户的记忆内容。
+- 公开分享不是绕过其他 API 登录的通道。它只解析分享 token，返回受过期/撤销约束的只读投影。
 
-## CSRF, cookies and deployment
+## CSRF、cookie 与部署
 
-- Browser mutations require the configured `APP_ORIGIN` (including the public
-  port); an origin mismatch is rejected before the route.
-- `COOKIE_SECURE` is explicit or derived from `APP_ORIGIN`’s protocol. HTTP + IP
-  deployments need `Secure=false`; HTTPS needs `Secure=true`.
-- `TRUST_PROXY` is only for a trusted reverse proxy; do not enable it blindly.
-- Session cookies are HttpOnly/SameSite by default; never expose them to JS.
+- 浏览器写操作要求配置的 `APP_ORIGIN`（包含公开端口）；origin 不匹配会在进入路由前被拒绝。
+- `COOKIE_SECURE` 可以显式设置，也可以从 `APP_ORIGIN` 协议推导。HTTP + IP 部署需要 `Secure=false`；HTTPS 需要 `Secure=true`。
+- `TRUST_PROXY` 只用于可信反向代理；不要盲目开启。
+- 会话 cookie 默认 HttpOnly/SameSite；绝不要暴露给 JS。
 
-## Failure behavior
+## 失败行为
 
-- Missing/expired/invalid cookie: `401 AUTH_REQUIRED`; do not redirect from the API.
-- Authenticated but missing permission: `403 PERMISSION_DENIED` with `permission`.
-- Resource not owned: `404 NOT_FOUND`.
-- Datasource revoked/disabled: tool/query returns a permission error; do not fall
-  back to another datasource.
-- Admin deleting a role in use: `409`; deleting a user revokes sessions by the
-  next-request user read and cleans owned resources.
+- cookie 缺失/过期/无效：`401 AUTH_REQUIRED`；API 不要返回重定向。
+- 已认证但缺少权限：`403 PERMISSION_DENIED`，并带 `permission`。
+- 资源不属于当前用户：`404 NOT_FOUND`。
+- 数据源被撤销/禁用：工具/查询返回权限错误；不要回退到其他数据源。
+- 管理员删除正在使用的角色：`409`；删除用户后，下一次请求重读用户会使其会话失效，并清理其拥有的资源。
 
-## Verification
+## 验证
 
 ```bash
 pnpm exec vitest run apps/server/test/auth.test.ts \
@@ -80,6 +59,4 @@ pnpm exec vitest run apps/server/test/auth.test.ts \
   apps/server/test/shares.test.ts
 ```
 
-A permission change needs at least one cross-user denial test and one admin bypass
-test. A new public route needs an explicit reason and a test proving what it does
-not expose.
+权限改动至少需要一个跨用户拒绝测试和一个 admin 绕过测试。新增公开路由必须给出明确理由，并用测试证明它不会暴露什么。

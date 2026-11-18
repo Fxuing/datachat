@@ -1,58 +1,37 @@
-# Notes for coding agents
+# 编码 agent 须知
 
-DataChat turns natural-language questions into read-only SQL over MySQL / PostgreSQL. Fastify + SQLite (metadata) + Pi Agent on the server; React 19 + Vite on the web.
+DataChat 把自然语言问题转换成对 MySQL / PostgreSQL 的只读 SQL。服务端使用 Fastify + SQLite（元数据）+ Pi Agent；前端使用 React 19 + Vite。
 
-## Subsystem design and review
+## 子系统设计与评审
 
-Before changing a documented subsystem, read its reference in
-[docs/subsystems/README.md](docs/subsystems/README.md) and verify the linked source.
+修改已有文档的子系统之前，先读
+[docs/subsystems/README.md](docs/subsystems/README.md) 中的对应参考，并核对它链接的源码。
 
-When a change alters a responsibility, interface, state transition, runtime path,
-compatibility rule, or failure behavior, update the owning reference in the same
-commit. Describe the observable before/after behavior, not only the files changed.
+如果改动会影响职责、接口、状态转换、运行路径、兼容规则或失败行为，必须在同一个
+commit 里更新对应的参考文档。描述可观察的前后行为，不要只列改了哪些文件。
 
-## Code standards
+## 代码规范
 
-Write and review changes against [docs/code-standards.md](docs/code-standards.md).
+编写和评审改动时遵循 [docs/code-standards.md](docs/code-standards.md)。
 
-## Lessons
+## 教训
 
-Before changing code, read [LESSONS.md](LESSONS.md): regressions and near-misses in
-this repo, and the rule that would have caught them.
+改代码前先读 [LESSONS.md](LESSONS.md)：这里记录本仓库发生过的回归和险情，以及本可提前发现它们的规则。
 
-## High-risk paths
+## 高风险路径
 
-These are the places where a plausible-looking change is most likely to be wrong:
+以下位置最容易出现“看起来合理、实际是错的”改动：
 
-- **SQL safety.** Never execute model-authored SQL outside `runGuardedQuery` /
-  `guardSql` / `executeReadOnly`. No direct `pool.query`, no raw datasource access,
-  no bypass for "simple" queries. See [SQL and artifacts](docs/subsystems/sql-artifacts.md).
-- **Permissions.** Re-resolve access from the database; never trust a user id,
-  datasource id, role, or permission from the request body. Resource queries are
-  scoped by `userId`; agent tools re-check grants at execution time. See
-  [Auth and permissions](docs/subsystems/auth-permissions.md).
-- **Metadata vs data.** SQLite stores metadata; full query rows live in artifact
-  files. Do not put full result sets in SQLite, run events, prompts, or the browser
-  bundle. See [SQL and artifacts](docs/subsystems/sql-artifacts.md).
-- **Run events.** Live SSE uses `RunEventBus`; replay uses persisted `run_events`.
-  A new event type changes the shared union, the bridge, persistence, replay, and
-  the web consumer. `run_end` must always be terminal. See
-  [Chat runtime](docs/subsystems/chat-runtime.md).
-- **Prompt and skills.** `[[artifact:]]`, `[[chart:]]`, `[[result:]]`, and Mermaid
-  fences are parsed in more than one place. `seedSkills` does not update an
-  existing skill by name. See [Chat UI](docs/subsystems/chat-ui.md) and
-  [Lessons](LESSONS.md).
-- **Secrets.** Datasource passwords and provider API keys are encrypted at rest;
-  never put them in prompts, logs, errors, URLs, shares, or the frontend. Public
-  shares are read-only projections of owner-scoped data, not a new auth path. See
-  [Auth and permissions](docs/subsystems/auth-permissions.md).
-- **Migrations.** Append a new migration; never edit an applied one. Update
-  `apps/server/test/db.test.ts` (`APP_TABLES`, `INTEGRITY_INDEXES`) with schema
-  changes. See [Code standards](docs/code-standards.md#migrations).
+- **SQL 安全。** 绝不能在 `runGuardedQuery` / `guardSql` / `executeReadOnly` 之外执行模型生成的 SQL。不要直接 `pool.query`，不要直接访问数据源，也不要因为“查询很简单”就绕过守卫。见 [SQL 与 artifact](docs/subsystems/sql-artifacts.md)。
+- **权限。** 每次都要从数据库重新解析访问权；不要信任请求体里的 user id、datasource id、角色或权限。资源查询必须带 `userId` 作用域；agent 工具在执行时还要重新检查授权。见 [认证与权限](docs/subsystems/auth-permissions.md)。
+- **元数据与数据。** SQLite 只存元数据；完整查询行存在 artifact 文件里。不要把完整结果集放进 SQLite、run events、prompt 或浏览器包。见 [SQL 与 artifact](docs/subsystems/sql-artifacts.md)。
+- **运行事件。** 实时 SSE 走 `RunEventBus`；回放走持久化的 `run_events`。新增一种事件会同时影响共享联合类型、bridge、持久化、回放和 Web 消费端。`run_end` 必须始终是终止事件。见 [聊天运行时](docs/subsystems/chat-runtime.md)。
+- **Prompt 与技能。** `[[artifact:]]`、`[[chart:]]`、`[[result:]]` 和 Mermaid 代码块在不止一个地方被解析。`seedSkills` 不会按名称更新已有技能。见 [聊天界面](docs/subsystems/chat-ui.md) 和 [教训](LESSONS.md)。
+- **秘密。** 数据源密码和模型服务 API key 在存储时加密；绝不能写进 prompt、日志、错误、URL、分享页或前端。公开分享是属主数据的只读投影，不是新的认证路径。见 [认证与权限](docs/subsystems/auth-permissions.md)。
+- **迁移。** 只能追加新迁移，不能修改已经执行过的迁移。schema 变化时同步更新 `apps/server/test/db.test.ts` 里的 `APP_TABLES`、`INTEGRITY_INDEXES`。见 [代码规范](docs/code-standards.md#迁移)。
 
-## Verification
+## 验证
 
-`pnpm verify` is the default gate. It runs lint, typecheck, server/shared tests,
-web tests, and builds. The root `pnpm test` does **not** include web tests.
+默认门禁是 `pnpm verify`，它会跑 lint、typecheck、服务端/共享测试、Web 测试和构建。根目录的 `pnpm test` **不包含** Web 测试。
 
-Targeted commands live in each subsystem reference. If a step was not run, say so.
+各子系统参考里写了针对性的命令。如果有步骤没有运行，要明确说出来。

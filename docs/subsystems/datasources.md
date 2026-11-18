@@ -1,87 +1,66 @@
-# Datasources and schema cache
+# 数据源与 schema 缓存
 
-A datasource is an encrypted MySQL/PostgreSQL connection plus a cached schema
-snapshot. Admins manage connections; users only see datasources granted to them.
+数据源是一条加密的 MySQL/PostgreSQL 连接，加上一份缓存的 schema 快照。管理员管理连接；用户只能看到授权给自己的数据源。
 
-## Responsibilities and sources of truth
+## 职责与事实来源
 
-| Part | Responsibility | Source |
+| 部分 | 职责 | 源码 |
 | --- | --- | --- |
-| Input validation | Shared schema, host/port/database rules | [`index.ts`](../../packages/shared/src/index.ts) |
-| Probe | Connect, test read-only status, collect safe warnings | [`probe.ts`](../../apps/server/src/agent/datasource/probe.ts) |
-| Introspection | MySQL/PostgreSQL tables, columns, keys | [`introspect.ts`](../../apps/server/src/agent/datasource/introspect.ts) |
-| Credentials | AES-GCM encrypt/decrypt with `APP_SECRET` | [`crypto.ts`](../../apps/server/src/agent/datasource/crypto.ts) |
-| Pools | Reuse connections; close on config change | [`pool.ts`](../../apps/server/src/agent/datasource/pool.ts) |
-| Schema cache | Persist snapshot/error, 24h TTL, in-flight dedupe, stale fallback | [`schema-refresh.ts`](../../apps/server/src/services/schema-refresh.ts), [`schema-cache.ts`](../../apps/server/src/db/repositories/schema-cache.ts) |
-| Admin routes | CRUD, test, schema refresh, permission checks | [`datasources.ts`](../../apps/server/src/routes/datasources.ts), [`datasource-schema.ts`](../../apps/server/src/routes/datasource-schema.ts) |
-| Grant checks | User/role/direct datasource access | [`access.ts`](../../apps/server/src/auth/access.ts) |
+| 输入校验 | 共享 schema、host/port/database 规则 | [`index.ts`](../../packages/shared/src/index.ts) |
+| 探测 | 连接、测试只读状态、收集安全警告 | [`probe.ts`](../../apps/server/src/agent/datasource/probe.ts) |
+| 内省 | MySQL/PostgreSQL 表、列、键 | [`introspect.ts`](../../apps/server/src/agent/datasource/introspect.ts) |
+| 凭据 | 用 `APP_SECRET` 做 AES-GCM 加解密 | [`crypto.ts`](../../apps/server/src/agent/datasource/crypto.ts) |
+| 连接池 | 复用连接；配置变化时关闭 | [`pool.ts`](../../apps/server/src/agent/datasource/pool.ts) |
+| Schema 缓存 | 持久化快照/错误、24h TTL、并发去重、过期回退 | [`schema-refresh.ts`](../../apps/server/src/services/schema-refresh.ts)、[`schema-cache.ts`](../../apps/server/src/db/repositories/schema-cache.ts) |
+| 管理路由 | CRUD、测试、schema 刷新、权限检查 | [`datasources.ts`](../../apps/server/src/routes/datasources.ts)、[`datasource-schema.ts`](../../apps/server/src/routes/datasource-schema.ts) |
+| 授权检查 | 用户/角色/直接数据源访问 | [`access.ts`](../../apps/server/src/auth/access.ts) |
 
-`datasources.password_cipher` is the only stored secret. Never log or return
-plaintext passwords; probe errors are passed through `safeErrorMessage` with the
-password redacted.
+`datasources.password_cipher` 是唯一保存的秘密。绝不记录或返回明文密码；探测错误通过 `safeErrorMessage` 传递，并抹掉密码。
 
-## Runtime paths
+## 运行路径
 
-### Create / update
+### 创建 / 更新
 
-1. Admin submits `datasourceInputSchema` (name, type, host, port, database,
-   username, password, SSL mode, `allowWriteAccount`).
-2. Reject link-local/metadata hosts (`isBlockedDatasourceHost`) and duplicate names
-   before connecting.
-3. `probeDatasource` opens a short-lived connection and checks read-only status. The
-   submitted password is used for this probe and never logged.
-4. Store the encrypted password; `readOnlyVerified=1` only when the probe proves it.
-   When `allowWriteAccount` is set, keep the flag but still execute only read-only
-   statements. Editing host/database/credentials resets `readOnlyVerified=0`.
-5. Audit `datasource_create`/`datasource_update`; invalidate pools for the old
-   connection.
+1. 管理员提交 `datasourceInputSchema`（名称、类型、host、port、database、username、password、SSL 模式、`allowWriteAccount`）。
+2. 连接前拒绝 link-local/元数据地址（`isBlockedDatasourceHost`）和重名。
+3. `probeDatasource` 建立短连接并检查只读状态。探测使用提交的密码，但绝不记录。
+4. 保存加密后的密码；只有探测证明确实只读时才设 `readOnlyVerified=1`。设置 `allowWriteAccount` 时保留标志，但执行时仍然只允许只读语句。修改 host/database/凭据会把 `readOnlyVerified` 重置为 0。
+5. 写 `datasource_create`/`datasource_update` 审计；让旧连接的 pool 失效。
 
-### Schema read (`db_schema` or schema API)
+### 读取 schema（`db_schema` 或 schema API）
 
-1. Check the user still has access to the datasource.
-2. Load the cached snapshot. If absent or older than
-   `SCHEMA_CACHE_TTL_MS` (24h), call `refreshDatasourceSchema`.
-3. Concurrent refreshes for one datasource share one introspection promise.
-4. Introspection saves a new snapshot; on failure it saves the error but keeps the
-   old snapshot.
-5. If refresh fails and a snapshot exists, serve it with `stale=true`; if no
-   snapshot exists, return `SCHEMA_UNAVAILABLE` with a user-safe reason.
-6. The tool may filter by `table` or `search`; truncation is explicit so the model
-   knows the schema is incomplete.
+1. 检查用户仍有该数据源权限。
+2. 读取缓存快照。如果不存在或超过 `SCHEMA_CACHE_TTL_MS`（24h），调用 `refreshDatasourceSchema`。
+3. 同一数据源的并发刷新共享一个内省 promise。
+4. 内省成功保存新快照；失败时保存错误，但保留旧快照。
+5. 刷新失败且存在快照时，带 `stale=true` 返回旧快照；没有快照时返回 `SCHEMA_UNAVAILABLE` 和用户可读原因。
+6. 工具可以按 `table` 或 `search` 过滤；截断要显式标记，让模型知道 schema 不完整。
 
-The schema endpoint reads the same cache; it does not expose credentials or query
-data.
+schema 端点读取同一份缓存；不暴露凭据或查询数据。
 
-## Contracts
+## 契约
 
-- Datasource ids are UUIDs; ownership is **not** a column—access comes from grants.
-  Every route/tool must call the grant check; never accept a datasource id from the
-  model without checking it against the run’s user.
-- The read-only pool is the execution boundary. `allowWriteAccount` only suppresses
-  the “account is writable” warning; the SQL guard still rejects writes.
-- Do not add a new dialect by branching only in the UI. Guard parsing, executor,
-  introspection, placeholder syntax and tests must all support it.
-- Deleting a datasource that conversations still reference must fail with `409`;
-  clean schema cache/pools/grants on success.
-- Schema snapshots are metadata, not a security boundary: table/column names can
-  appear in prompts, but row data must still go through `db_query`.
-- Cache invalidation must be explicit after DDL or connection edits. Do not rely on
-  TTL alone when the admin can refresh immediately.
+- 数据源 id 是 UUID；**归属不是表里的列**——访问权来自授权。每个路由/工具都必须调用授权检查；模型给的 datasource id 必须和当前 run 的用户核对后才能用。
+- 只读 pool 是执行边界。`allowWriteAccount` 只是抑制“账号可写”警告；SQL 守卫仍然拒绝写入。
+- 新增方言不能只在 UI 分支。守卫解析、执行器、内省、占位符语法和测试都要支持。
+- 删除仍被会话引用的数据源必须返回 `409`；成功后清理 schema 缓存/pool/授权。
+- schema 快照是元数据，不是安全边界：表名/列名可以出现在 prompt 里，但行数据仍然必须走 `db_query`。
+- DDL 或连接修改后要显式失效缓存。管理员可以立即刷新，不能只依赖 TTL。
 
-## Failure behavior
+## 失败行为
 
-| Case | Behavior |
+| 情况 | 行为 |
 | --- | --- |
-| Bad credentials/host | Controlled probe error; no datasource row on create |
-| Link-local/metadata host | `400 HOST_NOT_ALLOWED` |
-| Duplicate name | `409 CONFLICT` |
-| Probe succeeds but account writable | Save with warning unless `allowWriteAccount` |
-| Refresh fails, old snapshot exists | Serve stale + warning |
-| Refresh fails, no snapshot | `SCHEMA_UNAVAILABLE`; do not fabricate schema |
-| User lacks grant | `403`/tool `DATASOURCE_FORBIDDEN`; no connection |
-| Delete in use | `409`; do not cascade silently |
+| 凭据/host 错误 | 受控探测错误；创建时不留下数据源行 |
+| link-local/元数据地址 | `400 HOST_NOT_ALLOWED` |
+| 重名 | `409 CONFLICT` |
+| 探测成功但账号可写 | 保存并告警，除非 `allowWriteAccount` |
+| 刷新失败，旧快照存在 | 返回 stale 快照 + 警告 |
+| 刷新失败，无快照 | `SCHEMA_UNAVAILABLE`；不要伪造 schema |
+| 用户没有授权 | `403` / 工具返回 `DATASOURCE_FORBIDDEN`；不建立连接 |
+| 删除正在使用的数据源 | `409`；不要静默级联 |
 
-## Verification
+## 验证
 
 ```bash
 pnpm exec vitest run apps/server/test/datasource.test.ts \
@@ -93,5 +72,4 @@ pnpm exec vitest run apps/server/test/datasource.test.ts \
 RUN_DB_TESTS=1 pnpm exec vitest run apps/server/test/introspect.integration.test.ts
 ```
 
-A connection/security change needs a real MySQL/PostgreSQL probe test. A cache
-change needs a stale-fallback test that proves the old snapshot is not deleted.
+连接/安全改动需要真实的 MySQL/PostgreSQL 探测测试。缓存改动需要 stale 回退测试，证明旧快照不会被删除。

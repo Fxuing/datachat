@@ -1,71 +1,55 @@
-# Subsystem design references
+# 子系统设计参考
 
-These pages describe current responsibilities, runtime paths, state, and
-contracts. Start with the subsystem your task touches, then follow its source
-links to verify the implementation. Do not read every page.
+这些页面描述**当前**的职责、运行路径、状态和契约。先读与任务相关的那一页，再顺着源码链接核实实现。不要一次读完全部。
 
-| Subsystem | Reference |
+| 子系统 | 参考 |
 | --- | --- |
-| Conversation runtime, queue, Pi session, run events and SSE | [Chat runtime](chat-runtime.md) |
-| SQL guard/executor, query service, artifacts, audit | [SQL and artifacts](sql-artifacts.md) |
-| Login/session, roles, permissions, datasource grants, public shares | [Auth and permissions](auth-permissions.md) |
-| Datasource connection, probe, introspection and schema cache | [Datasources and schema](datasources.md) |
-| Chat UI, message segments, result/chart/report rendering, scrolling | [Chat UI](chat-ui.md) |
-| Memory recall, `memory_save`, extraction, user/admin settings | [Memory](memory.md) |
-| Scheduled tasks, sweeps, notifications, hidden conversations | [Scheduled tasks](scheduled-tasks.md) |
-| Reports and public share snapshots | [Reports and shares](reports-shares.md) |
+| 会话运行时、队列、Pi 会话、运行事件与 SSE | [聊天运行时](chat-runtime.md) |
+| SQL 守卫/执行器、查询服务、artifact、审计 | [SQL 与 artifact](sql-artifacts.md) |
+| 登录/会话、角色、权限、数据源授权、公开分享 | [认证与权限](auth-permissions.md) |
+| 数据源连接、探测、内省与 schema 缓存 | [数据源与 schema](datasources.md) |
+| 聊天界面、消息分段、结果/图表/报告渲染、滚动 | [聊天界面](chat-ui.md) |
+| 记忆召回、`memory_save`、提取、用户/管理员设置 | [记忆](memory.md) |
+| 定时任务、扫描、通知、隐藏会话 | [定时任务](scheduled-tasks.md) |
+| 报告与公开分享投影 | [报告与分享](reports-shares.md) |
 
-## Maintain a reference
+## 维护参考
 
-Update the owning reference in the same commit when a change alters a documented
-responsibility, interface, state transition, runtime path, compatibility rule, or
-failure behavior. An internal refactor that preserves those contracts does not
-need a prose change.
+当改动会影响已经写进文档的职责、接口、状态转换、运行路径、兼容规则或失败行为时，在同一个 commit 更新对应的参考。只做内部重构、这些契约不变时，不需要改文字。
 
-Keep each fact in one reference and link to it from `AGENTS.md` or another page.
-Link to source files and named symbols rather than copying implementation that
-changes frequently. Explain field meanings and constraints that signatures alone
-do not express.
+一个事实只放在一个参考里，从 `AGENTS.md` 或其他页面链接过去。链接到源码文件和具名符号，不要复制经常变化的实现。解释签名本身表达不出的字段含义和约束。
 
-A new reference includes:
+新增一篇参考时至少包含：
 
-- responsibilities and boundaries;
-- source of truth;
-- main runtime paths;
-- state transitions;
-- important constraints and failure behavior;
-- verification commands.
+- 职责与边界；
+- 事实来源（source of truth）；
+- 主要运行路径；
+- 状态转换；
+- 重要约束与失败行为；
+- 验证命令。
 
-Document current behavior separately from proposed changes; a proposal belongs in
-its issue/spec, not in a reference.
+当前行为和提案分开写；提案属于 issue/spec，不属于参考。
 
-## Describe a change
+## 描述一个改动
 
-For each affected subsystem, state the observable change, its trigger, and
-before/after behavior. Include interface, state, compatibility, and failure
-changes. Link the reference, implementation, and test evidence. For a refactor,
-say explicitly that the documented behavior is unchanged.
+对每个受影响的子系统，写清可观察变化、触发条件、改动前后行为。包含接口、状态、兼容和失败行为的变化。链接参考、实现和测试证据。重构要明确说明“文档描述的行为未变”。
 
-## Review a change
+## 评审一个改动
 
-1. Identify the affected subsystem and its actual runtime path.
-2. Compare claimed before/after behavior with the base and head; trace callers and
-   state transitions beyond the diff.
-3. Check the owning reference is updated and its source links resolve.
-4. Check the cited tests or runtime evidence exercise the claimed behavior. List
-   checks that were not run.
+1. 找到受影响的子系统和它真实的运行路径。
+2. 用 base 和 head 对比声称的前后行为；沿着 diff 之外的调用方和状态转换继续追。
+3. 检查对应参考已更新，源码链接能解析。
+4. 检查引用的测试或运行证据确实覆盖了声称的行为。列出没有跑的检查。
 
-A documentation change alone does not prove behavior; tests and runtime evidence
-remain necessary.
+只改文档不能证明行为；测试和运行证据仍然必要。
 
-## Verification
+## 验证
 
 ```bash
-pnpm verify                              # lint + typecheck + server/shared + web + build
-pnpm test                                # server/shared only
-pnpm --filter @datachat/web test         # web only
-RUN_DB_TESTS=1 pnpm exec vitest run apps/server/test  # MySQL/PG integration
+pnpm verify                              # lint + typecheck + 服务端/共享 + Web + 构建
+pnpm test                                # 只跑服务端/共享
+pnpm --filter @datachat/web test         # 只跑 Web
+RUN_DB_TESTS=1 pnpm exec vitest run apps/server/test  # MySQL/PG 集成测试
 ```
 
-Subsystem pages list narrower commands. Use them while iterating; finish with
-`pnpm verify` or name the step that was not run.
+各子系统页面会列更窄的命令。迭代时用它们；最终仍要跑 `pnpm verify`，或者明确说明哪一步没跑。
