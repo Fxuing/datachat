@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useState, type CSSProperties, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Database, Sparkles } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, User } from "lucide-react";
 import { ApiError, fetchMe, login } from "../lib/api";
 import { queryKeys } from "../lib/query";
 import { BrandMark } from "../components/BrandMark";
@@ -9,11 +9,77 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Spinner } from "../components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+
+function ChatBubbleIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-[calc(1.5*var(--u))] w-[calc(1.5*var(--u))] drop-shadow-[0_0_5px_rgba(110,205,255,0.6)]"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 4.25c4.85 0 8.75 3.2 8.75 7.15s-3.9 7.15-8.75 7.15c-1.22 0-2.38-.21-3.44-.58l-3.46 1.73a.45.45 0 0 1-.63-.52l.73-2.73A6.58 6.58 0 0 1 3.25 11.4c0-3.95 3.9-7.15 8.75-7.15Z"
+        stroke="#9cd8ff"
+        strokeWidth="1.85"
+        strokeLinejoin="round"
+      />
+      <circle cx="8.5" cy="11.4" r="1.05" fill="#bfe6ff" />
+      <circle cx="12" cy="11.4" r="1.05" fill="#bfe6ff" />
+      <circle cx="15.5" cy="11.4" r="1.05" fill="#bfe6ff" />
+    </svg>
+  );
+}
+
+function InsightBoltIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-[calc(1.5*var(--u))] w-[calc(1.5*var(--u))] drop-shadow-[0_0_5px_rgba(110,205,255,0.6)]"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M13.3 3 5.2 13.1h5.9l-.85 7.9 8.55-10.35h-6L13.3 3Z"
+        stroke="#9cd8ff"
+        strokeWidth="1.85"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ShieldCheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-[calc(1.5*var(--u))] w-[calc(1.5*var(--u))] drop-shadow-[0_0_5px_rgba(110,205,255,0.6)]"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 3.1 4.9 5.95v5.35c0 4.6 3.02 8.55 7.1 9.85 4.08-1.3 7.1-5.25 7.1-9.85V5.95L12 3.1Z"
+        stroke="#9cd8ff"
+        strokeWidth="1.85"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m9 12.1 2.05 2.05 4.1-4.25"
+        stroke="#bfe6ff"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 const highlights = [
-  { icon: Database, title: "连接你的数据", body: "MySQL / PostgreSQL，只读安全访问" },
-  { icon: Sparkles, title: "用一句话提问", body: "自动生成 SQL，解释每一步口径" },
-  { icon: BarChart3, title: "从结果到报告", body: "图表、导出、分享，一步到位" },
+  { Icon: ChatBubbleIcon, title: "自然语言问数", body: "像聊天一样查数据" },
+  { Icon: InsightBoltIcon, title: "智能分析洞察", body: "发现数据背后的价值" },
+  { Icon: ShieldCheckIcon, title: "只读安全可控", body: "权限审计不出内网" },
 ];
 
 export default function LoginPage() {
@@ -21,6 +87,7 @@ export default function LoginPage() {
   const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -55,137 +122,209 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-full bg-canvas lg:grid-cols-[1.05fr_1fr]">
-      <aside className="relative hidden overflow-hidden bg-[#101014] lg:flex lg:flex-col lg:justify-between lg:p-12">
+    <div className="relative flex min-h-screen w-full overflow-hidden bg-gradient-to-br from-slate-50 via-indigo-50/40 to-sky-50 dark:from-canvas dark:via-canvas dark:to-canvas lg:bg-none">
+      {/* Desktop full-bleed split artwork with hologram aligned to the floor stage */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 hidden overflow-hidden [container-type:size] lg:block"
+      >
         <div
-          aria-hidden
-          className="absolute inset-0 opacity-[0.16]"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
           style={{
-            backgroundImage:
-              "linear-gradient(to right, rgb(255 255 255 / 0.14) 1px, transparent 1px), linear-gradient(to bottom, rgb(255 255 255 / 0.14) 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
-            maskImage: "radial-gradient(ellipse 80% 60% at 30% 20%, black, transparent)",
+            width: "max(100cqw, calc(100cqh * 2730 / 1536))",
+            aspectRatio: "2730 / 1536",
           }}
-        />
-        <div
-          aria-hidden
-          className="absolute -left-24 top-1/3 h-96 w-96 rounded-full bg-indigo-500/25 blur-[120px]"
-        />
-
-        <div className="relative flex items-center gap-2.5">
-          <BrandMark size={38} />
-          <span className="text-[15px] font-semibold tracking-tight text-white">DataChat</span>
+        >
+          <img
+            src="/login-bg.jpg"
+            alt=""
+            draggable={false}
+            className="h-full w-full select-none object-cover"
+          />
+          <img
+            src="/login-hologram.svg"
+            alt=""
+            draggable={false}
+            className="pointer-events-none absolute select-none"
+            style={{
+              left: "46.7%",
+              top: "31.5%",
+              width: "33.5%",
+              transform: "translateX(-50%)",
+            }}
+          />
         </div>
+        {/* Keep dark theme readable on the light right panel without altering the hero left */}
+        <div className="absolute inset-y-0 left-[55%] right-0 bg-gradient-to-l from-slate-950/85 via-slate-950/65 to-transparent opacity-0 transition-opacity dark:opacity-100" />
+      </div>
 
-        <div className="relative max-w-md">
-          <p className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-indigo-200">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            自然语言数据工作台
-          </p>
-          <h1 className="text-[2.1rem] font-semibold leading-[1.15] tracking-tight text-white">
-            不用写 SQL，
-            <br />
-            也能把数据问明白。
-          </h1>
-          <p className="mt-4 text-sm leading-6 text-white/60">
-            连接 MySQL 与 PostgreSQL，用中文直接提问。每一步查询可审计，结果可导出、可成图、可分享。
-          </p>
-
-          <ul className="mt-8 space-y-4">
-            {highlights.map(({ icon: Icon, title, body }) => (
-              <li key={title} className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-indigo-300">
-                  <Icon className="h-4 w-4" />
-                </span>
-                <span>
-                  <span className="block text-[13px] font-medium text-neutral-100">{title}</span>
-                  <span className="block text-xs leading-5 text-white/55">{body}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="relative text-[11px] text-white/40">
-          只读访问 · SQL 审计 · 数据不出内网
-        </p>
-      </aside>
-
-      <main className="relative flex flex-col justify-center px-6 py-12 sm:px-12">
-        <div className="absolute right-4 top-4">
-          <ThemeToggle />
-        </div>
-
-        <div className="mx-auto w-full max-w-sm animate-fade-in">
-          <div className="mb-8 lg:hidden">
-            <span className="mb-4 flex h-9 w-9 items-center justify-center rounded-[10px] bg-gradient-to-br from-indigo-500 to-violet-500 text-[11px] font-bold text-white shadow-sm">
-              DC
+      <div className="relative z-10 grid min-h-screen w-full lg:grid-cols-[63%_37%]">
+        <aside
+          className="hidden lg:flex lg:flex-col lg:justify-between lg:px-[calc(4*var(--u))] lg:py-[calc(2.5*var(--u))]"
+          style={
+            {
+              // 1 unit = 16px at 1920x1080, scaling continuously with the viewport
+              "--u": "clamp(10px, min(0.8333vw, 1.4815vh), 24px)",
+            } as CSSProperties
+          }
+        >
+          <div className="flex items-center gap-[calc(0.75*var(--u))]">
+            <BrandMark
+              size={42}
+              className="h-[calc(2.625*var(--u))] w-[calc(2.625*var(--u))] rounded-[calc(0.75*var(--u))] shadow-md shadow-indigo-950/30"
+            />
+            <span className="text-[length:calc(1.25*var(--u))] font-semibold tracking-tight text-white">
+              DataChat
             </span>
-            <h1 className="text-lg font-semibold tracking-tight text-ink">DataChat</h1>
-            <p className="text-xs text-muted">与你的数据库对话</p>
           </div>
 
-          <h2 className="hidden text-[1.6rem] font-semibold tracking-tight text-ink lg:block">
-            登录工作台
-          </h2>
-          <p className="mt-1.5 hidden text-sm text-muted lg:block">使用管理员分配的账号继续</p>
+          <div className="mb-auto mt-[12.6vh]">
+            <h1 className="origin-left -skew-x-[9deg] text-[length:calc(3.45*var(--u))] font-bold leading-[1.29] tracking-[0.04em] text-white">
+              用自然语言
+              <br />
+              探索
+              <span className="mx-[0.06em] bg-gradient-to-r from-[#58d2ff] via-[#75beff] to-[#988cff] bg-clip-text text-transparent">
+                数据
+              </span>
+              的无限可能
+            </h1>
 
-          <form onSubmit={submit} className="mt-8 space-y-4 lg:mt-8" noValidate>
-            <div className="space-y-1.5">
-              <label htmlFor="username" className="block text-[13px] font-medium text-inksoft">
-                用户名
-              </label>
-              <Input
-                id="username"
-                name="username"
-                autoComplete="username"
-                autoFocus
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="请输入用户名"
-                disabled={mutation.isPending}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="block text-[13px] font-medium text-inksoft">
-                密码
-              </label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="请输入密码"
-                disabled={mutation.isPending}
-              />
-            </div>
-
-            {errorMessage ? (
-              <p
-                role="alert"
-                className="rounded-lg border border-danger/20 bg-dangersoft px-3 py-2 text-[13px] text-danger"
-              >
-                {errorMessage}
+            <div className="max-w-[calc(26.875*var(--u))]">
+              <p className="mt-[calc(1.75*var(--u))] text-[length:calc(1.125*var(--u))] font-normal leading-[1.62] tracking-[0.015em] text-[#dce8ff]/75">
+                让数据查询更简单，让数据分析更智能，
+                <br />
+                开启你的自然语言问数之旅。
               </p>
-            ) : null}
 
-            <Button type="submit" className="group w-full" disabled={mutation.isPending}>
-              {mutation.isPending ? <Spinner className="border-white/40 border-t-white" /> : null}
-              {mutation.isPending ? "登录中…" : "登录"}
-              {!mutation.isPending ? (
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              <ul className="mt-[calc(4*var(--u))] grid grid-cols-3 gap-[calc(1.75*var(--u))]">
+                {highlights.map(({ Icon, title, body }) => (
+                  <li key={title} className="flex flex-col items-center text-center">
+                    <span className="flex h-[calc(2.875*var(--u))] w-[calc(2.875*var(--u))] items-center justify-center rounded-[calc(0.8125*var(--u))] bg-gradient-to-b from-[#4f72ce]/30 to-[#5c80de]/38 shadow-[inset_0_0_0_1px_rgba(165,205,255,0.14)]">
+                      <Icon />
+                    </span>
+                    <span className="mt-[calc(0.875*var(--u))] whitespace-nowrap text-[length:calc(0.96875*var(--u))] font-semibold tracking-[0.02em] text-white">
+                      {title}
+                    </span>
+                    <span className="mt-[calc(0.375*var(--u))] whitespace-nowrap text-[length:calc(0.8125*var(--u))] font-normal leading-[calc(1*var(--u))] text-[#bfd4f8]/75">
+                      {body}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-[calc(0.875*var(--u))] text-[length:calc(0.71875*var(--u))] tracking-[0.16em] text-[#bfd6ff]/65">
+            <span className="h-px w-[calc(2*var(--u))] bg-white/25" aria-hidden="true" />
+            <span>只读访问 · SQL 审计 · 数据不出内网</span>
+            <span className="h-px w-[calc(2*var(--u))] bg-white/25" aria-hidden="true" />
+          </div>
+        </aside>
+
+        <main className="relative flex min-h-full items-center justify-center px-6 py-12 sm:px-10 lg:px-8 xl:px-12">
+          <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
+            <ThemeToggle />
+          </div>
+
+          <div className="w-full max-w-[clamp(340px,20.85vw,440px)] animate-fade-in rounded-2xl border border-white/80 bg-white/95 p-8 shadow-[0_24px_64px_-16px_rgba(30,58,138,0.18)] backdrop-blur-md dark:border-line dark:bg-surface/95 dark:shadow-2xl sm:p-9">
+            <div className="flex flex-col items-center text-center">
+              <BrandMark size={52} className="rounded-2xl shadow-md shadow-indigo-500/20" />
+              <h2 className="mt-4 text-2xl font-bold tracking-tight text-ink">DataChat</h2>
+              <p className="mt-1.5 text-sm text-muted">开启你的数据对话之旅</p>
+            </div>
+
+            <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
+              <div>
+                <label htmlFor="username" className="sr-only">
+                  用户名
+                </label>
+                <div className="relative">
+                  <User
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+                  />
+                  <Input
+                    id="username"
+                    name="username"
+                    autoComplete="username"
+                    autoFocus
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    placeholder="请输入用户名"
+                    disabled={mutation.isPending}
+                    className="h-11 rounded-xl border-line/90 bg-subtle/40 pl-10 pr-3.5 transition-colors focus-visible:bg-surface dark:bg-subtle/60"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="password" className="sr-only">
+                  密码
+                </label>
+                <div className="relative">
+                  <Lock
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+                  />
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="请输入密码"
+                    disabled={mutation.isPending}
+                    className="h-11 rounded-xl border-line/90 bg-subtle/40 pl-10 pr-10 transition-colors focus-visible:bg-surface dark:bg-subtle/60"
+                  />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                        aria-pressed={showPassword}
+                        disabled={mutation.isPending}
+                        className="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-50"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {showPassword ? "隐藏密码" : "显示密码"}
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+
+              {errorMessage ? (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-danger/20 bg-dangersoft px-3.5 py-2.5 text-[13px] text-danger"
+                >
+                  {errorMessage}
+                </p>
               ) : null}
-            </Button>
-          </form>
 
-          <p className="mt-6 text-center text-xs text-muted">
-            账号由管理员分配，如需开通请联系管理员
-          </p>
-        </div>
-      </main>
+              <Button
+                type="submit"
+                className="group h-11 w-full rounded-xl bg-gradient-to-r from-[#2563eb] via-[#4f46e5] to-[#6366f1] text-white shadow-[0_10px_24px_-8px_rgba(79,70,229,0.55)] transition-all hover:brightness-105 disabled:opacity-60"
+                disabled={mutation.isPending}
+              >
+                {mutation.isPending ? <Spinner className="border-white/40 border-t-white" /> : null}
+                {mutation.isPending ? "登录中…" : "登录"}
+                {!mutation.isPending ? (
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                ) : null}
+              </Button>
+            </form>
+
+            <p className="mt-6 text-center text-xs text-muted">
+              账号由管理员分配，如需开通请联系管理员
+            </p>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

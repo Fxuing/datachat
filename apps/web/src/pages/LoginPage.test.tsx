@@ -92,4 +92,19 @@ describe("LoginPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("请输入用户名和密码");
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("toggles password visibility", async () => {
+    mockFetch(() => jsonResponse({ user, permissions: [], roles: [] }));
+    const browser = userEvent.setup();
+
+    renderLoginPage();
+    const passwordInput = screen.getByLabelText("密码");
+    expect(passwordInput).toHaveAttribute("type", "password");
+
+    await browser.click(screen.getByRole("button", { name: "显示密码" }));
+    expect(passwordInput).toHaveAttribute("type", "text");
+
+    await browser.click(screen.getByRole("button", { name: "隐藏密码" }));
+    expect(passwordInput).toHaveAttribute("type", "password");
+  });
 });
