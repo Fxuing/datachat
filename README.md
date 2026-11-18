@@ -11,9 +11,13 @@
 | `packages/shared` | 前后端共享类型与校验 |
 | `agent/models.json` | 模型目录模板；运行时由“设置 → 模型服务”生成到 `DATA_DIR/agent/models.json` |
 | `evals/nl2sql` | NL2SQL 金标集：fixture、15 条用例、本地评分报告 |
+| `AGENTS.md` | 给编码 agent 的项目入口（硬约束、阅读路由、命令、完成定义） |
+| `docs/harness/` | 分层开发指南：架构、后端、前端、Agent/Prompt、测试 |
 | `docs/roadmap.md` | 实施状态、已知缺口与下一步路线 |
 | `.github/workflows/ci.yml` | CI：lint/typecheck/测试/构建、真库集成测试、手动/夜间金标集 |
 | `scripts/smoke-*.mjs` | 手动冒烟脚本，测试不依赖网络 |
+
+开发前先读 `AGENTS.md`；它按任务指向 `docs/harness/` 的具体章节，不需要一次读完全部。
 
 ## 前置条件
 
