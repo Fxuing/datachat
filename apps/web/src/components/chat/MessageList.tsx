@@ -19,7 +19,8 @@ import { TurnFooter } from "./TurnFooter";
 import { ConversationMinimap } from "./ConversationMinimap";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { ResultCard } from "./ResultCard";
-import { parseReportMarkdown } from "../../lib/report-markdown";
+import { ResultLink } from "./ResultLink";
+import { parseChatMarkdown } from "../../lib/report-markdown";
 import { pairQueries } from "../../lib/pair-queries";
 import type { ModelPickerStatus } from "./ModelPicker";
 import { cn } from "../../lib/utils";
@@ -324,7 +325,7 @@ export function MessageList({
       ? messages.filter((message) => message.runId !== activeRunId)
       : messages;
   const hasContent = visibleMessages.length > 0 || showStream;
-  const streamSegments = parseReportMarkdown(stream.text);
+  const streamSegments = parseChatMarkdown(stream.text);
   const referencedCharts = new Set(
     streamSegments
       .filter((segment) => segment.type === "chart")
@@ -333,11 +334,11 @@ export function MessageList({
   const standaloneCharts = stream.charts.filter(
     (chart) => !referencedCharts.has(chart.chartArtifactId),
   );
-  // Results already rendered inline at their `[[artifact:…]]` placeholder must
-  // not show up a second time inside the trace; the rest pair with their SQL.
+  // Results already rendered inline at their `[[artifact:…]]` or chat-only
+  // `[[result:…]]` placeholder must not show up a second time inside the trace.
   const inlineResults = new Set(
     streamSegments
-      .filter((segment) => segment.type === "artifact")
+      .filter((segment) => segment.type === "artifact" || segment.type === "result")
       .map((segment) => segment.artifactId),
   );
   const standaloneResults = stream.results.filter(
@@ -526,7 +527,7 @@ export function MessageList({
                 if (segment.type === "markdown") {
                   const content = chartsReady
                     ? segment.content
-                    : segment.content.replace(/\[\[(?:chart|artifact):[^\]\s]*$/, "");
+                    : segment.content.replace(/\[\[(?:chart|artifact|result):[^\]\s]*$/, "");
                   return content.trim() ? (
                     <MarkdownText key={`md-${index}`} content={content} />
                   ) : null;
@@ -537,6 +538,14 @@ export function MessageList({
                   );
                   return result ? (
                     <ResultCard key={`result-${index}`} {...result} canExport={canExport} />
+                  ) : null;
+                }
+                if (segment.type === "result") {
+                  const result = stream.results.find(
+                    (item) => item.artifactId === segment.artifactId,
+                  );
+                  return result ? (
+                    <ResultLink key={`result-link-${index}`} result={result} canExport={canExport} />
                   ) : null;
                 }
                 if (!chartsReady) return null;

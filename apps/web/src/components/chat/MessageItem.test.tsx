@@ -139,6 +139,84 @@ describe("MessageItem", () => {
     expect(screen.getByText("42")).toBeInTheDocument();
   });
 
+  it("renders a chat result reference as a compact link to the full result", async () => {
+    const user = userEvent.setup();
+    const artifactId = "result-1";
+    render(
+      <MemoryRouter>
+        <MessageItem
+          message={message({
+            status: "ok",
+            assistant: { content: `汇总如下：
+
+[[result:${artifactId}]]` },
+            results: [
+              {
+                artifactId,
+                columns: [{ name: "total", type: "number" }],
+                rows: [[42]],
+                rowCount: 1,
+                truncated: false,
+                sql: "SELECT 42 AS total",
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText(/\[\[result:/)).not.toBeInTheDocument();
+    expect(screen.queryByText("查询结果")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看完整结果（1 行）" })).toBeInTheDocument();
+    expect(screen.queryByText("total")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "查看完整结果（1 行）" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("total")).toBeInTheDocument();
+    expect(screen.getByText("42")).toBeInTheDocument();
+    expect(screen.getByText("SELECT 42 AS total")).toBeInTheDocument();
+  });
+
+  it("labels a truncated result reference as partial", () => {
+    render(
+      <MemoryRouter>
+        <MessageItem
+          message={message({
+            status: "ok",
+            assistant: { content: "[[result:result-1]]" },
+            results: [
+              {
+                artifactId: "result-1",
+                columns: [{ name: "total", type: "number" }],
+                rows: [[42]],
+                rowCount: 1000,
+                truncated: true,
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("button", { name: "查看查询结果（已截断，1,000 行）" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an unavailable message for a missing result reference", () => {
+    render(
+      <MemoryRouter>
+        <MessageItem
+          message={message({
+            status: "ok",
+            assistant: { content: "[[result:missing-result]]" },
+          })}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/结果引用不可用/)).toBeInTheDocument();
+    expect(screen.getByText("missing-result")).toBeInTheDocument();
+  });
+
   it("shows a result without a recorded statement as a result card", () => {
     render(
       <MemoryRouter>

@@ -11,10 +11,11 @@ import {
   type ChatModelInfo,
   type ChatResult,
 } from "../../lib/api";
-import { parseReportMarkdown } from "../../lib/report-markdown";
+import { parseChatMarkdown } from "../../lib/report-markdown";
 import { pairQueries } from "../../lib/pair-queries";
 import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard";
 import { ResultCard } from "./ResultCard";
+import { ResultLink } from "./ResultLink";
 import { TurnTrace } from "./TurnTrace";
 import { TurnFooter } from "./TurnFooter";
 import { RetryActions } from "./RetryActions";
@@ -197,7 +198,7 @@ export function MessageItem({
   // Models sometimes paste report-style placeholders into a normal reply. Render
   // them in place instead of showing raw `[[artifact:<id>]]` text, and skip the
   // duplicate card below when the text already references that artifact.
-  const segments = parseReportMarkdown(assistantText);
+  const segments = parseChatMarkdown(assistantText);
   const referenced = new Set(
     segments
       .filter((segment) => segment.type !== "markdown")
@@ -254,6 +255,23 @@ export function MessageItem({
                 ) : (
                   <p key={`chart-${index}`} className="text-[11px] text-muted">
                     图表引用不可用
+                  </p>
+                );
+              }
+              if (segment.type === "result") {
+                const result = message.results.find(
+                  (item) => item.artifactId === segment.artifactId,
+                );
+                return result ? (
+                  <ResultLink
+                    key={`result-${index}`}
+                    result={result}
+                    canExport={canExport}
+                  />
+                ) : (
+                  <p key={`result-${index}`} className="text-[11px] text-muted">
+                    结果引用不可用：
+                    <code className="rounded bg-subtle px-1 py-0.5">{segment.artifactId}</code>
                   </p>
                 );
               }

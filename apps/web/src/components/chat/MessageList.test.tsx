@@ -200,6 +200,27 @@ describe("MessageList charts", () => {
     );
   });
 
+  it("renders a chat result reference as an inline link while streaming", () => {
+    const result = {
+      artifactId: "result-1",
+      columns: [{ name: "total", type: "number" as const }],
+      rows: [[42]],
+      rowCount: 1,
+      truncated: false,
+    };
+    renderList(
+      stream({
+        status: "ok",
+        text: "汇总如下。\n\n[[result:result-1]]",
+        results: [result],
+      }),
+    );
+
+    expect(screen.queryByText(/\[\[result:/)).not.toBeInTheDocument();
+    expect(screen.queryByText("查询结果")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看完整结果（1 行）" })).toBeInTheDocument();
+  });
+
   it("waits for the run to finish before showing charts", () => {
     const text = "趋势如下。\n\n[[chart:chart-1]]\n\n结论。";
     const { rerender } = renderList(
