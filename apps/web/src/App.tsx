@@ -18,6 +18,8 @@ const ReportPage = lazy(() => import("./pages/ReportPage"));
 const PublicSharePage = lazy(() => import("./pages/PublicSharePage"));
 const RolesPage = lazy(() => import("./pages/admin/RolesPage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
+const DepartmentsPage = lazy(() => import("./pages/admin/DepartmentsPage"));
+const DatasourceScopePage = lazy(() => import("./pages/admin/DatasourceScopePage"));
 const SkillsPage = lazy(() => import("./pages/admin/SkillsPage"));
 const McpPage = lazy(() => import("./pages/admin/McpPage"));
 const DatasourcesPage = lazy(() => import("./pages/admin/DatasourcesPage"));
@@ -129,6 +131,14 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/admin/departments"
+          element={
+            <RequireAdmin>
+              <DepartmentsPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
           path="/admin/roles"
           element={
             <RequireAdmin>
@@ -157,6 +167,14 @@ function AppRoutes() {
           element={
             <RequireAdmin>
               <DatasourcesPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/datasources/:datasourceId/scope"
+          element={
+            <RequireAdmin>
+              <DatasourceScopePage />
             </RequireAdmin>
           }
         />

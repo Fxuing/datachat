@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Shield } from "lucide-react";
 import { AdminShell } from "../../components/admin/AdminShell";
+import { DepartmentMultiSelect } from "../../components/admin/DepartmentMultiSelect";
 import { Button } from "../../components/ui/button";
 import {
   Dialog,
@@ -24,10 +25,13 @@ import {
   createAdminUser,
   fetchMe,
   listAdminUsers,
+  listDepartments,
   listRoles,
+  setUserDepartments,
   updateAdminUser,
   type AdminUser,
   type CreateAdminUserInput,
+  type DepartmentRow,
   type RoleSummary,
   type UpdateAdminUserInput,
 } from "../../lib/api";
@@ -45,14 +49,26 @@ const statusLabel: Record<AdminUser["status"], string> = {
 };
 
 type SavePayload =
-  | { mode: "create"; input: CreateAdminUserInput }
-  | { mode: "edit"; id: string; input: UpdateAdminUserInput };
+  | {
+      mode: "create";
+      input: CreateAdminUserInput;
+      departmentIds: string[];
+      primaryDepartmentId: string | null;
+    }
+  | {
+      mode: "edit";
+      id: string;
+      input: UpdateAdminUserInput;
+      departmentIds: string[];
+      primaryDepartmentId: string | null;
+    };
 
 interface UserEditorProps {
   /** null creates a new user. */
   user: AdminUser | null;
   roles: RoleSummary[];
   rolesError: string | null;
+  departments: DepartmentRow[];
   isSelf: boolean;
   saving: boolean;
   error: string | null;
@@ -64,6 +80,7 @@ function UserEditor({
   user,
   roles,
   rolesError,
+  departments,
   isSelf,
   saving,
   error,
@@ -87,6 +104,13 @@ function UserEditor({
       ),
   );
 
+  const [departmentIds, setDepartmentIds] = useState<ReadonlySet<string>>(
+    () => new Set((user?.departments ?? []).map((row) => row.id)),
+  );
+  const [primaryDepartmentId, setPrimaryDepartmentId] = useState<string | null>(
+    user?.departments?.find((row) => row.isPrimary)?.id ?? null,
+  );
+
   const passwordValid = editing ? password === "" || password.length >= 8 : password.length >= 8;
   const usernameValid = username.trim().length >= 2;
   const canSubmit = roleIds.size > 0 && passwordValid && (editing || usernameValid);
@@ -107,6 +131,9 @@ function UserEditor({
           role: isAdmin ? "admin" : "user",
           ...(password === "" ? {} : { password }),
         },
+        departmentIds: [...departmentIds],
+        primaryDepartmentId:
+          primaryDepartmentId && departmentIds.has(primaryDepartmentId) ? primaryDepartmentId : null,
       });
       return;
     }
@@ -119,6 +146,9 @@ function UserEditor({
         role: isAdmin ? "admin" : "user",
         roleIds: orderedRoleIds,
       },
+      departmentIds: [...departmentIds],
+      primaryDepartmentId:
+        primaryDepartmentId && departmentIds.has(primaryDepartmentId) ? primaryDepartmentId : null,
     });
   };
 
@@ -275,6 +305,29 @@ function UserEditor({
             <p className="text-[11px] text-danger">至少选择一个角色。</p>
           ) : null}
         </fieldset>
+
+        <fieldset className="space-y-1.5">
+          <legend className={labelClass}>部门</legend>
+          {departments.length === 0 ? (
+            <p className="rounded-md border border-line px-3 py-2 text-xs text-muted">
+              还没有部门，可先在部门管理中创建。
+            </p>
+          ) : (
+            <DepartmentMultiSelect
+              departments={departments}
+              value={departmentIds}
+              primaryId={primaryDepartmentId}
+              disabled={saving}
+              onChange={(ids, primaryId) => {
+                setDepartmentIds(new Set(ids));
+                setPrimaryDepartmentId(primaryId);
+              }}
+            />
+          )}
+          <p className="text-[11px] text-muted">
+            部门决定数据边界；主部门仅用于展示，数据权限按所有部门子树取并集。
+          </p>
+        </fieldset>
       </div>
 
       <DialogFooter>
@@ -299,12 +352,21 @@ export default function UsersPage() {
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const usersQuery = useQuery({ queryKey: queryKeys.adminUsers, queryFn: listAdminUsers });
   const rolesQuery = useQuery({ queryKey: queryKeys.roles, queryFn: listRoles });
+  const departmentsQuery = useQuery({ queryKey: queryKeys.departments, queryFn: listDepartments });
 
   const saveMutation = useMutation({
-    mutationFn: (payload: SavePayload) =>
-      payload.mode === "create"
-        ? createAdminUser(payload.input)
-        : updateAdminUser(payload.id, payload.input),
+    mutationFn: async (payload: SavePayload) => {
+      const saved =
+        payload.mode === "create"
+          ? await createAdminUser(payload.input)
+          : await updateAdminUser(payload.id, payload.input);
+      await setUserDepartments(
+        saved.user.id,
+        payload.departmentIds,
+        payload.primaryDepartmentId,
+      );
+      return saved;
+    },
     onSuccess: () => {
       setEditor(null);
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers });
@@ -332,6 +394,7 @@ export default function UsersPage() {
 
   const users = usersQuery.data?.users ?? [];
   const roles = rolesQuery.data?.roles ?? [];
+  const departmentRows = departmentsQuery.data?.flat ?? [];
   const rolesError = rolesQuery.isError
     ? describeApiError(rolesQuery.error, "角色列表加载失败，请稍后重试。")
     : null;
@@ -471,6 +534,7 @@ export default function UsersPage() {
                 user={editor.mode === "edit" ? editor.user : null}
                 roles={roles}
                 rolesError={rolesError}
+                departments={departmentRows}
                 isSelf={editor.mode === "edit" && editor.user.id === user.id}
                 saving={saveMutation.isPending}
                 error={saveError}

@@ -85,13 +85,115 @@ export interface MeResponse {
   user: SessionUser;
   permissions: Permission[];
   roles: { id: string; name: string }[];
+  /** Names of the departments the session user belongs to; empty when unassigned. */
+  departmentNames?: string[];
 }
 
 /** Admin user row; `role` stays the system-admin flag, `roles` are assigned custom roles. */
 export interface AdminUser extends SessionUser {
   roleIds: string[];
   roles: { id: string; name: string }[];
+  departments?: UserDepartment[];
   createdAt: number;
+}
+
+export interface UserDepartment {
+  id: string;
+  name: string;
+  code: string;
+  isPrimary: boolean;
+}
+
+export interface DepartmentRow {
+  id: string;
+  name: string;
+  code: string;
+  parentId: string | null;
+  sortOrder: number;
+  status: "active" | "archived";
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DepartmentNode extends Omit<DepartmentRow, "status"> {
+  status: "active" | "archived";
+  memberCount: number;
+  datasourceIds: string[];
+  children: DepartmentNode[];
+}
+
+export type ScopeMode = "off" | "configuring" | "enabled";
+export type ScopeValueMode =
+  | "literal"
+  | "department_id"
+  | "department_code"
+  | "external_id"
+  | "external_code"
+  | "external_org_code"
+  | "user_id"
+  | "username"
+  | "role";
+export type ScopePolicyMode = "scoped" | "public" | "denied";
+
+export type ScopeRuleOperator = "eq" | "in" | "not_in" | "gt" | "gte" | "lt" | "lte";
+
+export interface ScopeRule {
+  id: string;
+  columnName: string;
+  operator: ScopeRuleOperator;
+  valueMode: ScopeValueMode;
+  literalValues: string[];
+  nullVisible: boolean;
+}
+
+export interface ScopeRuleInput {
+  columnName: string;
+  operator?: ScopeRuleOperator;
+  valueMode?: ScopeValueMode;
+  literalValues?: string[];
+  nullVisible?: boolean;
+}
+
+export interface ScopePolicy {
+  id: string;
+  datasourceId: string;
+  tableName: string;
+  mode: ScopePolicyMode;
+  enabled: boolean;
+  rules: ScopeRule[];
+}
+
+export interface ScopePolicyInput {
+  tableName: string;
+  mode: ScopePolicyMode;
+  enabled?: boolean;
+  rules?: ScopeRuleInput[];
+}
+
+export interface DepartmentMapping {
+  id: string;
+  datasourceId: string;
+  departmentId: string;
+  departmentName: string;
+  departmentCode: string;
+  externalId: string | null;
+  externalCode: string | null;
+  externalOrgCode: string | null;
+  source: "manual" | "import";
+}
+
+export interface ScopeCoverage {
+  policies?: { total: number; classified: number; unclassified: string[] };
+  departments?: { mapped: number; unmapped: number; unmappedIds: string[] };
+  schemaLoaded?: boolean;
+}
+
+export interface DataScopeConfig {
+  datasourceId: string;
+  mode: ScopeMode;
+  policies: ScopePolicy[];
+  mappings: DepartmentMapping[];
+  coverage: ScopeCoverage;
 }
 
 export interface CreateAdminUserInput {
@@ -259,6 +361,8 @@ export interface ChatMessage {
   tools: ChatTool[];
   results: ChatResult[];
   sqls: ChatSql[];
+  /** Department range that filtered this run; null when nothing was rewritten. */
+  scope?: { departments: string[] } | null;
   error: string | null;
   createdAt: number;
 }
@@ -1316,4 +1420,185 @@ export function getMemorySettings(): Promise<MemorySettings> {
 
 export function updateMemorySettings(enabled: boolean): Promise<{ enabled: boolean }> {
   return apiRequest("/api/memories/settings", { method: "PATCH", body: JSON.stringify({ enabled }) });
+}
+
+
+export function listDepartments(): Promise<{
+  departments: DepartmentNode[];
+  flat: DepartmentRow[];
+}> {
+  return apiRequest("/api/admin/departments");
+}
+
+export function createDepartment(input: {
+  name: string;
+  code?: string;
+  parentId?: string | null;
+  sortOrder?: number;
+}): Promise<{ department: DepartmentRow }> {
+  return apiRequest("/api/admin/departments", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateDepartment(
+  id: string,
+  input: { name?: string; code?: string; sortOrder?: number; status?: "active" | "archived" },
+): Promise<{ department: DepartmentRow }> {
+  return apiRequest(`/api/admin/departments/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function moveDepartment(
+  id: string,
+  parentId: string | null,
+): Promise<{ department: DepartmentRow }> {
+  return apiRequest(`/api/admin/departments/${id}/move`, {
+    method: "POST",
+    body: JSON.stringify({ parentId }),
+  });
+}
+
+export function deleteDepartment(id: string): Promise<void> {
+  return apiRequest(`/api/admin/departments/${id}`, { method: "DELETE" });
+}
+
+export function listDepartmentMembers(
+  id: string,
+): Promise<{ members: { id: string; username: string; displayName: string | null; isPrimary: boolean }[] }> {
+  return apiRequest(`/api/admin/departments/${id}/members`);
+}
+
+export function getDepartmentGrants(id: string): Promise<{ datasourceIds: string[] }> {
+  return apiRequest(`/api/admin/departments/${id}/grants`);
+}
+
+export function setDepartmentGrants(id: string, datasourceIds: string[]): Promise<{ ok: boolean }> {
+  return apiRequest(`/api/admin/departments/${id}/grants`, {
+    method: "PUT",
+    body: JSON.stringify({ datasourceIds }),
+  });
+}
+
+export function getUserDepartments(id: string): Promise<{ departments: UserDepartment[] }> {
+  return apiRequest(`/api/admin/users/${id}/departments`);
+}
+
+export function setUserDepartments(
+  id: string,
+  departmentIds: string[],
+  primaryId?: string | null,
+): Promise<{ departments: UserDepartment[] }> {
+  return apiRequest(`/api/admin/users/${id}/departments`, {
+    method: "PUT",
+    body: JSON.stringify({ departmentIds, ...(primaryId !== undefined ? { primaryId } : {}) }),
+  });
+}
+
+export function getDataScope(id: string): Promise<DataScopeConfig> {
+  return apiRequest(`/api/admin/datasources/${id}/scope`);
+}
+
+export function putScopePolicies(
+  id: string,
+  policies: ScopePolicyInput[],
+): Promise<{ policies: ScopePolicy[] }> {
+  return apiRequest(`/api/admin/datasources/${id}/scope/policies`, {
+    method: "PUT",
+    body: JSON.stringify({ policies }),
+  });
+}
+
+export function getScopeMappings(
+  id: string,
+): Promise<{ mappings: DepartmentMapping[]; coverage: ScopeCoverage["departments"] }> {
+  return apiRequest(`/api/admin/datasources/${id}/scope/mappings`);
+}
+
+export function importScopeMappings(
+  id: string,
+  input: { mappings?: unknown[]; csv?: string },
+): Promise<{ inserted: number; updated: number; errors: string[] }> {
+  return apiRequest(`/api/admin/datasources/${id}/scope/mappings`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function previewScope(
+  id: string,
+  userId: string,
+  sql: string,
+): Promise<{ sql: string; params: unknown[]; appliedTables: string[] }> {
+  return apiRequest(`/api/admin/datasources/${id}/scope/preview`, {
+    method: "POST",
+    body: JSON.stringify({ userId, sql }),
+  });
+}
+
+export interface ScopeDiagnostics {
+  datasourceId: string;
+  mode: ScopeMode;
+  userId: string;
+  isAdmin: boolean;
+  canAccessDatasource: boolean;
+  departments: UserDepartment[];
+  effectiveDepartmentIds: string[] | null;
+  tables: {
+    table: string;
+    decision: string;
+    rules?: {
+      column: string;
+      operator: ScopeRuleOperator;
+      valueMode: ScopeValueMode;
+      literalValues: string[];
+      nullVisible: boolean;
+    }[];
+    departments?: string[];
+  }[];
+}
+
+export function getScopeDiagnostics(id: string, userId: string): Promise<ScopeDiagnostics> {
+  return apiRequest(
+    `/api/admin/datasources/${id}/scope/diagnostics?userId=${encodeURIComponent(userId)}`,
+  );
+}
+
+export function getScopeDenials(id: string): Promise<{
+  denials: {
+    id: string;
+    userId: string;
+    username: string | null;
+    action: string;
+    scopeReason: string | null;
+    sqlText: string;
+    createdAt: number;
+  }[];
+}> {
+  return apiRequest(`/api/admin/datasources/${id}/scope/denials`);
+}
+
+export function enableScope(id: string): Promise<{ mode: ScopeMode; revokedShares: number }> {
+  return apiRequest(`/api/admin/datasources/${id}/scope/enable`, { method: "POST" });
+}
+
+export function disableScope(id: string): Promise<{ mode: ScopeMode }> {
+  return apiRequest(`/api/admin/datasources/${id}/scope/disable`, { method: "POST" });
+}
+
+export interface ScopeColumnTable {
+  name: string;
+  columns: { name: string; type: string; comment: string | null }[];
+}
+
+export function getScopeColumns(id: string): Promise<{
+  refreshedAt: number;
+  tables: ScopeColumnTable[];
+  candidates: { table: string; column: string }[];
+  autoMatched: ScopePolicyInput[];
+}> {
+  return apiRequest(`/api/admin/datasources/${id}/scope/columns`);
 }

@@ -21,6 +21,30 @@ function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
 }
 
 describe("MessageItem", () => {
+  it("explains a scope rejection under the error", () => {
+    render(
+      <MessageItem
+        message={message({ error: "DATA_SCOPE_NO_DEPARTMENT: 当前数据源已启用部门数据权限，但你还没有加入任何部门" })}
+      />,
+    );
+    expect(screen.getByText(/部门管理」中分配/)).toBeInTheDocument();
+  });
+
+  it("shows which departments filtered the answer", () => {
+    render(
+      <MessageItem
+        message={message({
+          status: "ok",
+          assistant: { content: "本月共有 142 条记录。" },
+          scope: { departments: ["销售部", "华东区"] },
+        })}
+      />,
+    );
+    expect(screen.getByText("销售部 / 华东区")).toBeInTheDocument();
+    expect(screen.getByText(/本次结果已按当前数据权限过滤/)).toBeInTheDocument();
+  });
+
+
   it("shows the explicitly invoked skill on the user bubble", () => {
     render(
       <MessageItem

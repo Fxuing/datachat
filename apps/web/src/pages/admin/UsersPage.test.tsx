@@ -105,6 +105,52 @@ function stubApi() {
     if (url === "/api/admin/roles" && method === "GET") {
       return jsonResponse({ roles: [member, analyst] });
     }
+    if (url === "/api/admin/departments" && method === "GET") {
+      return jsonResponse({
+        departments: [
+          {
+            id: "dept-sales",
+            name: "销售部",
+            code: "SALES",
+            parentId: null,
+            sortOrder: 0,
+            status: "active",
+            memberCount: 1,
+            datasourceIds: [],
+            children: [],
+          },
+        ],
+        flat: [
+          {
+            id: "dept-sales",
+            name: "销售部",
+            code: "SALES",
+            parentId: null,
+            sortOrder: 0,
+            status: "active",
+            createdAt,
+            updatedAt: createdAt,
+          },
+          {
+            id: "dept-east",
+            name: "华东区",
+            code: "EAST",
+            parentId: "dept-sales",
+            sortOrder: 0,
+            status: "active",
+            createdAt,
+            updatedAt: createdAt,
+          },
+        ],
+      });
+    }
+    if (
+      url.startsWith("/api/admin/users/") &&
+      url.endsWith("/departments") &&
+      method === "PUT"
+    ) {
+      return jsonResponse({ departments: [] });
+    }
     throw new Error(`unexpected request: ${method} ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -189,6 +235,57 @@ describe("UsersPage", () => {
         password: "alice-pass-123",
         role: "user",
         roleIds: ["role_member", "role_analyst"],
+      }),
+    );
+  });
+
+  it("keeps department roots collapsed until expanded", async () => {
+    const browser = userEvent.setup();
+    stubApi();
+    renderPage();
+
+    await screen.findByText("Bob");
+    await browser.click(screen.getByRole("button", { name: "新建用户" }));
+
+    const dialog = await screen.findByRole("dialog");
+    await browser.click(within(dialog).getByRole("combobox", { name: "选择部门" }));
+
+    expect(await screen.findByRole("checkbox", { name: "选择 销售部" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "选择 销售部 / 华东区" })).not.toBeInTheDocument();
+
+    await browser.click(screen.getByRole("button", { name: "展开 销售部" }));
+    expect(screen.getByRole("checkbox", { name: "选择 销售部 / 华东区" })).toBeInTheDocument();
+  });
+
+  it("filters departments and saves the selected primary department", async () => {
+    const browser = userEvent.setup();
+    const fetchMock = stubApi();
+    renderPage();
+
+    await screen.findByText("Bob");
+    await browser.click(screen.getByRole("button", { name: "新建用户" }));
+
+    const dialog = await screen.findByRole("dialog");
+    await browser.type(within(dialog).getByLabelText("用户名"), "alice");
+    await browser.type(within(dialog).getByLabelText("显示名称"), "Alice");
+    await browser.type(within(dialog).getByLabelText("密码"), "alice-pass-123");
+
+    await browser.click(within(dialog).getByRole("combobox", { name: "选择部门" }));
+    await browser.type(await screen.findByLabelText("筛选部门"), "华东");
+    // 父部门作为上下文保留，但不参与命中选择。
+    expect(screen.getByRole("checkbox", { name: "选择 销售部" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "选择 销售部 / 华东区" })).toBeInTheDocument();
+    await browser.click(screen.getByRole("checkbox", { name: "选择 销售部 / 华东区" }));
+    await browser.click(screen.getByRole("button", { name: "设 销售部 / 华东区 为主部门" }));
+    await browser.click(screen.getByRole("button", { name: "完成" }));
+
+    expect(within(dialog).getByText("华东区")).toBeInTheDocument();
+    await browser.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(requestBody(fetchMock, "/api/admin/users/u-alice/departments", "PUT")).toEqual({
+        departmentIds: ["dept-east"],
+        primaryId: "dept-east",
       }),
     );
   });

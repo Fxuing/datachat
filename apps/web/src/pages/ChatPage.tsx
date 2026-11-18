@@ -329,6 +329,14 @@ export default function ChatPage() {
             {datasource.name} · {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}
           </span>
         ) : null}
+        {(meQuery.data?.departmentNames ?? []).length > 0 ? (
+          <span
+            className="hidden shrink-0 rounded bg-brandsoft px-1.5 py-0.5 text-[11px] text-brandtext sm:inline"
+            title="查询结果按这些部门的子树过滤"
+          >
+            范围：{(meQuery.data?.departmentNames ?? []).join(" / ")}
+          </span>
+        ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {canShare ? (

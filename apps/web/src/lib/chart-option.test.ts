@@ -7,7 +7,7 @@ describe("normalizeChartOption", () => {
       title: { text: "月度走势" },
       xAxis: { type: "category", data: ["2026-08", "2026-05", "2026-07"] },
       yAxis: { type: "value", name: "cnt" },
-      series: [{ type: "line", name: "警情", data: [30, 20, 25] }],
+      series: [{ type: "line", name: "数量", data: [30, 20, 25] }],
     });
 
     expect(option?.title).toBeUndefined();

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Bot, Sparkles } from "lucide-react";
+import { Bot, ShieldCheck, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -174,6 +174,27 @@ function InlineArtifact({
   );
 }
 
+/** Scope rejections carry a structured code; show one actionable hint under the error. */
+function scopeHint(error: string | null): string | null {
+  if (!error) return null;
+  if (error.includes("DATA_SCOPE_NO_DEPARTMENT")) {
+    return "你还没有加入任何部门，请联系管理员在「部门管理」中分配。";
+  }
+  if (error.includes("DATA_SCOPE_MAPPING_MISSING")) {
+    return "当前数据源缺少你所属部门的组织映射，请联系管理员补齐后再试。";
+  }
+  if (error.includes("DATA_SCOPE_TABLE_NOT_CONFIGURED") || error.includes("DATA_SCOPE_DENIED_TABLE")) {
+    return "查询涉及未开放给你的表，换一个问法或联系管理员。";
+  }
+  if (error.includes("DATA_SCOPE_POLICY_STALE")) {
+    return "数据权限配置已过期，请联系管理员刷新表结构后重试。";
+  }
+  if (error.includes("DATA_SCOPE_NOT_VISIBLE") || error.includes("SHARE_DISABLED_BY_SCOPE")) {
+    return "该内容超出你当前的部门范围，或对应数据源已启用行级权限。";
+  }
+  return null;
+}
+
 export function MessageItem({
   message,
   artifacts = [],
@@ -240,6 +261,18 @@ export function MessageItem({
           onCreateReport={onCreateReport}
           canExport={canExport}
         />
+        {message.scope && message.scope.departments.length > 0 ? (
+          <div className="flex items-start gap-1.5 rounded-md border border-line bg-subtle px-2.5 py-1.5 text-[11px] text-inksoft">
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brandtext" aria-hidden="true" />
+            <span>
+              数据范围：
+              <span className="font-medium text-ink">
+                {message.scope.departments.join(" / ")}
+              </span>
+              （含下级部门）。本次结果已按当前数据权限过滤，范围外的数据不会显示。
+            </span>
+          </div>
+        ) : null}
         {assistantText ? (
           <div className="flex flex-col gap-2">
             {segments.map((segment, index) => {
@@ -313,6 +346,9 @@ export function MessageItem({
             <p className="text-xs text-danger">
               {message.error ?? "本次回答失败，请重试。"}
             </p>
+            {scopeHint(message.error) ? (
+              <p className="w-full text-[11px] text-muted">{scopeHint(message.error)}</p>
+            ) : null}
             {onRetry ? (
               <RetryActions
                 message={message}
