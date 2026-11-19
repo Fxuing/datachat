@@ -9,6 +9,22 @@ interface SkillRoutesOptions {
 
 export async function skillRoutes(app: FastifyInstance, opts: SkillRoutesOptions) {
   app.get(
+    "/api/skills/global",
+    { preHandler: app.requirePermission("chat.use") },
+    async (request) => {
+      return {
+        skills: request.access!.permissions.has("skill.use")
+          ? listApplicableSkills(opts.db, null).map((skill) => ({
+              name: skill.name,
+              description: skill.description,
+              scope: skill.scope,
+            }))
+          : [],
+      };
+    },
+  );
+
+  app.get(
     "/api/datasources/:id/skills",
     { preHandler: app.requirePermission("chat.use") },
     async (request, reply) => {

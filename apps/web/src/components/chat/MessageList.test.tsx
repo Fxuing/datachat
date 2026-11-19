@@ -200,6 +200,67 @@ describe("MessageList charts", () => {
     );
   });
 
+  it("switches to Excel/CSV mode without DB datasources and starts via file examples", async () => {
+    const user = userEvent.setup();
+    const onNewChatModeChange = vi.fn();
+    const onExample = vi.fn();
+
+    const { rerender } = render(
+      <MemoryRouter>
+        <MessageList
+          messages={[]}
+          stream={initialRunStreamState}
+          showStream={false}
+          optimisticText={null}
+          datasources={[]}
+          newChatMode="datasource"
+          onNewChatModeChange={onNewChatModeChange}
+          modelsStatus="ready"
+          modelsCount={1}
+          onExample={onExample}
+        />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /Excel \/ CSV 文件/ }));
+    expect(onNewChatModeChange).toHaveBeenCalledWith("file");
+
+    rerender(
+      <MemoryRouter>
+        <MessageList
+          messages={[]}
+          stream={initialRunStreamState}
+          showStream={false}
+          optimisticText={null}
+          datasources={[]}
+          newChatMode="file"
+          onNewChatModeChange={onNewChatModeChange}
+          fileReady
+          fileUploadProps={{
+            files: [],
+            headerRows: [],
+            preview: null,
+            previewLoading: false,
+            previewError: null,
+            onAddFiles: vi.fn(),
+            onRemoveFile: vi.fn(),
+            onHeaderRowChange: vi.fn(),
+            onClearAll: vi.fn(),
+          }}
+          modelsStatus="ready"
+          modelsCount={1}
+          onExample={onExample}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByText("拖拽 Excel 或 CSV 文件到这里，或点击选择"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /先了解文件数据结构/ }));
+    expect(onExample).toHaveBeenCalledWith("这些表里有哪些字段？数据大致是什么情况？");
+  });
+
   it("renders a chat result reference as an inline link while streaming", () => {
     const result = {
       artifactId: "result-1",
@@ -218,7 +279,41 @@ describe("MessageList charts", () => {
 
     expect(screen.queryByText(/\[\[result:/)).not.toBeInTheDocument();
     expect(screen.queryByText("查询结果")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看完整结果（1 行）" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /查看完整结果\s*1 行/ })).toBeInTheDocument();
+  });
+
+  it("groups multiple streaming results horizontally and hides partial labelled markers", () => {
+    const res1 = {
+      artifactId: "result-1",
+      columns: [{ name: "类目", type: "string" as const }],
+      rows: [["服饰"]],
+      rowCount: 6,
+      truncated: false,
+    };
+    const res2 = {
+      artifactId: "result-2",
+      columns: [
+        { name: "月份", type: "string" as const },
+        { name: "订单数", type: "number" as const },
+      ],
+      rows: [["8月", 12]],
+      rowCount: 12,
+      truncated: false,
+    };
+    renderList(
+      stream({
+        status: "running",
+        text: "汇总如下。\n\n[[result:result-1|按类目明细]]\n[[result:result-2]]\n汇总中 [[result:result-3|正在输出",
+        results: [res1, res2],
+      }),
+    );
+
+    const first = screen.getByRole("button", { name: /按类目明细\s*6 行/ });
+    const second = screen.getByRole("button", { name: /月份 · 订单数\s*12 行/ });
+    expect(first.parentElement).toBe(second.parentElement);
+    expect(first.parentElement).toHaveClass("flex-wrap");
+    expect(screen.queryByText(/\[\[result:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/正在输出/)).not.toBeInTheDocument();
   });
 
   it("waits for the run to finish before showing charts", () => {
@@ -242,6 +337,36 @@ describe("MessageList charts", () => {
     );
 
     expect(screen.getAllByText("月度趋势")).toHaveLength(1);
+  });
+
+  it("suppresses fallback charts in a completed stream when included in a succeeded report", () => {
+    const secondChart = {
+      chartArtifactId: "chart-2",
+      title: "渠道对比",
+      points: 5,
+      spec: {
+        chart: { title: "渠道对比" },
+        option: { series: [{ type: "bar", data: [3, 4] }] },
+      },
+    };
+    renderList(
+      stream({
+        status: "ok",
+        text: "趋势如下。\n\n[[chart:chart-1]]\n\n[查看完整报告](/reports/r-1)",
+        charts: [chart, secondChart],
+        tools: [
+          {
+            toolCallId: "tc-report",
+            name: "create_report",
+            status: "ok",
+            args: { artifactIds: ["chart-1", "chart-2"] },
+          },
+        ],
+      }),
+    );
+
+    expect(screen.getAllByText("月度趋势")).toHaveLength(1);
+    expect(screen.queryByText("渠道对比")).not.toBeInTheDocument();
   });
 });
 

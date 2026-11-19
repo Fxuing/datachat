@@ -3,7 +3,7 @@ import path from "node:path";
 
 export interface SystemPromptInput {
   datasourceName: string;
-  datasourceType: "mysql" | "postgres";
+  datasourceType: "mysql" | "postgres" | "sqlite";
   database: string;
   now?: Date;
 }
@@ -27,7 +27,16 @@ const TEMPLATE_PATH = path.join(REPO_ROOT, "agent", "prompts", "system.md");
 const DIALECT_LABELS: Record<SystemPromptInput["datasourceType"], string> = {
   mysql: "MySQL",
   postgres: "PostgreSQL",
+  sqlite: "SQLite（上传文件临时库）",
 };
+
+const SQLITE_DIALECT_GUIDANCE = [
+  "## SQLite 方言要点",
+  "",
+  "- 中文或包含特殊字符的表名、列名统一使用双引号引用（如 `SELECT \"部门\", SUM(\"金额\") FROM \"销售明细\"`），字符串字面量使用单引号。",
+  "- 日期与时间戳已统一为 ISO 文本（`YYYY-MM-DD` 或 `YYYY-MM-DD HH:MM:SS`），请用 `substr(...)`、`strftime(...)` 或直接字符串范围比较。",
+  "- 若列注释提示“原格式为百分比，已存为小数”或货币/千分位已清洗为数值，计算指标与展示口径时请按数值语义正确换算。",
+].join("\n");
 
 let cachedTemplate: string | null = null;
 
@@ -53,5 +62,7 @@ export function renderSystemPrompt(input: SystemPromptInput): string {
 
   const template = loadTemplate().replace(/\{\{(\w+)\}\}/g, (match, key: string) => values[key] ?? match);
   const rules = HARD_RULES.map((rule, index) => `${index + 1}. ${rule}`).join("\n");
-  return `${template.trimEnd()}\n\n## 硬性规则\n\n${rules}\n\n当前时间：${now}\n`;
+  const dialectSection =
+    input.datasourceType === "sqlite" ? `\n\n${SQLITE_DIALECT_GUIDANCE}` : "";
+  return `${template.trimEnd()}${dialectSection}\n\n## 硬性规则\n\n${rules}\n\n当前时间：${now}\n`;
 }

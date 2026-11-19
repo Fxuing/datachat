@@ -46,6 +46,18 @@ describe("renderSystemPrompt", () => {
     expect(prompt).toContain("## 硬性规则");
   });
 
+  it("labels sqlite file analysis and appends dialect guidance", () => {
+    const sqlitePrompt = renderSystemPrompt({
+      datasourceName: "销售表.xlsx",
+      datasourceType: "sqlite",
+      database: "uploaded_files",
+      now,
+    });
+    expect(sqlitePrompt).toContain("SQLite（上传文件临时库）");
+    expect(sqlitePrompt).toContain("## SQLite 方言要点");
+    expect(sqlitePrompt).toContain("strftime");
+  });
+
   it("leaves no unresolved placeholders", () => {
     expect(prompt).not.toMatch(/\{\{\w+\}\}/);
   });

@@ -273,7 +273,12 @@ export function ConversationSidebar({ activeId, datasources }: ConversationSideb
               {conversations.map((conversation) => {
                 const title = conversation.title || "未命名会话";
                 const active = conversation.id === activeId;
-                const datasourceName = datasourceNames.get(conversation.datasourceId);
+                const datasourceName =
+                  conversation.sourceKind === "file"
+                    ? "Excel / CSV"
+                    : conversation.datasourceId
+                      ? datasourceNames.get(conversation.datasourceId)
+                      : undefined;
                 return (
                   <li
                     key={conversation.id}

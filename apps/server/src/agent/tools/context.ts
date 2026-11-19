@@ -15,10 +15,15 @@ export interface AgentToolContext {
   artifacts: ArtifactStore;
   userId: string;
   conversationId: string;
-  datasourceId: string;
+  datasourceId: string | null;
+  sourceKind?: "datasource" | "file";
   runId: string;
   /** Per-conversation materialized skills (`data/skills/<conversationId>`). */
   skillsDir: string;
+}
+
+export function isFileToolContext(ctx: AgentToolContext): boolean {
+  return ctx.sourceKind === "file" || ctx.datasourceId === null;
 }
 
 export function textResult<TDetails>(text: string, details: TDetails): AgentToolResult<TDetails> {

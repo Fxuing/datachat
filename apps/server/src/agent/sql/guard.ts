@@ -1,6 +1,6 @@
 import sqlParser from "node-sql-parser";
 
-export type SqlDialect = "mysql" | "postgres";
+export type SqlDialect = "mysql" | "postgres" | "sqlite";
 export type GuardErrorCode =
   | "EMPTY"
   | "PARSE_ERROR"
@@ -30,6 +30,9 @@ const FORBIDDEN_FUNCTIONS = new Set([
   "pg_file_rename", "pg_file_unlink", "pg_stat_file", "pg_logdir_ls",
   "pg_terminate_backend", "pg_cancel_backend", "pg_reload_conf", "pg_rotate_logfile",
   "dblink", "dblink_exec", "lo_import", "lo_export",
+  "load_extension", "fts3_tokenizer", "randomblob", "zeroblob",
+  "edit", "readfile", "writefile", "sqlite_compileoption_get",
+  "sqlite_compileoption_used", "sqlite_source_id", "sqlite_version", "sqlite_offset",
 ]);
 /** Schemas that expose server internals; raw SQL must not query them. */
 const SYSTEM_SCHEMAS = new Set([
@@ -63,9 +66,24 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
     };
   }
 
+  let explainPrefix = "";
+  let parseSql = trimmed;
+  if (dialect === "sqlite") {
+    const explainMatch = trimmed.match(/^explain\s+(?:(query\s+plan)\s+)?([\s\S]+)$/i);
+    if (explainMatch) {
+      explainPrefix = explainMatch[1] ? "EXPLAIN QUERY PLAN " : "EXPLAIN ";
+      parseSql = explainMatch[2]!.trim();
+      if (!parseSql) {
+        return { ok: false, code: "PARSE_ERROR", reason: "EXPLAIN 语句缺少查询主体" };
+      }
+    }
+  }
+
   let ast: unknown;
   try {
-    ast = parser.astify(trimmed, { database: dialect === "mysql" ? "mysql" : "postgresql" });
+    const database =
+      dialect === "mysql" ? "mysql" : dialect === "sqlite" ? "sqlite" : "postgresql";
+    ast = parser.astify(parseSql, { database });
   } catch (error) {
     return {
       ok: false,
@@ -80,7 +98,15 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
 
   const root = ast as Record<string, unknown>;
   const rootType = String(root.type ?? "").toLowerCase();
-  if (!ALLOWED_ROOT.has(rootType)) {
+  if (explainPrefix) {
+    if (rootType !== "select") {
+      return {
+        ok: false,
+        code: "FORBIDDEN_STATEMENT",
+        reason: `EXPLAIN 只允许分析 SELECT 语句，不允许：${rootType || "unknown"}`,
+      };
+    }
+  } else if (!ALLOWED_ROOT.has(rootType)) {
     return { ok: false, code: "FORBIDDEN_STATEMENT", reason: `不允许的语句类型：${rootType || "unknown"}` };
   }
 
@@ -126,13 +152,19 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
         if (typeof table !== "string") continue;
         tableCount += 1;
         const schema = (entry as Record<string, unknown>).db;
-        if (typeof schema === "string" && isSystemSchema(schema)) {
-          violation = `禁止访问系统库：${schema}`;
-          return;
+        if (typeof schema === "string" && schema !== "") {
+          if (dialect === "sqlite" && schema.toLowerCase() !== "main") {
+            violation = `禁止访问外部库：${schema}`;
+            return;
+          }
+          if (isSystemSchema(schema)) {
+            violation = `禁止访问系统库：${schema}`;
+            return;
+          }
         }
-        if (typeof schema !== "string" || schema === "") {
-          // `pg_stat_activity` and friends live in pg_catalog implicitly when the
-          // schema is omitted, so the qualifier check alone is not enough.
+        // `pg_stat_activity` lives in pg_catalog implicitly and `sqlite_master` lives in `main`,
+        // so check table names regardless of whether `main.`/`empty` qualifier was used.
+        if (typeof schema !== "string" || schema === "" || (dialect === "sqlite" && schema.toLowerCase() === "main")) {
           const bare = table.includes(".") ? table.split(".")[0]! : table;
           if (isImplicitSystemName(bare)) {
             violation = `禁止访问系统表：${table}`;
@@ -151,7 +183,7 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
     return { ok: false, code: "TOO_MANY_TABLES", reason: `关联表数量超过 ${maxTables}` };
   }
 
-  if (rootType === "select" && !root.set_op && !root._next) {
+  if (!explainPrefix && rootType === "select" && !root.set_op && !root._next) {
     const limit = root.limit as
       | { separator?: string; seperator?: string; value?: unknown }
       | null
@@ -162,7 +194,7 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
     }
   }
 
-  return { ok: true, sql: trimmed };
+  return { ok: true, sql: explainPrefix ? `${explainPrefix}${parseSql}` : trimmed };
 }
 
 /** Validate every LIMIT/OFFSET, including nested selects and UNION branches. */
@@ -239,7 +271,7 @@ function isSystemSchema(schema: string): boolean {
   );
 }
 
-const IMPLICIT_SYSTEM_NAME = /^(pg_|pg_catalog|information_schema|pg_toast)/i;
+const IMPLICIT_SYSTEM_NAME = /^(pg_|pg_catalog|information_schema|pg_toast|sqlite_)/i;
 
 function isImplicitSystemName(name: string): boolean {
   return IMPLICIT_SYSTEM_NAME.test(name);

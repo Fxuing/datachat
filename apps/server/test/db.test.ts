@@ -24,6 +24,8 @@ const JOURNAL_PATH = path.join(SOURCE_MIGRATIONS_DIR, "meta", "_journal.json");
 
 const APP_TABLES = [
   "artifacts",
+  "conversation_file_tables",
+  "conversation_files",
   "conversations",
   "data_scope_policies",
   "data_scope_rules",
@@ -58,6 +60,15 @@ const APP_TABLES = [
 
 const INTEGRITY_INDEXES: Record<string, string[]> = {
   artifacts: ["artifacts_run_idx", "artifacts_user_idx"],
+  conversation_file_tables: [
+    "conversation_file_tables_conv_name_unique",
+    "conversation_file_tables_conversation_idx",
+    "conversation_file_tables_file_idx",
+  ],
+  conversation_files: [
+    "conversation_files_conversation_idx",
+    "conversation_files_user_idx",
+  ],
   conversations: ["conversations_user_last_message_idx"],
   data_scope_policies: [
     "data_scope_policies_table_unique",
@@ -203,7 +214,14 @@ describe("database lifecycle", () => {
     );
     expect(columnNames(sqlite, "runs")).toContain("retry_of_run_id");
     expect(columnNames(sqlite, "runs")).toContain("memory_extracted_at");
-    expect(columnNames(sqlite, "conversations")).toContain("kind");
+    expect(columnNames(sqlite, "conversations")).toEqual(
+      expect.arrayContaining(["kind", "source_kind"]),
+    );
+    const conversationColumns = sqlite.pragma("table_info(\"conversations\")") as Array<{
+      name: string;
+      notnull: number;
+    }>;
+    expect(conversationColumns.find((column) => column.name === "datasource_id")?.notnull).toBe(0);
     expect(columnNames(sqlite, "query_audit")).toEqual(
       expect.arrayContaining(["detail_json", "user_id", "datasource_id"]),
     );
@@ -270,8 +288,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(17);
-    expect(migrateDb(handle.db)).toBe(17);
+    expect(migrateDb(handle.db)).toBe(18);
+    expect(migrateDb(handle.db)).toBe(18);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");
@@ -503,5 +521,21 @@ describe("data integrity constraints", () => {
     expect(() =>
       insertSkill.run("k4", "datasource", "ds1", "n", "d", "c", "u1", 1, 1),
     ).not.toThrow();
+  });
+
+  it("enforces conversation source_kind and datasource_id consistency", () => {
+    const { sqlite } = openDb();
+    const insertConv = sqlite.prepare(
+      "insert into conversations (id, user_id, source_kind, datasource_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+    );
+
+    expect(() => insertConv.run("c1", "u1", "datasource", null, 1, 1)).toThrow(
+      /CHECK constraint failed/,
+    );
+    expect(() => insertConv.run("c2", "u1", "file", "ds1", 1, 1)).toThrow(
+      /CHECK constraint failed/,
+    );
+    expect(() => insertConv.run("c3", "u1", "datasource", "ds1", 1, 1)).not.toThrow();
+    expect(() => insertConv.run("c4", "u1", "file", null, 1, 1)).not.toThrow();
   });
 });

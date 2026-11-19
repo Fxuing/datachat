@@ -18,6 +18,7 @@ import {
 import { effectiveSettings } from "./app-settings.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { deleteConversationFiles } from "./conversation-service.js";
+import { conversationFileBytes } from "./file-store.js";
 import { recordAudit } from "./audit.js";
 
 const DAY_MS = 86_400_000;
@@ -227,6 +228,7 @@ export function createRetentionService(options: RetentionServiceOptions): Retent
       const artifactRows = artifactRowsFor(db, conversation.id);
       artifactCount += artifactRows.length;
       bytes += await artifactBytes(config, artifactRows);
+      bytes += await conversationFileBytes(config.dataDir, conversation.id);
       const reportIds = reportIdsFor(db, conversation.id);
       reportCount += reportIds.length;
       shareCount +=
@@ -321,7 +323,7 @@ export function createRetentionService(options: RetentionServiceOptions): Retent
             .all().length;
 
           await runtime.remove(conversation.id);
-          await deleteConversationFiles(artifacts, conversation);
+          await deleteConversationFiles(artifacts, conversation, config.dataDir);
           if (conversation.piSessionFile) {
             const dataRoot = path.resolve(config.dataDir);
             const sessionFile = path.resolve(conversation.piSessionFile);

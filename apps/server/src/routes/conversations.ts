@@ -335,7 +335,7 @@ export async function conversationRoutes(
       }
 
       await opts.runtime.remove(conversation.id);
-      await deleteConversationFiles(opts.artifacts, conversation);
+      await deleteConversationFiles(opts.artifacts, conversation, opts.config.dataDir);
       if (conversation.piSessionFile) {
         const dataRoot = path.resolve(opts.config.dataDir);
         const sessionFile = path.resolve(conversation.piSessionFile);

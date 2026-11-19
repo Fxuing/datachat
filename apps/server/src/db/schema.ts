@@ -236,7 +236,8 @@ export const conversations = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull(),
-    datasourceId: text("datasource_id").notNull(),
+    sourceKind: text("source_kind", { enum: ["datasource", "file"] }).notNull().default("datasource"),
+    datasourceId: text("datasource_id"),
     title: text("title"),
     modelId: text("model_id"),
     thinkingLevel: text("thinking_level").notNull().default("off"),
@@ -247,7 +248,58 @@ export const conversations = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
     lastMessageAt: integer("last_message_at"),
   },
-  (t) => [index("conversations_user_last_message_idx").on(t.userId, t.lastMessageAt)],
+  (t) => [
+    index("conversations_user_last_message_idx").on(t.userId, t.lastMessageAt),
+    check("conversations_kind_check", sql`${t.kind} in ('chat', 'scheduled')`),
+    check(
+      "conversations_source_check",
+      sql`(${t.sourceKind} = 'datasource' and ${t.datasourceId} is not null) or (${t.sourceKind} = 'file' and ${t.datasourceId} is null)`,
+    ),
+  ],
+);
+
+export const conversationFiles = sqliteTable(
+  "conversation_files",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id").notNull(),
+    userId: text("user_id").notNull(),
+    fileName: text("file_name").notNull(),
+    fileType: text("file_type", { enum: ["xlsx", "csv"] }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    headerRow: integer("header_row").notNull().default(1),
+    tableCount: integer("table_count").notNull().default(0),
+    rowCount: integer("row_count").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("conversation_files_conversation_idx").on(t.conversationId, t.createdAt),
+    index("conversation_files_user_idx").on(t.userId),
+    check("conversation_files_type_check", sql`${t.fileType} in ('xlsx', 'csv')`),
+    check("conversation_files_header_row_check", sql`${t.headerRow} >= 1`),
+  ],
+);
+
+export const conversationFileTables = sqliteTable(
+  "conversation_file_tables",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id").notNull(),
+    fileId: text("file_id").notNull(),
+    tableName: text("table_name").notNull(),
+    displayName: text("display_name").notNull(),
+    sheetName: text("sheet_name"),
+    rowCount: integer("row_count").notNull().default(0),
+    columnsJson: text("columns_json").notNull(),
+    sampleRowsJson: text("sample_rows_json").notNull(),
+    warningsJson: text("warnings_json").notNull().default("[]"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("conversation_file_tables_conv_name_unique").on(t.conversationId, t.tableName),
+    index("conversation_file_tables_conversation_idx").on(t.conversationId, t.createdAt),
+    index("conversation_file_tables_file_idx").on(t.fileId),
+  ],
 );
 
 export const runs = sqliteTable(

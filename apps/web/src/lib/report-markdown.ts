@@ -3,10 +3,13 @@ export type ReportSegment =
   | { type: "artifact"; artifactId: string }
   | { type: "chart"; artifactId: string };
 
-export type ResultSegment = { type: "result"; artifactId: string };
+export type ResultSegment = { type: "result"; artifactId: string; label?: string };
 export type ChatSegment = ReportSegment | ResultSegment;
+export type GroupedChatSegment =
+  | ReportSegment
+  | { type: "result_group"; items: ResultSegment[] };
 
-const INLINE_PLACEHOLDER = /\[\[(artifact|chart|result):([^\]\s]+)\]\]/g;
+const INLINE_PLACEHOLDER = /\[\[(artifact|chart|result):([^\]\s|]+)(?:\|([^\]\r\n]*))?\]\]/g;
 
 function parseSegments(markdown: string, includeResults: boolean): ChatSegment[] {
   const segments: ChatSegment[] = [];
@@ -18,12 +21,22 @@ function parseSegments(markdown: string, includeResults: boolean): ChatSegment[]
     }
     const kind = match[1];
     const artifactId = match[2]?.trim();
-    if (!artifactId || (kind === "result" && !includeResults)) {
+    const rawLabel = match[3];
+    if (
+      !artifactId ||
+      (kind !== "result" && rawLabel !== undefined) ||
+      (kind === "result" && !includeResults)
+    ) {
       segments.push({ type: "markdown", content: match[0] });
     } else if (kind === "chart") {
       segments.push({ type: "chart", artifactId });
     } else if (kind === "result") {
-      segments.push({ type: "result", artifactId });
+      const label = rawLabel?.trim();
+      segments.push(
+        label
+          ? { type: "result", artifactId, label }
+          : { type: "result", artifactId },
+      );
     } else {
       segments.push({ type: "artifact", artifactId });
     }
@@ -33,6 +46,39 @@ function parseSegments(markdown: string, includeResults: boolean): ChatSegment[]
     segments.push({ type: "markdown", content: markdown.slice(cursor) });
   }
   return segments;
+}
+
+export function groupChatSegments(segments: ChatSegment[]): GroupedChatSegment[] {
+  const grouped: GroupedChatSegment[] = [];
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i]!;
+    if (segment.type !== "result") {
+      grouped.push(segment);
+      continue;
+    }
+    const items: ResultSegment[] = [segment];
+    let cursor = i + 1;
+    while (cursor < segments.length) {
+      let peek = cursor;
+      while (peek < segments.length) {
+        const peekSegment = segments[peek];
+        if (peekSegment?.type !== "markdown" || peekSegment.content.trim()) {
+          break;
+        }
+        peek += 1;
+      }
+      const next = segments[peek];
+      if (next?.type === "result") {
+        items.push(next);
+        cursor = peek + 1;
+      } else {
+        break;
+      }
+    }
+    grouped.push({ type: "result_group", items });
+    i = cursor - 1;
+  }
+  return grouped;
 }
 
 /**
@@ -50,4 +96,29 @@ export function parseReportMarkdown(markdown: string): ReportSegment[] {
  */
 export function parseChatMarkdown(markdown: string): ChatSegment[] {
   return parseSegments(markdown, true);
+}
+
+/**
+ * Collect artifact/chart ids bundled into succeeded `create_report` tool calls
+ * so chat replies don't append unreferenced report-only charts below
+ * `[查看完整报告]`.
+ */
+export function reportArtifactIdsFromTools(
+  tools: ReadonlyArray<{ name: string; status: string; args: unknown }>,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const tool of tools) {
+    if (tool.name !== "create_report" || tool.status !== "ok") continue;
+    if (!tool.args || typeof tool.args !== "object" || Array.isArray(tool.args)) {
+      continue;
+    }
+    const artifactIds = (tool.args as { artifactIds?: unknown }).artifactIds;
+    if (!Array.isArray(artifactIds)) continue;
+    for (const id of artifactIds) {
+      if (typeof id !== "string") continue;
+      const trimmed = id.trim();
+      if (trimmed) ids.add(trimmed);
+    }
+  }
+  return ids;
 }

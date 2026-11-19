@@ -17,6 +17,8 @@ import { skillRoutes } from "./routes/skills.js";
 import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
 import { modelsRoutes } from "./routes/models.js";
 import { conversationRoutes } from "./routes/conversations.js";
+import { conversationFileRoutes } from "./routes/conversation-files.js";
+import { FILE_MAX_FILES_PER_UPLOAD, FILE_MAX_SIZE_BYTES } from "./services/file-import.js";
 import { questionRoutes } from "./routes/questions.js";
 import { artifactRoutes } from "./routes/artifacts.js";
 import { runRoutes } from "./routes/runs.js";
@@ -99,6 +101,14 @@ export async function buildApp({
   const signer = createSessionSigner(config.appSecret);
 
   await app.register(import("@fastify/cookie"));
+  await app.register(import("@fastify/multipart"), {
+    limits: {
+      fileSize: FILE_MAX_SIZE_BYTES,
+      files: FILE_MAX_FILES_PER_UPLOAD,
+      fields: 20,
+      fieldSize: 64 * 1024,
+    },
+  });
   // Global limiting is off by design (`global: false`); individual routes opt in via
   // `config: { rateLimit: { max, timeWindow } }`.
   if (enableRateLimit) {
@@ -171,6 +181,12 @@ export async function buildApp({
     config,
     db,
     artifacts,
+    runtime: agentRuntime,
+    getRuntime: () => modelRuntime.get(),
+  });
+  await app.register(conversationFileRoutes, {
+    config,
+    db,
     runtime: agentRuntime,
     getRuntime: () => modelRuntime.get(),
   });

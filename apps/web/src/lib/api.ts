@@ -51,7 +51,11 @@ async function parseError(response: Response): Promise<ApiError> {
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body !== undefined && !headers.has("Content-Type")) {
+  if (
+    init.body !== undefined &&
+    !(init.body instanceof FormData) &&
+    !headers.has("Content-Type")
+  ) {
     headers.set("Content-Type", "application/json");
   }
   const response = await fetch(path, {
@@ -220,7 +224,8 @@ export interface UpdateAdminUserInput {
 
 export interface Conversation {
   id: string;
-  datasourceId: string;
+  sourceKind?: "datasource" | "file";
+  datasourceId: string | null;
   title: string | null;
   modelId: string | null;
   thinkingLevel: string;
@@ -228,6 +233,66 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   lastMessageAt: number | null;
+}
+
+export type FileColumnType = "INTEGER" | "REAL" | "TEXT" | "DATE" | "DATETIME";
+export type FileColumnFormatHint = "currency" | "percent" | "thousands";
+
+export interface FileTableColumn {
+  name: string;
+  originalName: string;
+  type: FileColumnType;
+  nullable: boolean;
+  formatHint?: FileColumnFormatHint;
+  sampleValues: string[];
+}
+
+export interface ConversationFileSummary {
+  id: string;
+  conversationId: string;
+  fileName: string;
+  fileType: "xlsx" | "csv";
+  sizeBytes: number;
+  headerRow: number;
+  tableCount: number;
+  rowCount: number;
+  createdAt: number;
+}
+
+export interface ConversationFileTableSummary {
+  id: string;
+  conversationId: string;
+  fileId: string;
+  tableName: string;
+  displayName: string;
+  sheetName: string | null;
+  rowCount: number;
+  columns: FileTableColumn[];
+  sampleRows: Array<Array<string | number | null>>;
+  warnings: string[];
+  createdAt: number;
+}
+
+export type PreviewFileTable = Omit<
+  ConversationFileTableSummary,
+  "id" | "conversationId" | "fileId" | "createdAt"
+>;
+
+export interface PreviewFileItem {
+  fileName: string;
+  fileType: "xlsx" | "csv";
+  sizeBytes: number;
+  headerRow: number;
+  detectedHeaderRow: number;
+  tableCount: number;
+  rowCount: number;
+  tables: PreviewFileTable[];
+}
+
+export interface FilePreviewResponse {
+  files: PreviewFileItem[];
+  totalTables: number;
+  totalRows: number;
 }
 
 export interface DatasourceSummary {
@@ -389,6 +454,8 @@ export interface ConversationDetail {
   conversation: Conversation;
   messages: ChatMessage[];
   artifacts: ChatArtifact[];
+  files?: ConversationFileSummary[];
+  tables?: ConversationFileTableSummary[];
   activeRun: { id: string; status: "queued" | "running" } | null;
   contextUsage?: {
     tokens: number | null;
@@ -530,6 +597,84 @@ export function listDatasourceSkills(
   datasourceId: string,
 ): Promise<{ skills: ConversationSkill[] }> {
   return apiRequest(`/api/datasources/${datasourceId}/skills`);
+}
+
+export function listGlobalSkills(): Promise<{ skills: ConversationSkill[] }> {
+  return apiRequest("/api/skills/global");
+}
+
+function buildFilesFormData(
+  files: File[],
+  headerRows?: Array<number | undefined>,
+  extraFields?: Record<string, string | undefined>,
+): FormData {
+  const formData = new FormData();
+  if (extraFields) {
+    for (const [key, value] of Object.entries(extraFields)) {
+      if (value !== undefined && value !== "") {
+        formData.append(key, value);
+      }
+    }
+  }
+  if (headerRows && headerRows.length > 0) {
+    formData.append(
+      "headerRows",
+      JSON.stringify(files.map((_, index) => headerRows[index] ?? 0)),
+    );
+  }
+  for (const file of files) {
+    formData.append("files", file);
+  }
+  return formData;
+}
+
+export function previewUploadedFiles(input: {
+  files: File[];
+  headerRows?: Array<number | undefined>;
+}): Promise<FilePreviewResponse> {
+  return apiRequest("/api/files/preview", {
+    method: "POST",
+    body: buildFilesFormData(input.files, input.headerRows),
+  });
+}
+
+export function createFileConversation(input: {
+  files: File[];
+  headerRows?: Array<number | undefined>;
+  title?: string;
+  modelId?: string;
+  thinkingLevel?: string;
+}): Promise<{
+  conversation: Conversation;
+  files: ConversationFileSummary[];
+  tables: ConversationFileTableSummary[];
+}> {
+  return apiRequest("/api/conversations/file", {
+    method: "POST",
+    body: buildFilesFormData(input.files, input.headerRows, {
+      title: input.title,
+      modelId: input.modelId,
+      thinkingLevel: input.thinkingLevel,
+    }),
+  });
+}
+
+export function appendConversationFiles(
+  conversationId: string,
+  input: {
+    files: File[];
+    headerRows?: Array<number | undefined>;
+  },
+): Promise<{
+  files: ConversationFileSummary[];
+  tables: ConversationFileTableSummary[];
+  addedFiles: ConversationFileSummary[];
+  addedTables: ConversationFileTableSummary[];
+}> {
+  return apiRequest(`/api/conversations/${conversationId}/files`, {
+    method: "POST",
+    body: buildFilesFormData(input.files, input.headerRows),
+  });
 }
 
 export function sendMessage(

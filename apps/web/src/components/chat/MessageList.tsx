@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUpRight, Bot, Loader2 } from "lucide-react";
+import { ArrowDown, ArrowUpRight, Bot, Database, FileSpreadsheet, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import type {
   ChatArtifact,
   ChatMessage,
   ChatModelInfo,
+  ConversationFileSummary,
+  ConversationFileTableSummary,
   DatasourceSummary,
 } from "../../lib/api";
 import type { RunStreamState } from "../../lib/run-events";
@@ -12,6 +14,7 @@ import { PageSpinner } from "../ui/spinner";
 import { Button } from "../ui/button";
 import { BrandMark } from "../BrandMark";
 import { ChartCard, chartOptionFromSpec } from "./ChartCard";
+import { FileUploadPanel, type FileUploadPanelProps } from "./FileUploadPanel";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
 import { RunStatus } from "./RunStatus";
 import { TurnTrace } from "./TurnTrace";
@@ -19,8 +22,12 @@ import { TurnFooter } from "./TurnFooter";
 import { ConversationMinimap } from "./ConversationMinimap";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { ResultCard } from "./ResultCard";
-import { ResultLink } from "./ResultLink";
-import { parseChatMarkdown } from "../../lib/report-markdown";
+import { ResultLinkGroup } from "./ResultLink";
+import {
+  groupChatSegments,
+  parseChatMarkdown,
+  reportArtifactIdsFromTools,
+} from "../../lib/report-markdown";
 import { pairQueries } from "../../lib/pair-queries";
 import type { ModelPickerStatus } from "./ModelPicker";
 import { cn } from "../../lib/utils";
@@ -58,6 +65,14 @@ export interface MessageListProps {
   onRetryModels?: () => void;
   selectedDatasourceId?: string | null;
   onSelectDatasource?: (id: string) => void;
+  newChatMode?: "datasource" | "file";
+  onNewChatModeChange?: (mode: "datasource" | "file") => void;
+  fileUploadProps?: FileUploadPanelProps;
+  fileReady?: boolean;
+  conversationSourceKind?: "datasource" | "file";
+  conversationFiles?: ConversationFileSummary[];
+  conversationTables?: ConversationFileTableSummary[];
+  onOpenFileTables?: () => void;
   /** Set for an existing conversation: its datasource cannot be changed. */
   datasourceLocked?: boolean;
   boundDatasource?: DatasourceSummary | null;
@@ -94,6 +109,21 @@ const examples = [
   },
 ];
 
+const fileExamples = [
+  {
+    title: "先了解文件数据结构",
+    body: "这些表里有哪些字段？数据大致是什么情况？",
+  },
+  {
+    title: "统计汇总与排名",
+    body: "按核心维度汇总统计金额和数量，列出前 10 名",
+  },
+  {
+    title: "发现异常与趋势",
+    body: "检查数据里有没有异常值、空值，并分析关键变化趋势",
+  },
+];
+
 function EmptyChat({
   datasources = [],
   datasourcesLoading = false,
@@ -104,6 +134,14 @@ function EmptyChat({
   onRetryModels,
   selectedDatasourceId = null,
   onSelectDatasource,
+  newChatMode = "datasource",
+  onNewChatModeChange,
+  fileUploadProps,
+  fileReady = false,
+  conversationSourceKind = "datasource",
+  conversationFiles = [],
+  conversationTables = [],
+  onOpenFileTables,
   datasourceLocked = false,
   boundDatasource = null,
   onExample,
@@ -119,18 +157,31 @@ function EmptyChat({
   onRetryModels?: () => void;
   selectedDatasourceId?: string | null;
   onSelectDatasource?: (id: string) => void;
+  newChatMode?: "datasource" | "file";
+  onNewChatModeChange?: (mode: "datasource" | "file") => void;
+  fileUploadProps?: FileUploadPanelProps;
+  fileReady?: boolean;
+  conversationSourceKind?: "datasource" | "file";
+  conversationFiles?: ConversationFileSummary[];
+  conversationTables?: ConversationFileTableSummary[];
+  onOpenFileTables?: () => void;
   datasourceLocked?: boolean;
   boundDatasource?: DatasourceSummary | null;
   onExample?: (content: string) => void;
   starting?: boolean;
   isAdmin?: boolean;
 }) {
+  const isFileMode = datasourceLocked
+    ? conversationSourceKind === "file"
+    : newChatMode === "file";
   const activeDatasourceId = datasourceLocked ? boundDatasource?.id : selectedDatasourceId;
   const canStart =
-    Boolean(activeDatasourceId) &&
+    (isFileMode ? datasourceLocked || fileReady : Boolean(activeDatasourceId)) &&
     modelsStatus === "ready" &&
     modelsCount > 0 &&
     !starting;
+  const visibleExamples = isFileMode ? fileExamples : examples;
+
   return (
     <div className="flex flex-col items-center justify-center gap-5 py-8 text-center">
       <div className="relative">
@@ -143,12 +194,61 @@ function EmptyChat({
         </p>
         <p className="mt-1.5 text-sm text-muted">
           {datasourceLocked
-            ? "直接提问或用下面的示例开始"
-            : "选择一个数据源，然后直接提问或用下面的示例开始"}
+            ? isFileMode
+              ? "已导入上传文件数据，直接提问或用下面的示例开始"
+              : "直接提问或用下面的示例开始"
+            : isFileMode
+              ? "上传 Excel / CSV 文件，解析完成后直接提问或用下面的示例开始"
+              : "选择一个数据源，然后直接提问或用下面的示例开始"}
         </p>
       </div>
 
-      {!datasourceLocked ? (
+      {!datasourceLocked && onNewChatModeChange ? (
+        <div
+          role="tablist"
+          aria-label="分析模式"
+          className="inline-flex rounded-lg border border-line bg-subtle/60 p-1"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={newChatMode === "datasource"}
+            disabled={starting}
+            onClick={() => onNewChatModeChange("datasource")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              newChatMode === "datasource"
+                ? "bg-surface text-ink shadow-card"
+                : "text-muted hover:text-ink",
+            )}
+          >
+            <Database className="h-3.5 w-3.5" />
+            数据库分析
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={newChatMode === "file"}
+            disabled={starting}
+            onClick={() => onNewChatModeChange("file")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              newChatMode === "file"
+                ? "bg-surface text-ink shadow-card"
+                : "text-muted hover:text-ink",
+            )}
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Excel / CSV 文件
+          </button>
+        </div>
+      ) : null}
+
+      {!datasourceLocked && newChatMode === "file" && fileUploadProps ? (
+        <FileUploadPanel {...fileUploadProps} disabled={fileUploadProps.disabled || starting} />
+      ) : null}
+
+      {!datasourceLocked && newChatMode === "datasource" ? (
         <div className="w-full max-w-md text-left">
           <div className="mb-1.5">
             <label className="text-[11px] font-medium text-inksoft">数据源</label>
@@ -209,6 +309,19 @@ function EmptyChat({
         </div>
       ) : null}
 
+      {datasourceLocked && isFileMode && onOpenFileTables ? (
+        <button
+          type="button"
+          onClick={onOpenFileTables}
+          className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-3.5 py-2 text-xs text-inksoft shadow-card transition-colors hover:border-brand/40 hover:text-ink"
+        >
+          <FileSpreadsheet className="h-4 w-4 text-brand" />
+          <span>
+            已载入 {conversationFiles.length} 个文件 · {conversationTables.length} 张表（点击查看结构或追加文件）
+          </span>
+        </button>
+      ) : null}
+
       {modelsStatus !== "ready" || modelsCount === 0 ? (
         <div className="w-full max-w-md rounded-lg border border-line bg-subtle/40 px-4 py-3 text-left">
           {modelsStatus === "loading" ? (
@@ -255,7 +368,7 @@ function EmptyChat({
       ) : null}
 
       <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-3">
-        {examples.map((example) => (
+        {visibleExamples.map((example) => (
           <button
             key={example.title}
             type="button"
@@ -306,6 +419,14 @@ export function MessageList({
   onRetryModels,
   selectedDatasourceId = null,
   onSelectDatasource,
+  newChatMode = "datasource",
+  onNewChatModeChange,
+  fileUploadProps,
+  fileReady = false,
+  conversationSourceKind = "datasource",
+  conversationFiles = [],
+  conversationTables = [],
+  onOpenFileTables,
   datasourceLocked = false,
   boundDatasource = null,
   onExample,
@@ -329,13 +450,19 @@ export function MessageList({
       : messages;
   const hasContent = visibleMessages.length > 0 || showStream;
   const streamSegments = parseChatMarkdown(stream.text);
+  const groupedStreamSegments = groupChatSegments(streamSegments);
+  const disambiguateStreamResults =
+    streamSegments.filter((segment) => segment.type === "result").length >= 2;
   const referencedCharts = new Set(
     streamSegments
       .filter((segment) => segment.type === "chart")
       .map((segment) => segment.artifactId),
   );
+  const streamReportArtifacts = reportArtifactIdsFromTools(stream.tools);
   const standaloneCharts = stream.charts.filter(
-    (chart) => !referencedCharts.has(chart.chartArtifactId),
+    (chart) =>
+      !referencedCharts.has(chart.chartArtifactId) &&
+      !streamReportArtifacts.has(chart.chartArtifactId),
   );
   // Results already rendered inline at their `[[artifact:…]]` or chat-only
   // `[[result:…]]` placeholder must not show up a second time inside the trace.
@@ -482,6 +609,14 @@ export function MessageList({
             onRetryModels={onRetryModels}
             selectedDatasourceId={selectedDatasourceId}
             onSelectDatasource={onSelectDatasource}
+            newChatMode={newChatMode}
+            onNewChatModeChange={onNewChatModeChange}
+            fileUploadProps={fileUploadProps}
+            fileReady={fileReady}
+            conversationSourceKind={conversationSourceKind}
+            conversationFiles={conversationFiles}
+            conversationTables={conversationTables}
+            onOpenFileTables={onOpenFileTables}
             datasourceLocked={datasourceLocked}
             boundDatasource={boundDatasource}
             onExample={onExample}
@@ -528,11 +663,14 @@ export function MessageList({
                 creatingReport={creatingReport}
                 canExport={canExport}
               />
-              {streamSegments.map((segment, index) => {
+              {groupedStreamSegments.map((segment, index) => {
                 if (segment.type === "markdown") {
                   const content = chartsReady
                     ? segment.content
-                    : segment.content.replace(/\[\[(?:chart|artifact|result):[^\]\s]*$/, "");
+                    : segment.content.replace(
+                        /\[\[(?:(?:chart|artifact):[^\]\s]*|result:[^\]\r\n]*)$/,
+                        "",
+                      );
                   return content.trim() ? (
                     <MarkdownText key={`md-${index}`} content={content} />
                   ) : null;
@@ -551,13 +689,17 @@ export function MessageList({
                     />
                   ) : null;
                 }
-                if (segment.type === "result") {
-                  const result = stream.results.find(
-                    (item) => item.artifactId === segment.artifactId,
+                if (segment.type === "result_group") {
+                  return (
+                    <ResultLinkGroup
+                      key={`result-group-${index}`}
+                      items={segment.items}
+                      results={stream.results}
+                      disambiguate={disambiguateStreamResults}
+                      canExport={canExport}
+                      hideMissing
+                    />
                   );
-                  return result ? (
-                    <ResultLink key={`result-link-${index}`} result={result} canExport={canExport} />
-                  ) : null;
                 }
                 if (!chartsReady) return null;
                 const chart = stream.charts.find(

@@ -1,8 +1,12 @@
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import type { Pool as MysqlPool, PoolConnection as MysqlConnection } from "mysql2/promise";
 import type { Pool as PgPool, PoolClient, QueryResult } from "pg";
 import Cursor from "pg-cursor";
 import { guardSql, type GuardErrorCode } from "./guard.js";
 import type { ColumnInfo } from "../../services/artifacts.js";
+
+const require = createRequire(import.meta.url);
 
 export class SqlTimeoutError extends Error {
   constructor(message = "查询超时") {
@@ -29,8 +33,9 @@ export class SqlRejectedError extends Error {
 }
 
 export interface ExecuteInput {
-  dialect: "mysql" | "postgres";
-  pool: MysqlPool | PgPool;
+  dialect: "mysql" | "postgres" | "sqlite";
+  pool?: MysqlPool | PgPool;
+  sqlitePath?: string;
   sql: string;
   /** Bound values for placeholders produced by the scope rewrite. */
   params?: unknown[];
@@ -119,7 +124,9 @@ export async function executeReadOnly(
     const streamedColumns =
       input.dialect === "mysql"
         ? await streamMysql(input, sql, consume, shouldStop)
-        : await streamPostgres(input, sql, consume, shouldStop);
+        : input.dialect === "postgres"
+          ? await streamPostgres(input, sql, consume, shouldStop)
+          : await streamSqlite(input, sql, consume, shouldStop);
     if (columnsRef.columns.length === 0 && streamedColumns.length > 0) {
       columnsRef.columns = streamedColumns;
     }
@@ -147,7 +154,7 @@ export function inferType(values: unknown[]): ColumnInfo["type"] {
     if (typeof value === "number" || typeof value === "bigint") return "number";
     if (typeof value === "boolean") return "boolean";
     if (value instanceof Date) return "date";
-    if (Buffer.isBuffer(value)) return "string";
+    if (Buffer.isBuffer(value) || value instanceof Uint8Array) return "string";
     if (typeof value === "object") return "json";
     return "string";
   }
@@ -364,6 +371,227 @@ async function streamPostgres(
     }
     release(failed);
   }
+}
+
+const SQLITE_CHILD_SCRIPT = `
+const finish = (payload, exitCode) => {
+  if (typeof process.send === "function") {
+    process.send(payload, () => process.exit(exitCode));
+  } else {
+    process.exit(exitCode);
+  }
+};
+
+process.once("message", (msg) => {
+  const Database = require(msg.betterSqlitePath);
+  let db;
+  try {
+    db = new Database(msg.sqlitePath, { readonly: true, fileMustExist: true });
+    db.pragma("query_only = ON");
+    db.pragma("busy_timeout = 2000");
+    const stmt = db.prepare(msg.sql);
+    if (!stmt.reader) {
+      throw new Error("只允许执行返回结果集的只读查询");
+    }
+    stmt.raw(true);
+    const columns = stmt.columns().map((col) => ({
+      name: col.name,
+      type: "unknown",
+    }));
+    const params = Array.isArray(msg.params) ? msg.params : [];
+    const iter = stmt.iterate(...params);
+    let rows = [];
+    let emitted = 0;
+    const limit = msg.maxRows + 1;
+    for (const row of iter) {
+      rows.push(row);
+      emitted += 1;
+      if (rows.length >= msg.batchSize) {
+        process.send({ type: "batch", columns, rows });
+        rows = [];
+      }
+      if (emitted >= limit) break;
+    }
+    if (rows.length > 0) {
+      process.send({ type: "batch", columns, rows });
+    }
+    try { db.close(); } catch {}
+    db = undefined;
+    finish({ type: "done", columns }, 0);
+  } catch (err) {
+    if (db) {
+      try { db.close(); } catch {}
+    }
+    finish({
+      type: "error",
+      message: err && err.message ? err.message : String(err),
+    }, 0);
+  }
+});
+`;
+
+type SqliteWorkerMessage =
+  | { type: "batch"; columns: ColumnInfo[]; rows: unknown[][] }
+  | { type: "done"; columns: ColumnInfo[] }
+  | { type: "error"; message: string };
+
+async function streamSqlite(
+  input: ExecuteInput,
+  sql: string,
+  consume: (batch: Batch) => Promise<void>,
+  shouldStop: () => boolean,
+): Promise<ColumnInfo[]> {
+  throwIfAborted(input.signal);
+  if (!input.sqlitePath) {
+    throw new Error("缺少 SQLite 文件路径");
+  }
+  const betterSqlitePath = require.resolve("better-sqlite3");
+
+  return new Promise<ColumnInfo[]>((resolve, reject) => {
+    const child = spawn(process.execPath, ["-e", SQLITE_CHILD_SCRIPT], {
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+      serialization: "advanced",
+      windowsHide: true,
+    });
+
+    let settled = false;
+    let timedOut = false;
+    let stoppedEarly = false;
+    let exited = false;
+    let columns: ColumnInfo[] = [];
+    let chain = Promise.resolve();
+    let timer: NodeJS.Timeout | undefined;
+    let stderrText = "";
+
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      if (stderrText.length < 2048) {
+        stderrText += String(chunk);
+      }
+    });
+
+    const waitForExit = (): Promise<void> => {
+      if (exited || child.exitCode !== null || child.signalCode !== null) {
+        return Promise.resolve();
+      }
+      return new Promise<void>((done) => {
+        child.once("exit", () => done());
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          done();
+        }
+      });
+    };
+
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      input.signal?.removeEventListener("abort", onAbort);
+    };
+
+    const finishError = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      void waitForExit().then(() => reject(err));
+    };
+
+    const finishSuccess = (cols: ColumnInfo[]) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      void waitForExit().then(() => resolve(cols));
+    };
+
+    const onAbort = () => {
+      finishError(new SqlAbortedError());
+    };
+
+    timer = setTimeout(() => {
+      timedOut = true;
+      finishError(new SqlTimeoutError());
+    }, Math.max(1, input.timeoutMs));
+    timer.unref?.();
+
+    input.signal?.addEventListener("abort", onAbort, { once: true });
+
+    child.on("message", (raw: unknown) => {
+      const msg = raw as SqliteWorkerMessage;
+      chain = chain.then(async () => {
+        if (settled || stoppedEarly) return;
+        if (msg.type === "error") {
+          finishError(new Error(msg.message));
+          return;
+        }
+        if (msg.columns.length > 0 && columns.length === 0) {
+          columns = msg.columns;
+        }
+        if (msg.type === "batch") {
+          await consume({ columns, rows: msg.rows });
+          if (shouldStop()) {
+            stoppedEarly = true;
+            if (input.signal?.aborted) {
+              finishError(new SqlAbortedError());
+            } else {
+              finishSuccess(columns);
+            }
+          }
+          return;
+        }
+        if (msg.type === "done") {
+          if (input.signal?.aborted) {
+            finishError(new SqlAbortedError());
+          } else if (timedOut) {
+            finishError(new SqlTimeoutError());
+          } else {
+            finishSuccess(columns);
+          }
+        }
+      }).catch((err: unknown) => {
+        finishError(err instanceof Error ? err : new Error(String(err)));
+      });
+    });
+
+    child.on("error", (err) => {
+      finishError(err instanceof Error ? err : new Error(String(err)));
+    });
+
+    child.on("exit", (code) => {
+      exited = true;
+      void chain.then(() => {
+        if (settled) return;
+        if (input.signal?.aborted) {
+          finishError(new SqlAbortedError());
+        } else if (timedOut) {
+          finishError(new SqlTimeoutError());
+        } else if (stoppedEarly) {
+          finishSuccess(columns);
+        } else if (code !== 0) {
+          const detail = stderrText.trim();
+          finishError(
+            new Error(
+              detail
+                ? `SQLite 查询子进程异常退出（code ${code}）：${detail}`
+                : `SQLite 查询子进程异常退出（code ${code}）`,
+            ),
+          );
+        } else {
+          finishSuccess(columns);
+        }
+      });
+    });
+
+    child.send({
+      sqlitePath: input.sqlitePath,
+      sql,
+      params: input.params ?? [],
+      maxRows: input.maxRows,
+      batchSize: BATCH_SIZE,
+      betterSqlitePath,
+    });
+  });
 }
 
 function mapStreamError(error: unknown, input: ExecuteInput, timedOut: boolean): Error {

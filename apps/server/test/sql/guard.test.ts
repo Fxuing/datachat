@@ -25,6 +25,13 @@ const allowed: Array<[string, SqlDialect]> = [
   ["SELECT * FROM users WHERE id IN (SELECT id FROM u)", "mysql"],
   ["SELECT * FROM (SELECT * FROM t) x", "mysql"],
   ["WITH RECURSIVE r AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM r WHERE n < 5) SELECT n FROM r", "postgres"],
+  [`SELECT "部门", SUM("金额") AS total FROM "销售表" GROUP BY "部门"`, "sqlite"],
+  [`WITH cte AS (SELECT id, amt FROM t1) SELECT * FROM cte JOIN t2 ON cte.id = t2.id`, "sqlite"],
+  [`SELECT "部门", SUM("金额") OVER (PARTITION BY "部门") AS dept_total FROM "销售表"`, "sqlite"],
+  [`SELECT CAST("金额" AS REAL) FROM "销售表" LIMIT 5`, "sqlite"],
+  [`SELECT * FROM main."销售表"`, "sqlite"],
+  [`EXPLAIN QUERY PLAN SELECT "部门", COUNT(*) FROM "销售表" GROUP BY "部门"`, "sqlite"],
+  [`EXPLAIN SELECT * FROM orders`, "sqlite"],
 ];
 
 const rejected: Array<[string, SqlDialect, string]> = [
@@ -87,6 +94,19 @@ const rejected: Array<[string, SqlDialect, string]> = [
   ["", "mysql", "EMPTY"],
   ["   ", "mysql", "EMPTY"],
   ["SELECT * FROM " + Array.from({ length: 21 }, (_, i) => `t${i}`).join(", "), "mysql", "TOO_MANY_TABLES"],
+  [`ATTACH DATABASE '/tmp/x.db' AS x`, "sqlite", "FORBIDDEN_STATEMENT"],
+  [`INSERT INTO "销售表" VALUES (1)`, "sqlite", "FORBIDDEN_STATEMENT"],
+  [`EXPLAIN DELETE FROM "销售表"`, "sqlite", "FORBIDDEN_STATEMENT"],
+  [`SELECT * FROM sqlite_master`, "sqlite", "FORBIDDEN_CONSTRUCT"],
+  [`SELECT * FROM main.sqlite_schema`, "sqlite", "FORBIDDEN_CONSTRUCT"],
+  [`SELECT * FROM sqlite_temp_master`, "sqlite", "FORBIDDEN_CONSTRUCT"],
+  [`SELECT * FROM temp.foo`, "sqlite", "FORBIDDEN_CONSTRUCT"],
+  [`SELECT load_extension('evil')`, "sqlite", "FORBIDDEN_CONSTRUCT"],
+  [`SELECT fts3_tokenizer('simple')`, "sqlite", "FORBIDDEN_CONSTRUCT"],
+  [`SELECT randomblob(1000000)`, "sqlite", "FORBIDDEN_CONSTRUCT"],
+  [`SELECT zeroblob(1000000)`, "sqlite", "FORBIDDEN_CONSTRUCT"],
+  [`SELECT * FROM t LIMIT 5000`, "sqlite", "LIMIT_TOO_LARGE"],
+  [`SELECT 1; DROP TABLE t`, "sqlite", "FORBIDDEN_STATEMENT"],
 ];
 
 describe("guardSql", () => {
@@ -104,6 +124,12 @@ describe("guardSql", () => {
   it("rejects VACUUM regardless of parser support", () => {
     const result = guardSql({ sql: "VACUUM", dialect: "postgres", maxRows: MAX });
     expect(result.ok).toBe(false);
+  });
+
+  it("rejects SQLite administrative statements regardless of parser support", () => {
+    for (const sql of [`DETACH DATABASE x`, `PRAGMA table_info("销售表")`, `VACUUM`]) {
+      expect(guardSql({ sql, dialect: "sqlite", maxRows: MAX }).ok).toBe(false);
+    }
   });
 
   it("rejects SQL longer than 100k characters", () => {

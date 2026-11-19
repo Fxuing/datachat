@@ -1,21 +1,43 @@
 import { useState } from "react";
-import { Table2 } from "lucide-react";
+import { ChevronRight, Table2 } from "lucide-react";
 import type { ChatResult } from "../../lib/api";
+import type { ResultSegment } from "../../lib/report-markdown";
 import { formatCount } from "../../lib/utils";
 import { ResultDetailDialog } from "./ResultDetailDialog";
 import { ResultTable } from "./ResultTable";
 
+function defaultResultTitle(result: ChatResult): string {
+  return result.truncated ? "查看查询结果" : "查看完整结果";
+}
+
+function summarizeColumns(columns: ChatResult["columns"]): string | null {
+  const names = columns.map((col) => col.name.trim()).filter(Boolean);
+  if (names.length === 0) return null;
+  if (names.length <= 2) return names.join(" · ");
+  return `${names.slice(0, 2).join(" · ")} 等`;
+}
+
 export function ResultLink({
   result,
+  title,
   canExport = true,
 }: {
   result: ChatResult;
+  title?: string;
   canExport?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const label = result.truncated
-    ? `查看查询结果（已截断，${formatCount(result.rowCount)} 行）`
-    : `查看完整结果（${formatCount(result.rowCount)} 行）`;
+  const customTitle = title?.trim();
+  const displayTitle = customTitle || defaultResultTitle(result);
+  const countLabel = result.truncated
+    ? `已截断 · ${formatCount(result.rowCount)} 行`
+    : `${formatCount(result.rowCount)} 行`;
+  const dialogTitle =
+    customTitle &&
+    customTitle !== "查看完整结果" &&
+    customTitle !== "查看查询结果"
+      ? customTitle
+      : "查询结果";
 
   return (
     <>
@@ -23,13 +45,32 @@ export function ResultLink({
         type="button"
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
-        className="inline-flex w-fit items-center gap-1.5 rounded px-1 py-0.5 text-xs font-medium text-brand transition-colors hover:bg-brandsoft hover:text-brandtext"
+        className="group inline-flex max-w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs shadow-card transition-colors hover:border-brand/40 hover:bg-brandsoft/40"
       >
-        <Table2 className="h-3.5 w-3.5" aria-hidden />
-        {label}
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-brandsoft text-brandtext">
+          <Table2 className="h-3 w-3" aria-hidden />
+        </span>
+        <span className="truncate font-medium text-ink">{displayTitle}</span>
+        <span
+          className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${
+            result.truncated
+              ? "bg-warningsoft text-warning"
+              : "bg-subtle text-muted"
+          }`}
+        >
+          {countLabel}
+        </span>
+        <ChevronRight
+          className="h-3.5 w-3.5 shrink-0 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-brandtext"
+          aria-hidden
+        />
       </button>
       {open ? (
-        <ResultDetailDialog title="查询结果" sql={result.sql} onClose={() => setOpen(false)}>
+        <ResultDetailDialog
+          title={dialogTitle}
+          sql={result.sql}
+          onClose={() => setOpen(false)}
+        >
           <ResultTable
             artifactId={result.artifactId}
             columns={result.columns}
@@ -44,4 +85,75 @@ export function ResultLink({
       ) : null}
     </>
   );
+}
+
+export function ResultLinkGroup({
+  items,
+  results,
+  disambiguate,
+  canExport = true,
+  hideMissing = false,
+}: {
+  items: ResultSegment[];
+  results: ChatResult[];
+  disambiguate: boolean;
+  canExport?: boolean;
+  hideMissing?: boolean;
+}) {
+  const entries = items.map((item) => {
+    const result = results.find((entry) => entry.artifactId === item.artifactId);
+    const explicit = item.label?.trim();
+    const baseTitle = !result
+      ? undefined
+      : explicit ||
+        (disambiguate
+          ? summarizeColumns(result.columns) ?? defaultResultTitle(result)
+          : undefined);
+    return { item, result, baseTitle };
+  });
+
+  const titleCounts = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.baseTitle) {
+      titleCounts.set(entry.baseTitle, (titleCounts.get(entry.baseTitle) ?? 0) + 1);
+    }
+  }
+  const seenCounts = new Map<string, number>();
+
+  const rendered = entries
+    .map((entry, index) => {
+      if (!entry.result) {
+        if (hideMissing) return null;
+        return (
+          <span
+            key={`missing-${entry.item.artifactId}-${index}`}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-dashed border-line bg-surface px-2.5 py-1.5 text-[11px] text-muted"
+          >
+            结果引用不可用：
+            <code className="rounded bg-subtle px-1 py-0.5">{entry.item.artifactId}</code>
+          </span>
+        );
+      }
+
+      let resolvedTitle = entry.baseTitle;
+      if (resolvedTitle && (titleCounts.get(resolvedTitle) ?? 0) > 1) {
+        const nth = (seenCounts.get(resolvedTitle) ?? 0) + 1;
+        seenCounts.set(resolvedTitle, nth);
+        resolvedTitle = `${resolvedTitle} #${nth}`;
+      }
+
+      return (
+        <ResultLink
+          key={`result-${entry.item.artifactId}-${index}`}
+          result={entry.result}
+          title={resolvedTitle}
+          canExport={canExport}
+        />
+      );
+    })
+    .filter(Boolean);
+
+  if (rendered.length === 0) return null;
+
+  return <div className="flex flex-wrap items-center gap-2">{rendered}</div>;
 }

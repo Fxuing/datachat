@@ -32,8 +32,8 @@ React Query 是服务端状态缓存；使用 `lib/query.ts` 的 `queryKeys` 和
 
 - `markdown`——正文、表格、Mermaid、普通代码块；
 - `artifact`——`[[artifact:<id>]]`，渲染成结果/报告卡片；
-- `chart`——`[[chart:<id>]]`，从图表 artifact 渲染；
-- `result`——`[[result:<id>]]`，聊天专用的当前结果行内链接。
+- `chart`——`[[chart:<id>]]`，从图表 artifact 就地渲染；本轮未在正文中引用的图表会在回答末尾作为兜底独立展示，但若该图表已被本轮成功的 `create_report` 调用纳入报告（由 `reportArtifactIdsFromTools` 收集），则不再兜底追加，避免报告链接下方出现孤儿图表；
+- `result`——`[[result:<id>]]` 或 `[[result:<id>|简短标题]]`，聊天专用的当前结果行内芯片入口。连续的 `result` 分段（中间仅有空白或换行）会经 `groupChatSegments` 合并成 `result_group` 横向换行排列（`flex-wrap`）；单条消息包含至少两个 `result` 且未显式提供 `|标题` 时，`ResultLinkGroup` 会按结果前两个列名（超出两列后缀 `等`）自动生成区分标题，组内同名再追加 `#1`、`#2`。
 
 `parseReportMarkdown` 故意把 `[[result:...]]` 当普通文本（报告使用 artifact）。新增标记或分段时：
 
@@ -48,7 +48,9 @@ Mermaid 代码块由 `MermaidDiagram` 在聊天、报告和公开分享中渲染
 ## 布局与交互契约
 
 - 消息区域是滚动所有者。输入框不在其中 sticky；它在下方，不能遮住最后一行。窄屏下左侧栏收起为左抽屉（`Sheet`），通过顶栏菜单按钮打开，避免挤压对话与后台表格。
-- 左侧会话栏的「新建对话」直接进入 `/chat` 空态，在发送首条消息时携带已选数据源、模型与思考等级创建会话（避免空会话记录）；列表支持 `before` 游标分页（「加载更多」）与防抖关键词搜索。
+- 左侧会话栏的「新建对话」直接进入 `/chat` 空态，支持在「数据库分析」（默认）与「Excel / CSV 文件」之间切换：数据库模式在发送首条消息时携带数据源、模型与思考等级创建会话；文件模式通过 [`FileUploadPanel.tsx`](../../apps/web/src/components/chat/FileUploadPanel.tsx) 上传最多 5 个（单文件 ≤ 20 MB）`.xlsx`/`.csv` 文件并调用 `POST /api/files/preview` 展示推断结构、3 行样例与表头行调整，无需预设数据库数据源即可开始提问。
+- 活跃的文件分析会话在顶栏展示 `Excel / CSV · N 张表` 按钮（打开 [`FileTablesDialog.tsx`](../../apps/web/src/components/chat/FileTablesDialog.tsx) 查看导入文件、列类型、样例并支持在空闲时追加文件进行多表 `JOIN`）；侧边栏对文件会话直接显示 `Excel / CSV` 标识，不发额外请求。
+- 左侧会话列表支持 `before` 游标分页（「加载更多」）与防抖关键词搜索。
 - 助手轮次底部支持一键复制回答、单次点击直接点赞（再点撤销）与弹窗填写差评原因；代码块复制走共享剪贴板兼容封装；外部 Markdown 链接以新标签页打开。
 - 流式期间：只有用户本来在底部/接近底部时才贴底。用户上翻时冻结并显示“有新内容”；点击回到底部。切换会话恢复每个会话保存的位置，同时重置 `Composer` 草稿与失败重发状态。
 - 顶栏右侧状态指示器真实反映当前流状态（「生成中…」「重连中…」「模型异常」），空闲时不显示占位提示。

@@ -8,7 +8,7 @@ import { decryptSecret, deriveSecretKey } from "./datasource/crypto.js";
 export interface LoadMcpInput {
   db: Db;
   config: AppConfig;
-  datasourceId: string;
+  datasourceId: string | null;
 }
 
 export type McpServerRow = typeof mcpServers.$inferSelect;
@@ -67,15 +67,13 @@ export function buildMcpServerConfig(row: McpServerRow, key: Buffer): McpServerC
  * row never blocks the conversation.
  */
 export function loadMcpFor(input: LoadMcpInput): LoadedMcpConfig {
+  const scopeFilter = input.datasourceId
+    ? or(isNull(mcpServers.datasourceId), eq(mcpServers.datasourceId, input.datasourceId))
+    : isNull(mcpServers.datasourceId);
   const rows = input.db
     .select()
     .from(mcpServers)
-    .where(
-      and(
-        eq(mcpServers.enabled, 1),
-        or(isNull(mcpServers.datasourceId), eq(mcpServers.datasourceId, input.datasourceId)),
-      ),
-    )
+    .where(and(eq(mcpServers.enabled, 1), scopeFilter))
     .all();
 
   const result: LoadedMcpConfig = { servers: [], errors: [] };

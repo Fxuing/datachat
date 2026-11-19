@@ -263,4 +263,261 @@ describe("ChatPage permission gates", () => {
     expect(duplicateKeyCalls).toEqual([]);
     errorSpy.mockRestore();
   });
+
+  it("shows file tables badge and supports appending files in an existing file conversation", async () => {
+    const fileConv: Conversation = {
+      id: "c-file",
+      sourceKind: "file",
+      datasourceId: null,
+      title: "8月销售分析",
+      modelId: null,
+      thinkingLevel: "off",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+      lastMessageAt: null,
+    };
+    const file1 = {
+      id: "f-1",
+      conversationId: "c-file",
+      fileName: "orders.csv",
+      fileType: "csv" as const,
+      sizeBytes: 512,
+      headerRow: 1,
+      tableCount: 1,
+      rowCount: 2,
+      createdAt: 1,
+    };
+    const table1 = {
+      id: "t-1",
+      conversationId: "c-file",
+      fileId: "f-1",
+      tableName: "orders",
+      displayName: "orders",
+      sheetName: null,
+      rowCount: 2,
+      columns: [
+        {
+          name: "订单号",
+          originalName: "订单号",
+          type: "TEXT" as const,
+          nullable: false,
+          sampleValues: ["001"],
+        },
+      ],
+      sampleRows: [["001"]],
+      warnings: [],
+      createdAt: 1,
+    };
+    const file2 = { ...file1, id: "f-2", fileName: "targets.csv" };
+    const table2 = { ...table1, id: "t-2", fileId: "f-2", tableName: "targets", displayName: "targets" };
+
+    let appended = false;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/auth/me") {
+        return jsonResponse({ user, permissions: FUNCTIONAL_PERMISSIONS, roles: [], departmentNames: ["研发部"] });
+      }
+      if (url === "/api/conversations") {
+        return jsonResponse({ items: [fileConv], nextCursor: null });
+      }
+      if (url === "/api/datasources") return jsonResponse({ datasources: [] });
+      if (url === "/api/models") {
+        return jsonResponse({ configured: false, models: [], defaultId: null });
+      }
+      if (url === "/api/conversations/c-file") {
+        return jsonResponse({
+          conversation: fileConv,
+          messages: [],
+          artifacts: [],
+          files: appended ? [file1, file2] : [file1],
+          tables: appended ? [table1, table2] : [table1],
+          activeRun: null,
+        });
+      }
+      if (url === "/api/conversations/c-file/skills") {
+        return jsonResponse({ skills: [] });
+      }
+      if (url === "/api/conversations/c-file/files" && init?.method === "POST") {
+        appended = true;
+        return jsonResponse(
+          {
+            files: [file1, file2],
+            tables: [table1, table2],
+            addedFiles: [file2],
+            addedTables: [table2],
+          },
+          201,
+        );
+      }
+      throw new Error(`unexpected request: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const browser = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/chat/c-file"]}>
+          <Routes>
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const badge = await screen.findByRole("button", { name: /Excel \/ CSV · 1 张表/ });
+    expect(screen.queryByText(/范围：研发部/)).not.toBeInTheDocument();
+
+    await browser.click(badge);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("orders")).toBeInTheDocument();
+
+    const extraFile = new File(["部门,目标\n华东,100"], "targets.csv", { type: "text/csv" });
+    await browser.upload(screen.getByLabelText("追加上传 Excel 或 CSV 文件"), extraFile);
+
+    expect(await screen.findByText("targets")).toBeInTheDocument();
+    await browser.click(screen.getAllByRole("button", { name: "关闭" })[0]!);
+    expect(
+      await screen.findByRole("button", { name: /Excel \/ CSV · 2 张表/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("previews uploaded files and creates a file conversation from /chat", async () => {
+    const createdConv: Conversation = {
+      id: "c-new-file",
+      sourceKind: "file",
+      datasourceId: null,
+      title: "新文件分析",
+      modelId: null,
+      thinkingLevel: "off",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+      lastMessageAt: null,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/auth/me") {
+        return jsonResponse({ user, permissions: FUNCTIONAL_PERMISSIONS, roles: [] });
+      }
+      if (url === "/api/conversations") return jsonResponse({ items: [], nextCursor: null });
+      if (url === "/api/datasources") return jsonResponse({ datasources: [] });
+      if (url === "/api/models") {
+        return jsonResponse({
+          configured: true,
+          models: [
+            {
+              id: "m1",
+              modelId: "m1",
+              providerId: "p1",
+              providerName: "P1",
+              name: "Model 1",
+              contextWindow: 64_000,
+              maxTokens: 4096,
+            },
+          ],
+          defaultId: "m1",
+        });
+      }
+      if (url === "/api/skills/global") return jsonResponse({ skills: [] });
+      if (url === "/api/files/preview" && init?.method === "POST") {
+        return jsonResponse({
+          files: [
+            {
+              fileName: "sales.csv",
+              fileType: "csv",
+              sizeBytes: 120,
+              headerRow: 1,
+              detectedHeaderRow: 1,
+              tableCount: 1,
+              rowCount: 1,
+              tables: [
+                {
+                  tableName: "sales",
+                  displayName: "sales",
+                  sheetName: null,
+                  rowCount: 1,
+                  columns: [
+                    {
+                      name: "金额",
+                      originalName: "金额",
+                      type: "INTEGER",
+                      nullable: false,
+                      sampleValues: ["100"],
+                    },
+                  ],
+                  sampleRows: [[100]],
+                  warnings: [],
+                },
+              ],
+            },
+          ],
+          totalTables: 1,
+          totalRows: 1,
+        });
+      }
+      if (url === "/api/conversations/file" && init?.method === "POST") {
+        return jsonResponse(
+          { conversation: createdConv, files: [], tables: [] },
+          201,
+        );
+      }
+      if (url === "/api/conversations/c-new-file/messages" && init?.method === "POST") {
+        return jsonResponse({ runId: "run-new", position: 1 }, 202);
+      }
+      if (url === "/api/conversations/c-new-file") {
+        return jsonResponse({
+          conversation: createdConv,
+          messages: [],
+          artifacts: [],
+          files: [],
+          tables: [],
+          activeRun: null,
+        });
+      }
+      if (url === "/api/conversations/c-new-file/skills") {
+        return jsonResponse({ skills: [] });
+      }
+      throw new Error(`unexpected request: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const browser = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/chat"]}>
+          <Routes>
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await browser.click(await screen.findByRole("tab", { name: /Excel \/ CSV 文件/ }));
+    const file = new File(["金额\n100"], "sales.csv", { type: "text/csv" });
+    await browser.upload(screen.getByLabelText("选择 Excel 或 CSV 文件"), file);
+
+    expect(await screen.findByText("sales.csv")).toBeInTheDocument();
+    const composer = screen.getByRole("textbox", { name: "输入问题" });
+    expect(composer).toBeEnabled();
+    await browser.type(composer, "总金额多少");
+    await browser.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/conversations/file",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/conversations/c-new-file/messages",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(await screen.findByText("新文件分析")).toBeInTheDocument();
+  });
 });

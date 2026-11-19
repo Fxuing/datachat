@@ -162,7 +162,7 @@ export function createMakeChartTool(
           type: chart.type,
           points,
           title,
-          hint: `要在回答中就地展示该图表，请单独一行写 [[chart:${meta.id}]]；未写则界面会在回答末尾展示`,
+          hint: `请在对应分析段落下方单独一行写 [[chart:${meta.id}]] 就地展示该图表（多维分析应按小节图文穿插，勿将所有图表堆在文末）`,
           ...(skipped > 0 ? { skipped } : {}),
           ...(notices.length > 0 ? { notice: notices.join("；") } : {}),
         }),

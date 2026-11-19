@@ -26,7 +26,7 @@ export interface ConversationResourcesInput {
   db: Db;
   config: AppConfig;
   conversationId: string;
-  datasourceId: string;
+  datasourceId: string | null;
   userId: string;
   skillsDir?: string;
   canUseSkills: boolean;
@@ -35,7 +35,7 @@ export interface ConversationResourcesInput {
   /** Receives the memories injected into a turn, for the run's trace. */
   onMemoryUsed?: (items: MemoryUsageItem[]) => void;
   datasourceName: string;
-  datasourceType: "mysql" | "postgres";
+  datasourceType: "mysql" | "postgres" | "sqlite";
   database: string;
 }
 

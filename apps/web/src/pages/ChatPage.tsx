@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Share2, X } from "lucide-react";
+import { FileSpreadsheet, Share2, X } from "lucide-react";
 import { AppShell, type AppShellStatusIndicator } from "../components/AppShell";
 import { Composer } from "../components/chat/Composer";
 import { QuestionCard } from "../components/chat/QuestionCard";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
+import { FileTablesDialog } from "../components/chat/FileTablesDialog";
 import { MessageList } from "../components/chat/MessageList";
 import type { ModelPickerStatus } from "../components/chat/ModelPicker";
 import { ShareDialog } from "../components/ShareDialog";
@@ -15,7 +16,9 @@ import { useRunStream } from "../hooks/useRunStream";
 import { useCan } from "../hooks/use-access";
 import {
   ApiError,
+  appendConversationFiles,
   createConversation,
+  createFileConversation,
   createReport,
   deleteConversation,
   fetchMe,
@@ -23,12 +26,15 @@ import {
   listDatasources,
   listConversationSkills,
   listDatasourceSkills,
+  listGlobalSkills,
   listModels,
+  previewUploadedFiles,
   retryRun,
   sendMessage,
   updateConversation,
   type ChatMessage,
   type ConversationDetail,
+  type FilePreviewResponse,
 } from "../lib/api";
 import { queryKeys } from "../lib/query";
 import { applyContextWindow } from "../lib/context-usage";
@@ -53,6 +59,14 @@ export default function ChatPage() {
   const [failedSend, setFailedSend] = useState<{ content: string; skill?: string } | null>(null);
   const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
   const [draftDatasourceId, setDraftDatasourceId] = useState<string | null>(null);
+  const [draftMode, setDraftMode] = useState<"datasource" | "file">("datasource");
+  const [draftFiles, setDraftFiles] = useState<File[]>([]);
+  const [draftHeaderRows, setDraftHeaderRows] = useState<Array<number | undefined>>([]);
+  const [filePreview, setFilePreview] = useState<FilePreviewResponse | null>(null);
+  const [filePreviewLoading, setFilePreviewLoading] = useState(false);
+  const [filePreviewError, setFilePreviewError] = useState<string | null>(null);
+  const [fileTablesOpen, setFileTablesOpen] = useState(false);
+  const previewSeqRef = useRef(0);
   const [draftModelId, setDraftModelId] = useState<string | null>(null);
   const [draftThinkingLevel, setDraftThinkingLevel] = useState<string>("off");
   const [shareOpen, setShareOpen] = useState(false);
@@ -85,22 +99,30 @@ export default function ChatPage() {
     queryKey: queryKeys.models,
     queryFn: listModels,
   });
+  const isNewFileDraft = !conversationId && draftMode === "file";
   const skillsDatasourceId =
-    conversationQuery.data?.conversation?.datasourceId ?? draftDatasourceId;
+    conversationQuery.data?.conversation?.datasourceId ?? (isNewFileDraft ? null : draftDatasourceId);
   const skillsQuery = useQuery({
     queryKey: conversationId
       ? queryKeys.conversationSkills(conversationId)
-      : queryKeys.datasourceSkills(skillsDatasourceId ?? ""),
+      : isNewFileDraft
+        ? queryKeys.globalSkills
+        : queryKeys.datasourceSkills(skillsDatasourceId ?? ""),
     queryFn: () =>
       conversationId
         ? listConversationSkills(conversationId)
-        : listDatasourceSkills(skillsDatasourceId as string),
-    enabled: canUseSkills && Boolean(conversationId || skillsDatasourceId),
+        : isNewFileDraft
+          ? listGlobalSkills()
+          : listDatasourceSkills(skillsDatasourceId as string),
+    enabled: canUseSkills && Boolean(conversationId || isNewFileDraft || skillsDatasourceId),
     staleTime: 60_000,
   });
 
   const conversation = conversationQuery.data?.conversation;
   const messages = conversationQuery.data?.messages;
+  const conversationFiles = conversationQuery.data?.files ?? [];
+  const conversationTables = conversationQuery.data?.tables ?? [];
+  const isFileConversation = conversation?.sourceKind === "file";
   const activeRunFromServer = conversationQuery.data?.activeRun ?? null;
   const datasource = datasourcesQuery.data?.datasources.find(
     (item) => item.id === conversation?.datasourceId,
@@ -166,6 +188,66 @@ export default function ChatPage() {
     onError: (error, input) => {
       setFailedSend({ content: input.content, skill: input.skill });
       setSendError(errorMessage(error, "创建会话失败，请稍后重试"));
+    },
+  });
+
+  const startFileMutation = useMutation({
+    mutationFn: async (input: {
+      content: string;
+      files: File[];
+      headerRows: Array<number | undefined>;
+      skill?: string;
+      modelId?: string;
+      thinkingLevel?: string;
+    }) => {
+      const created = await createFileConversation({
+        files: input.files,
+        headerRows: input.headerRows,
+        ...(input.modelId ? { modelId: input.modelId } : {}),
+        ...(input.thinkingLevel && input.thinkingLevel !== "off"
+          ? { thinkingLevel: input.thinkingLevel }
+          : {}),
+      });
+      try {
+        const { runId } = await sendMessage(created.conversation.id, input.content, input.skill);
+        return { conversationId: created.conversation.id, runId };
+      } catch (error) {
+        await deleteConversation(created.conversation.id).catch(() => undefined);
+        throw error;
+      }
+    },
+    onSuccess: ({ conversationId: createdId, runId }, input) => {
+      setFailedSend(null);
+      setDraftModelId(null);
+      setDraftThinkingLevel("off");
+      previewSeqRef.current += 1;
+      setDraftFiles([]);
+      setDraftHeaderRows([]);
+      setFilePreview(null);
+      setFilePreviewError(null);
+      setDraftMode("datasource");
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+      navigate(`/chat/${createdId}`, {
+        state: { pendingRun: { runId, content: input.content, skill: input.skill } },
+      });
+    },
+    onError: (error, input) => {
+      setFailedSend({ content: input.content, skill: input.skill });
+      setSendError(errorMessage(error, "创建文件分析会话失败，请稍后重试"));
+    },
+  });
+
+  const appendFilesMutation = useMutation({
+    mutationFn: (files: File[]) =>
+      appendConversationFiles(conversationId as string, { files }),
+    onSuccess: ({ files, tables }) => {
+      queryClient.setQueryData<ConversationDetail>(
+        queryKeys.conversation(conversationId as string),
+        (previous) => (previous ? { ...previous, files, tables } : previous),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.conversation(conversationId as string),
+      });
     },
   });
 
@@ -274,6 +356,7 @@ export default function ChatPage() {
     );
     setSendError(null);
     setFailedSend(null);
+    setFileTablesOpen(false);
   }, [conversationId]);
 
   // A brand-new conversation is created on the empty state and navigated to
@@ -331,9 +414,105 @@ export default function ChatPage() {
     }
   }, [activeRunId, activeRunFromServer, conversationId, messages]);
 
+  const runFilePreview = async (
+    nextFiles: File[],
+    nextHeaderRows: Array<number | undefined>,
+  ) => {
+    const seq = ++previewSeqRef.current;
+    if (nextFiles.length === 0) {
+      setFilePreview(null);
+      setFilePreviewLoading(false);
+      setFilePreviewError(null);
+      return;
+    }
+    if (nextFiles.length > 5) {
+      setFilePreview(null);
+      setFilePreviewLoading(false);
+      setFilePreviewError("单次最多上传 5 个文件，请先移除多余文件");
+      return;
+    }
+    setFilePreviewLoading(true);
+    setFilePreviewError(null);
+    try {
+      const response = await previewUploadedFiles({
+        files: nextFiles,
+        headerRows: nextHeaderRows,
+      });
+      if (seq !== previewSeqRef.current) return;
+      setFilePreview(response);
+      setFilePreviewError(null);
+    } catch (error) {
+      if (seq !== previewSeqRef.current) return;
+      setFilePreview(null);
+      setFilePreviewError(errorMessage(error, "文件解析失败，请检查文件格式"));
+    } finally {
+      if (seq === previewSeqRef.current) {
+        setFilePreviewLoading(false);
+      }
+    }
+  };
+
+  const handleAddDraftFiles = (incoming: File[]) => {
+    const nextFiles = [...draftFiles, ...incoming];
+    const nextHeaderRows = [...draftHeaderRows, ...incoming.map(() => undefined)];
+    setDraftFiles(nextFiles);
+    setDraftHeaderRows(nextHeaderRows);
+    void runFilePreview(nextFiles, nextHeaderRows);
+  };
+
+  const handleRemoveDraftFile = (index: number) => {
+    const nextFiles = draftFiles.filter((_, idx) => idx !== index);
+    const nextHeaderRows = draftHeaderRows.filter((_, idx) => idx !== index);
+    setDraftFiles(nextFiles);
+    setDraftHeaderRows(nextHeaderRows);
+    void runFilePreview(nextFiles, nextHeaderRows);
+  };
+
+  const handleHeaderRowChange = (index: number, headerRow: number | undefined) => {
+    const nextHeaderRows = draftHeaderRows.map((value, idx) =>
+      idx === index ? headerRow : value,
+    );
+    setDraftHeaderRows(nextHeaderRows);
+    void runFilePreview(draftFiles, nextHeaderRows);
+  };
+
+  const handleClearDraftFiles = () => {
+    previewSeqRef.current += 1;
+    setDraftFiles([]);
+    setDraftHeaderRows([]);
+    setFilePreview(null);
+    setFilePreviewLoading(false);
+    setFilePreviewError(null);
+  };
+
   const handleSend = async (content: string, skill?: string) => {
     if (!canUseChat) return;
     if (!conversationId) {
+      if (draftMode === "file") {
+        if (
+          draftFiles.length === 0 ||
+          filePreviewLoading ||
+          !filePreview ||
+          filePreview.totalTables === 0
+        ) {
+          setSendError("请先上传并完成文件解析");
+          return;
+        }
+        if (modelsStatus !== "ready" || modelCount === 0) {
+          setSendError("模型服务尚未就绪，请稍后重试");
+          return;
+        }
+        setSendError(null);
+        await startFileMutation.mutateAsync({
+          content,
+          files: draftFiles,
+          headerRows: draftHeaderRows,
+          skill,
+          ...(draftModelId ? { modelId: draftModelId } : {}),
+          thinkingLevel: draftThinkingLevel,
+        });
+        return;
+      }
       if (!draftDatasourceId) {
         setSendError("请先选择一个数据源");
         return;
@@ -386,9 +565,10 @@ export default function ChatPage() {
 
   const sendingForCurrent =
     sendMutation.isPending && sendMutation.variables?.targetConversationId === conversationId;
-  const startingNew = !conversationId && startMutation.isPending;
+  const startingNew = !conversationId && (startMutation.isPending || startFileMutation.isPending);
   const showStream = !activeRunPersisted && (activeRunId !== null || optimisticText !== null);
   const active = sendingForCurrent || startingNew || stream.active;
+  const fileReady = Boolean(filePreview && filePreview.totalTables > 0 && !filePreviewLoading);
   const models = modelsQuery.data;
   const modelCount = models?.models.length ?? 0;
   const modelsStatus: ModelPickerStatus = modelsQuery.isPending
@@ -421,12 +601,24 @@ export default function ChatPage() {
         <span className="truncate text-sm font-medium text-ink">
           {conversation?.title ?? (conversationId ? "未命名会话" : "新对话")}
         </span>
-        {datasource ? (
+        {isFileConversation ? (
+          <button
+            type="button"
+            onClick={() => {
+              appendFilesMutation.reset();
+              setFileTablesOpen(true);
+            }}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded bg-subtle px-2 py-0.5 text-[11px] text-inksoft transition-colors hover:bg-line"
+          >
+            <FileSpreadsheet className="h-3 w-3 text-brand" />
+            <span>Excel / CSV · {conversationTables.length} 张表</span>
+          </button>
+        ) : datasource ? (
           <span className="hidden shrink-0 rounded bg-subtle px-1.5 py-0.5 text-[11px] text-muted sm:inline">
             {datasource.name} · {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}
           </span>
         ) : null}
-        {(meQuery.data?.departmentNames ?? []).length > 0 ? (
+        {!isFileConversation && (meQuery.data?.departmentNames ?? []).length > 0 ? (
           <span
             className="hidden shrink-0 rounded bg-brandsoft px-1.5 py-0.5 text-[11px] text-brandtext sm:inline"
             title="查询结果按这些部门的子树过滤"
@@ -475,8 +667,23 @@ export default function ChatPage() {
         onRetryModels={() => void modelsQuery.refetch()}
         selectedDatasourceId={draftDatasourceId}
         onSelectDatasource={setDraftDatasourceId}
+        newChatMode={draftMode}
+        onNewChatModeChange={setDraftMode}
+        fileReady={fileReady}
+        fileUploadProps={{
+          files: draftFiles,
+          headerRows: draftHeaderRows,
+          preview: filePreview,
+          previewLoading: filePreviewLoading,
+          previewError: filePreviewError,
+          disabled: startFileMutation.isPending,
+          onAddFiles: handleAddDraftFiles,
+          onRemoveFile: handleRemoveDraftFile,
+          onHeaderRowChange: handleHeaderRowChange,
+          onClearAll: handleClearDraftFiles,
+        }}
         onExample={handleExample}
-        starting={startMutation.isPending}
+        starting={startMutation.isPending || startFileMutation.isPending}
         isAdmin={user.role === "admin"}
         canExport={canExport}
       />
@@ -530,6 +737,17 @@ export default function ChatPage() {
         onRetryModels={() => void modelsQuery.refetch()}
         datasourceLocked
         boundDatasource={datasource ?? null}
+        conversationSourceKind={isFileConversation ? "file" : "datasource"}
+        conversationFiles={conversationFiles}
+        conversationTables={conversationTables}
+        onOpenFileTables={
+          isFileConversation
+            ? () => {
+                appendFilesMutation.reset();
+                setFileTablesOpen(true);
+              }
+            : undefined
+        }
         onExample={handleExample}
         starting={sendMutation.isPending}
         isAdmin={user.role === "admin"}
@@ -561,7 +779,7 @@ export default function ChatPage() {
                     size="sm"
                     variant="outline"
                     className="h-7 px-2 text-[11px]"
-                    disabled={sendMutation.isPending || startMutation.isPending}
+                    disabled={sendMutation.isPending || startMutation.isPending || startFileMutation.isPending}
                     onClick={() => void handleSend(failedSend.content, failedSend.skill)}
                   >
                     重新发送
@@ -599,7 +817,9 @@ export default function ChatPage() {
           conversationReady={
             conversationId
               ? Boolean(conversation)
-              : Boolean(draftDatasourceId) && modelsStatus === "ready" && modelCount > 0
+              : (draftMode === "file" ? fileReady : Boolean(draftDatasourceId)) &&
+                modelsStatus === "ready" &&
+                modelCount > 0
           }
           active={active}
           canStop={activeRunId !== null}
@@ -638,6 +858,26 @@ export default function ChatPage() {
             ...(conversation?.title ? { label: conversation.title } : {}),
           }}
           onClose={() => setShareOpen(false)}
+        />
+      ) : null}
+      {conversationId && isFileConversation ? (
+        <FileTablesDialog
+          open={fileTablesOpen}
+          files={conversationFiles}
+          tables={conversationTables}
+          busy={active}
+          appending={appendFilesMutation.isPending}
+          appendError={
+            appendFilesMutation.error
+              ? errorMessage(appendFilesMutation.error, "追加文件失败，请稍后重试")
+              : null
+          }
+          onClose={() => setFileTablesOpen(false)}
+          onAppendFiles={
+            canUseChat
+              ? (files) => appendFilesMutation.mutate(files)
+              : undefined
+          }
         />
       ) : null}
     </AppShell>

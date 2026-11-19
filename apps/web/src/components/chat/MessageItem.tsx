@@ -11,11 +11,15 @@ import {
   type ChatModelInfo,
   type ChatResult,
 } from "../../lib/api";
-import { parseChatMarkdown } from "../../lib/report-markdown";
+import {
+  groupChatSegments,
+  parseChatMarkdown,
+  reportArtifactIdsFromTools,
+} from "../../lib/report-markdown";
 import { pairQueries } from "../../lib/pair-queries";
 import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard";
 import { ResultCard } from "./ResultCard";
-import { ResultLink } from "./ResultLink";
+import { ResultLinkGroup } from "./ResultLink";
 import { TurnTrace } from "./TurnTrace";
 import { TurnFooter } from "./TurnFooter";
 import { RetryActions } from "./RetryActions";
@@ -231,6 +235,9 @@ export function MessageItem({
   // them in place instead of showing raw `[[artifact:<id>]]` text, and skip the
   // duplicate card below when the text already references that artifact.
   const segments = parseChatMarkdown(assistantText);
+  const groupedSegments = groupChatSegments(segments);
+  const disambiguateResults =
+    segments.filter((segment) => segment.type === "result").length >= 2;
   const referenced = new Set(
     segments
       .filter((segment) => segment.type !== "markdown")
@@ -239,7 +246,10 @@ export function MessageItem({
   const standaloneResults = message.results.filter(
     (result) => !referenced.has(result.artifactId),
   );
-  const standaloneCharts = charts.filter((chart) => !referenced.has(chart.id));
+  const reportArtifacts = reportArtifactIdsFromTools(message.tools);
+  const standaloneCharts = charts.filter(
+    (chart) => !referenced.has(chart.id) && !reportArtifacts.has(chart.id),
+  );
   // SQL and the rows it produced belong inside the trace; results without a
   // recorded statement stay plain cards next to the answer.
   const { pairs, unmatched } = pairQueries(message.sqls, standaloneResults);
@@ -289,7 +299,7 @@ export function MessageItem({
         ) : null}
         {assistantText ? (
           <div className="flex flex-col gap-2">
-            {segments.map((segment, index) => {
+            {groupedSegments.map((segment, index) => {
               if (segment.type === "markdown") {
                 return segment.content.trim() ? (
                   <MarkdownText key={`md-${index}`} content={segment.content} />
@@ -305,21 +315,15 @@ export function MessageItem({
                   </p>
                 );
               }
-              if (segment.type === "result") {
-                const result = message.results.find(
-                  (item) => item.artifactId === segment.artifactId,
-                );
-                return result ? (
-                  <ResultLink
-                    key={`result-${index}`}
-                    result={result}
+              if (segment.type === "result_group") {
+                return (
+                  <ResultLinkGroup
+                    key={`result-group-${index}`}
+                    items={segment.items}
+                    results={message.results}
+                    disambiguate={disambiguateResults}
                     canExport={canExport}
                   />
-                ) : (
-                  <p key={`result-${index}`} className="text-[11px] text-muted">
-                    结果引用不可用：
-                    <code className="rounded bg-subtle px-1 py-0.5">{segment.artifactId}</code>
-                  </p>
                 );
               }
               return (

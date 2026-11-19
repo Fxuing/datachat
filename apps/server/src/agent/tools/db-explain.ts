@@ -5,7 +5,11 @@ import { findDatasource } from "../../db/repositories/datasources.js";
 import { executeReadOnly, SqlAbortedError, SqlTimeoutError } from "../sql/executor.js";
 import { guardSql } from "../sql/guard.js";
 import { recordAudit } from "../../services/audit.js";
-import { authorizeDatasourceAccess } from "../../services/query-service.js";
+import {
+  authorizeDatasourceAccess,
+  authorizeFileConversationAccess,
+} from "../../services/query-service.js";
+import { resolveConversationSqlitePath, sqliteFileExists } from "../../services/file-store.js";
 import { ScopeRewriteError } from "../sql/scope.js";
 import {
   ScopeResolveError,
@@ -14,6 +18,7 @@ import {
 import {
   errorMessage,
   errorResult,
+  isFileToolContext,
   safeJsonStringify,
   textResult,
   type AgentToolContext,
@@ -97,10 +102,55 @@ export function createDbExplainTool(
       const started = Date.now();
 
       try {
-        const datasource = findDatasource(ctx.db, ctx.datasourceId);
+        if (isFileToolContext(ctx)) {
+          const denied = authorizeFileConversationAccess(ctx.db, ctx.userId, ctx.conversationId);
+          if (denied) {
+            audit("rejected", Date.now() - started, { errorMessage: denied });
+            return failed("CONVERSATION_FORBIDDEN", denied);
+          }
+          const guarded = guardSql({
+            sql,
+            dialect: "sqlite",
+            maxRows: ctx.config.queryMaxRows,
+          });
+          if (!guarded.ok) {
+            audit("rejected", Date.now() - started, { errorMessage: guarded.reason });
+            return failed(guarded.code, guarded.reason);
+          }
+          const sqlitePath = resolveConversationSqlitePath(ctx.config.dataDir, ctx.conversationId);
+          if (!(await sqliteFileExists(sqlitePath))) {
+            const reason = "当前会话的数据文件不存在或已被清理";
+            audit("error", Date.now() - started, { errorMessage: reason });
+            return failed("SQL_ERROR", reason);
+          }
+          const explainSql = /^explain\b/i.test(guarded.sql.trimStart())
+            ? guarded.sql
+            : `EXPLAIN QUERY PLAN ${guarded.sql}`;
+          const result = await executeReadOnly(
+            {
+              dialect: "sqlite",
+              sqlitePath,
+              sql: explainSql,
+              maxRows: ctx.config.queryMaxRows,
+              previewRows: ctx.config.queryPreviewRows,
+              timeoutMs: ctx.config.queryTimeoutMs,
+              signal,
+            },
+            async () => undefined,
+          );
+          const durationMs = Date.now() - started;
+          audit("ok", durationMs, { rowCount: result.rowCount });
+          return textResult(
+            renderExplain(result.columns.map((column) => column.name), result.previewRows),
+            { rowCount: result.rowCount, truncated: result.truncated },
+          );
+        }
+
+        const datasourceId = ctx.datasourceId!;
+        const datasource = findDatasource(ctx.db, datasourceId);
         if (!datasource) return failed("DATASOURCE_NOT_FOUND", "会话绑定的数据源不存在");
 
-        const denied = authorizeDatasourceAccess(ctx.db, ctx.userId, ctx.datasourceId);
+        const denied = authorizeDatasourceAccess(ctx.db, ctx.userId, datasourceId);
         if (denied) {
           audit("rejected", Date.now() - started, { errorMessage: denied });
           return failed("DATASOURCE_FORBIDDEN", denied);

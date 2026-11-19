@@ -1,11 +1,12 @@
 import { Type, type Static } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { findDatasource } from "../../db/repositories/datasources.js";
-import { runGuardedQuery } from "../../services/query-service.js";
+import { runGuardedFileQuery, runGuardedQuery } from "../../services/query-service.js";
 import type { ColumnInfo } from "../../services/artifacts.js";
 import {
   errorMessage,
   errorResult,
+  isFileToolContext,
   safeJsonStringify,
   textResult,
   type AgentToolContext,
@@ -62,26 +63,40 @@ export function createDbQueryTool(
     async execute(_toolCallId, params, signal) {
       const sql = params.sql;
       try {
-        const datasource = findDatasource(ctx.db, ctx.datasourceId);
-        if (!datasource) {
-          return errorResult(
-            "DATASOURCE_NOT_FOUND",
-            "会话绑定的数据源不存在",
-            failureDetails(sql, "DATASOURCE_NOT_FOUND", "会话绑定的数据源不存在"),
+        let result;
+        if (isFileToolContext(ctx)) {
+          result = await runGuardedFileQuery(
+            { db: ctx.db, config: ctx.config, artifacts: ctx.artifacts },
+            {
+              conversationId: ctx.conversationId,
+              userId: ctx.userId,
+              runId: ctx.runId,
+              sql,
+              signal,
+            },
+          );
+        } else {
+          const datasource = findDatasource(ctx.db, ctx.datasourceId!);
+          if (!datasource) {
+            return errorResult(
+              "DATASOURCE_NOT_FOUND",
+              "会话绑定的数据源不存在",
+              failureDetails(sql, "DATASOURCE_NOT_FOUND", "会话绑定的数据源不存在"),
+            );
+          }
+
+          result = await runGuardedQuery(
+            { db: ctx.db, config: ctx.config, pools: ctx.pools, artifacts: ctx.artifacts },
+            {
+              datasource,
+              userId: ctx.userId,
+              conversationId: ctx.conversationId,
+              runId: ctx.runId,
+              sql,
+              signal,
+            },
           );
         }
-
-        const result = await runGuardedQuery(
-          { db: ctx.db, config: ctx.config, pools: ctx.pools, artifacts: ctx.artifacts },
-          {
-            datasource,
-            userId: ctx.userId,
-            conversationId: ctx.conversationId,
-            runId: ctx.runId,
-            sql,
-            signal,
-          },
-        );
 
         if (!result.ok) {
           return errorResult(

@@ -9,7 +9,7 @@ import { skills } from "../db/schema.js";
 
 export interface MaterializeSkillsInput {
   conversationId: string;
-  datasourceId: string;
+  datasourceId: string | null;
   dataDir: string;
 }
 
@@ -21,16 +21,14 @@ export interface ApplicableSkill {
 }
 
 /** Skills visible to a conversation: global first, then datasource-scoped by name override. */
-export function listApplicableSkills(db: Db, datasourceId: string): ApplicableSkill[] {
+export function listApplicableSkills(db: Db, datasourceId: string | null): ApplicableSkill[] {
+  const scopeFilter = datasourceId
+    ? or(isNull(skills.datasourceId), eq(skills.datasourceId, datasourceId))
+    : isNull(skills.datasourceId);
   const rows = db
     .select()
     .from(skills)
-    .where(
-      and(
-        eq(skills.enabled, 1),
-        or(isNull(skills.datasourceId), eq(skills.datasourceId, datasourceId)),
-      ),
-    )
+    .where(and(eq(skills.enabled, 1), scopeFilter))
     .all();
 
   const byName = new Map<string, ApplicableSkill>();
@@ -57,7 +55,7 @@ export function listApplicableSkills(db: Db, datasourceId: string): ApplicableSk
 
 export function findApplicableSkill(
   db: Db,
-  datasourceId: string,
+  datasourceId: string | null,
   name: string,
 ): ApplicableSkill | undefined {
   return listApplicableSkills(db, datasourceId).find((skill) => skill.name === name);

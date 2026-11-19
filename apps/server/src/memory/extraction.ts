@@ -125,16 +125,21 @@ export async function extractMemoriesForRun(
     const memories = parseExtractedMemories(raw)
       .map((entry) => validateExtractedMemory(entry))
       .filter((entry): entry is ExtractMemoryInput => Boolean(entry));
-    const datasourceId = findConversation(options.db, run.conversationId)?.datasourceId ?? "";
+    const datasourceId = findConversation(options.db, run.conversationId)?.datasourceId ?? null;
     let saved = 0;
     for (const entry of memories) {
+      if (entry.scope === "datasource" && !datasourceId && entry.kind === "fact") {
+        // Never pollute global memory with table-specific facts from temporary uploaded files.
+        continue;
+      }
+      const scope = entry.scope === "datasource" && datasourceId ? "datasource" : "global";
       upsertUserMemory(options.db, {
         userId: run.userId,
         kind: entry.kind,
         title: entry.title,
         content: entry.content,
-        scope: entry.scope,
-        datasourceId: entry.scope === "datasource" ? datasourceId : null,
+        scope,
+        datasourceId: scope === "datasource" ? datasourceId : null,
         core: entry.core,
         confidence: entry.confidence,
         sourceConversationId: run.conversationId,

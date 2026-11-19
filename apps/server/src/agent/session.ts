@@ -8,6 +8,7 @@ import {
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import type { ConversationRow } from "../db/repositories/conversations.js";
+import { listConversationFiles } from "../db/repositories/conversation-files.js";
 import { updateConversation } from "../db/repositories/conversations.js";
 import { findDatasource } from "../db/repositories/datasources.js";
 import type { MemoryUsageItem } from "../memory/recall.js";
@@ -67,8 +68,32 @@ export async function createConversationSession(
   input: CreateConversationSessionInput,
 ): Promise<ConversationSessionResult> {
   const { conversation } = input;
-  const datasource = findDatasource(input.db, conversation.datasourceId);
-  if (!datasource) throw new Error("会话绑定的数据源不存在");
+  const isFileSession = conversation.sourceKind === "file";
+  let datasourceId: string | null = null;
+  let datasourceName: string;
+  let datasourceType: "mysql" | "postgres" | "sqlite";
+  let database: string;
+
+  if (isFileSession) {
+    const files = listConversationFiles(input.db, conversation.id);
+    datasourceName =
+      files.length === 1
+        ? files[0]!.fileName
+        : files.length > 1
+          ? `上传文件（${files.length} 个）`
+          : "上传文件";
+    datasourceType = "sqlite";
+    database = "uploaded_files";
+  } else {
+    const datasource = conversation.datasourceId
+      ? findDatasource(input.db, conversation.datasourceId)
+      : undefined;
+    if (!datasource) throw new Error("会话绑定的数据源不存在");
+    datasourceId = datasource.id;
+    datasourceName = datasource.name;
+    datasourceType = datasource.type;
+    database = datasource.database;
+  }
 
   const providerIds = enabledProviderIds(input.db);
   const model = resolveConversationModel(input.runtime, conversation.modelId, providerIds);
@@ -77,16 +102,16 @@ export async function createConversationSession(
     db: input.db,
     config: input.config,
     conversationId: conversation.id,
-    datasourceId: conversation.datasourceId,
+    datasourceId,
     userId: input.userId,
     skillsDir: input.skillsDir,
     canUseSkills: input.canUseSkills,
     canUseMcp: input.canUseMcp,
     canUseMemory: input.canUseMemory,
     ...(input.onMemoryUsed ? { onMemoryUsed: input.onMemoryUsed } : {}),
-    datasourceName: datasource.name,
-    datasourceType: datasource.type,
-    database: datasource.database,
+    datasourceName,
+    datasourceType,
+    database,
   });
 
   const toolContext: AgentToolContext = {
@@ -96,7 +121,8 @@ export async function createConversationSession(
     artifacts: input.artifacts,
     userId: input.userId,
     conversationId: conversation.id,
-    datasourceId: conversation.datasourceId,
+    datasourceId,
+    sourceKind: isFileSession ? "file" : "datasource",
     runId: "",
     // Without skills the read tool stays inside the empty conversation workspace.
     skillsDir: input.skillsDir ?? workspaceDir,

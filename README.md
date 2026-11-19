@@ -1,6 +1,6 @@
 # DataChat
 
-自然语言对话式数据查询：用中文提问，Agent 通过只读 SQL 工具查询 MySQL / PostgreSQL，返回结论、SQL 与结果表格。
+自然语言对话式数据查询：用中文提问，Agent 通过只读 SQL 工具查询 MySQL / PostgreSQL，或直接上传 Excel（`.xlsx`）/ CSV 文件在会话隔离的临时只读 SQLite 中完成分析，返回结论、SQL 与结果表格。
 
 ## 目录
 
@@ -16,7 +16,6 @@
 | `LESSONS.md` | 真实事故与“本可提前发现”的规则 |
 | `docs/code-standards.md` | 可执行的评审标准 |
 | `docs/subsystems/` | 按子系统组织的设计参考（只读相关页） |
-| `docs/roadmap.md` | 实施状态、已知缺口与下一步路线 |
 | `.github/workflows/ci.yml` | CI：lint/typecheck/测试/构建、真库集成测试、手动/夜间金标集 |
 | `scripts/smoke-*.mjs` | 手动冒烟脚本，测试不依赖网络 |
 
@@ -25,7 +24,7 @@
 ## 前置条件
 
 - Node.js ≥ 22.9，pnpm 10（`corepack enable` 即可）
-- 可选：可达的 MySQL / PostgreSQL 测试库（创建数据源时会真实连接探测；没有测试库则无法完成浏览器端 SQL 查询流程）
+- 可选：可达的 MySQL / PostgreSQL 测试库（创建数据库数据源时会真实连接探测；未配置数据源时仍可直接上传 Excel / CSV 文件进行临时分析）
 - 可选：SiliconFlow API Key（没有 Key 时服务可启动，聊天页显示“未配置模型”）
 
 ## 环境变量
@@ -93,6 +92,12 @@ pnpm typecheck
 - 模型或数据源加载失败时，空态与 Composer 会区分“加载中 / 加载失败 / 未配置”，并提供重试，而不是误报“未配置”。
 - 数据源没有 schema 缓存时，`db_schema` 会自动刷新；超过 24 小时刷新失败则回退旧快照并标记 `stale`。
 
+## 临时文件分析（Excel / CSV）
+
+- **双模式建聊**：在 `/chat` 新建对话空态可选择「数据库分析」或「Excel / CSV 文件」；文件模式无需预先配置数据库数据源即可开始分析。
+- **解析与预览**：支持拖拽/多选 `.xlsx` / `.csv`（单文件 ≤ 20 MB、单次 ≤ 5 个文件、单会话 ≤ 10 张表、总行数 ≤ 20 万行；`.xls` 需先另存为 `.xlsx` 或 `.csv`）。自动处理 UTF-8 BOM / GB18030 中文 CSV、合并单元格、公式计算值与跨列标题行，推断 `INTEGER` / `REAL` / `TEXT` / `DATE` / `DATETIME`（保留前导零与长编号，自动清洗千分位/货币/百分比），支持预解析预览前三行样例及手动调整表头行。
+- **隔离执行与多表分析**：每个文件会话独享一份 `DATA_DIR/files/<conversationId>/data.sqlite`，不污染业务库与主元数据 SQLite；查询经 SQLite 只读守卫后在独立子进程中以 `readonly: true` 执行（超时/中止即 `SIGKILL` 释放句柄）。会话内支持随时追加上传新文件实现多表 `JOIN`；删除会话与运维保留清理会同步清除对应 SQLite 文件与工作目录。
+
 ## NL2SQL 金标集
 
 `evals/nl2sql/` 内置一套固定的电商 fixture（MySQL / PostgreSQL 各一份）和 15 条单轮问题，用真实 Agent 链路跑完后执行生成的 SQL，与金标 SQL 的结果集逐值比较（列数、行数、值；默认无序）。
@@ -134,8 +139,8 @@ EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -
 
 登录用户可在左侧“我的记忆”（`/memory`）管理长期记忆；对话中明确表达“记住……”时，`memory_save` 会写入并去重，运行成功后也会异步提取少量稳定信息：
 
-- **范围**：全局或绑定单个数据源；数据源记忆只在该数据源会话中召回。
-- **注入**：核心记忆（仅“画像/固定指令”可设）每轮常驻，其余按 2/3-gram 相关度召回；每次最多 2000 字核心 + 1500 字相关。
+- **范围**：全局或绑定单个数据源；数据源记忆只在该数据源会话中召回；Excel/CSV 文件分析会话只使用全局记忆。
+- **注入**：核心记忆（“画像/固定指令/偏好”可设）及高置信度（≥80）活跃偏好每轮常驻，其余按 2/3-gram 相关度召回；每次最多 2000 字核心 + 1500 字相关。
 - **控制**：用户可随时停用单条、关闭注入或清空；关闭后停止注入和自动提取，历史记忆保留。
 - **隐私**：记忆按用户隔离，管理员只能全局开关、不能查看用户正文；不进报告/分享；密钥、手机号、身份证号等敏感内容会被拒绝。
 - **管理**：管理员在“管理设置 → 通用”关闭“启用用户记忆”后，全站停止注入与提取，已有数据保留。
@@ -221,7 +226,7 @@ docker compose up -d
 
 - 数据（SQLite、artifact、skills、会话）保存在命名卷 `datachat-data`，挂载到容器 `/data`。
 - `web` 对外暴露 80，默认映射到主机 `5173`（`WEB_PORT` 可改）；`server` 不直接暴露，由 nginx 反代。
-- SSE 已在 `deploy/nginx.conf` 关闭缓冲并把读超时调到 3600s，长查询不会被 nginx 截断。
+- SSE 已在 `deploy/nginx.conf` 关闭缓冲并把读超时调到 3600s，长查询不会被 nginx 截断；`client_max_body_size` 已调至 `25m` 以支持 20 MB Excel / CSV 上传。
 - 生产环境务必把 `APP_ORIGIN` 设为实际访问地址（**包含端口**，如 `http://65.176.4.70:8080`，多个用逗号分隔），否则登录会被 CSRF 校验拒绝。
 - 直接用 IP + HTTP 访问时，`APP_ORIGIN` 用 `http://...`，会话 Cookie 会自动不带 `Secure`；如果前面有 TLS，改成 `https://...`（或显式设置 `COOKIE_SECURE=true`）。
 - 镜像内保留完整 `node_modules`（含 devDependencies），优先保证 better-sqlite3 / argon2 原生模块可用；后续可用 `pnpm deploy` 裁剪体积。
@@ -283,21 +288,20 @@ docker compose up -d
 - [x] `pnpm ops:backup` / `ops:restore` 可备份并恢复 SQLite 与 artifact，恢复前校验完整性并保留 rollback。
 - [x] 定时任务可按 cron 自动执行、生成报告并发送站内信；连续失败 3 次自动停用，权限失效时跳过。
 - [x] 用户记忆支持自动沉淀、去重、相关召回、手动管理、关闭与管理员全局停用；按用户隔离且不进入报告/分享。
-
-完整实施状态、计划外能力和下一步候选见 [`docs/roadmap.md`](./docs/roadmap.md)。
+- [x] Excel / CSV 临时文件分析支持拖拽预解析、表头行调整、会话内追加多表 JOIN、独立子进程只读执行及会话删除/保留清理。
 
 ## 已知限制
 
-- 一个会话只绑定一个数据源，跨库问题不会自动 JOIN。
+- 数据库会话每次只绑定一个数据源，跨数据库不能直接 JOIN；临时跨表 JOIN 分析可上传 Excel / CSV 到同一文件分析会话。
 - 仅支持只读查询（SELECT / SHOW / DESCRIBE / EXPLAIN），不提供写操作；即使数据源使用 root 等写权限账号并勾选“允许使用有写权限的账号”，也不会放开写操作。
 - 元数据与会话存单机 SQLite，面向内网小团队，未做多租户与水平扩展。
 - 不开放自助注册，账号由管理员创建；分享链接匿名可读，但可撤销、可设过期。
 - MCP 的 `stdio` 服务器等同于在本机执行命令，仅应添加可信服务器。
 - 报告导出 PDF 依赖浏览器打印，不生成服务端 PDF 文件。
 - 数据库集成测试默认跳过；设置 `RUN_DB_TESTS=1` 并准备 Docker 后运行。
-- 尚无 Playwright E2E；运行指标、保留策略与备份恢复已实现，详见 `docs/roadmap.md`。
+- 尚无 Playwright E2E；运行指标、保留策略与备份恢复已实现。
 - 备份为本地目录，不含 `.env`；异地/对象存储备份与恢复演练尚未实现。
-- RBAC 仅到角色与数据源级；行级/列级数据权限尚未实现。部门与行级权限已完成设计草案，见 [`docs/superpowers/specs/2026-11-17-department-data-scope-design.md`](./docs/superpowers/specs/2026-11-17-department-data-scope-design.md)。
+- 部门与行级数据权限已实现；列级/动态脱敏权限尚未实现。
 - 定时任务为单机内存调度，不支持分布式执行、IM 推送或任务共享；执行结果只保存在报告与站内信中。
 - 用户记忆为单用户文本偏好，不做向量检索与跨用户共享；自动提取会增加一次模型调用。
 

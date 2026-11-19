@@ -21,6 +21,7 @@ export const queryKeys = {
   conversation: (id: string) => ["conversation", id] as const,
   conversationSkills: (id: string) => ["conversation-skills", id] as const,
   datasourceSkills: (id: string) => ["datasource-skills", id] as const,
+  globalSkills: ["global-skills"] as const,
   report: (id: string) => ["report", id] as const,
   artifact: (id: string) => ["artifact", id] as const,
   artifactRows: (id: string) => ["artifactRows", id] as const,

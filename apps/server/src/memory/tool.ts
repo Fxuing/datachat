@@ -35,7 +35,7 @@ export interface MemorySaveDetails {
 export interface MemorySaveContext {
   db: Db;
   userId: string;
-  datasourceId: string;
+  datasourceId: string | null;
   sourceConversationId?: string;
   sourceRunId?: string;
 }
@@ -84,13 +84,14 @@ export function createMemorySaveTool(
         (ctx.sourceConversationId
           ? findActiveRunForConversation(ctx.db, ctx.sourceConversationId)?.id
           : undefined);
+      const scope = params.scope === "datasource" && ctx.datasourceId ? "datasource" : "global";
       const { memory, merged } = upsertUserMemory(ctx.db, {
         userId: ctx.userId,
         kind,
         title,
         content,
-        scope: params.scope === "datasource" ? "datasource" : "global",
-        datasourceId: params.scope === "datasource" ? ctx.datasourceId : null,
+        scope,
+        datasourceId: scope === "datasource" ? ctx.datasourceId : null,
         core: params.core === true,
         confidence: params.confidence ?? 80,
         sourceConversationId: ctx.sourceConversationId,

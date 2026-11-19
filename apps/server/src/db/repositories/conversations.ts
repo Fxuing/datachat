@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../client.js";
-import { artifacts, conversations, runEvents, runs } from "../schema.js";
+import { artifacts, conversationFiles, conversationFileTables, conversations, runEvents, runs } from "../schema.js";
 
 export type ConversationRow = typeof conversations.$inferSelect;
+export type ConversationSourceKind = ConversationRow["sourceKind"];
 
 export interface ConversationCursor {
   /** `coalesce(lastMessageAt, createdAt)` of the last row on the previous page. */
@@ -25,8 +26,10 @@ export function parseConversationCursor(raw: string): ConversationCursor | null 
 }
 
 export interface CreateConversationInput {
+  id?: string;
   userId: string;
-  datasourceId: string;
+  sourceKind?: ConversationSourceKind;
+  datasourceId: string | null;
   title?: string | null;
   modelId?: string | null;
   thinkingLevel?: string;
@@ -35,12 +38,14 @@ export interface CreateConversationInput {
 
 export function createConversation(db: Db, input: CreateConversationInput): ConversationRow {
   const now = Date.now();
+  const sourceKind = input.sourceKind ?? "datasource";
   return db
     .insert(conversations)
     .values({
-      id: randomUUID(),
+      id: input.id ?? randomUUID(),
       userId: input.userId,
-      datasourceId: input.datasourceId,
+      sourceKind,
+      datasourceId: sourceKind === "file" ? null : input.datasourceId,
       title: input.title ?? null,
       modelId: input.modelId ?? null,
       ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}),
@@ -141,6 +146,8 @@ export function deleteConversation(db: Db, id: string): void {
     tx.delete(runEvents).where(eq(runEvents.conversationId, id)).run();
     tx.delete(runs).where(eq(runs.conversationId, id)).run();
     tx.delete(artifacts).where(eq(artifacts.conversationId, id)).run();
+    tx.delete(conversationFileTables).where(eq(conversationFileTables.conversationId, id)).run();
+    tx.delete(conversationFiles).where(eq(conversationFiles.conversationId, id)).run();
     tx.delete(conversations).where(eq(conversations.id, id)).run();
   });
 }

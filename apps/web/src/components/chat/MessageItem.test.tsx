@@ -204,10 +204,10 @@ describe("MessageItem", () => {
 
     expect(screen.queryByText(/\[\[result:/)).not.toBeInTheDocument();
     expect(screen.queryByText("查询结果")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看完整结果（1 行）" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /查看完整结果\s*1 行/ })).toBeInTheDocument();
     expect(screen.queryByText("total")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "查看完整结果（1 行）" }));
+    await user.click(screen.getByRole("button", { name: /查看完整结果\s*1 行/ }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("total")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
@@ -235,7 +235,7 @@ describe("MessageItem", () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByRole("button", { name: "查看查询结果（已截断，1,000 行）" }),
+      screen.getByRole("button", { name: /查看查询结果\s*已截断 · 1,000 行/ }),
     ).toBeInTheDocument();
   });
 
@@ -252,6 +252,113 @@ describe("MessageItem", () => {
     );
     expect(screen.getByText(/结果引用不可用/)).toBeInTheDocument();
     expect(screen.getByText("missing-result")).toBeInTheDocument();
+  });
+
+  it("groups consecutive unlabelled result references horizontally and labels them by columns", () => {
+    render(
+      <MemoryRouter>
+        <MessageItem
+          message={message({
+            status: "ok",
+            assistant: { content: "完整明细：\n\n[[result:res-1]]\n[[result:res-2]]" },
+            results: [
+              {
+                artifactId: "res-1",
+                columns: [
+                  { name: "类目", type: "string" },
+                  { name: "销售额", type: "number" },
+                ],
+                rows: [["服饰", 100]],
+                rowCount: 6,
+                truncated: false,
+              },
+              {
+                artifactId: "res-2",
+                columns: [
+                  { name: "状态", type: "string" },
+                  { name: "订单数", type: "number" },
+                  { name: "金额", type: "number" },
+                ],
+                rows: [["已完成", 10, 50]],
+                rowCount: 8,
+                truncated: false,
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    const first = screen.getByRole("button", { name: /类目 · 销售额\s*6 行/ });
+    const second = screen.getByRole("button", { name: /状态 · 订单数 等\s*8 行/ });
+    expect(first.parentElement).toBe(second.parentElement);
+    expect(first.parentElement).toHaveClass("flex-wrap");
+  });
+
+  it("disambiguates consecutive result references with identical columns using numbered suffixes", () => {
+    render(
+      <MemoryRouter>
+        <MessageItem
+          message={message({
+            status: "ok",
+            assistant: { content: "[[result:res-1]]\n[[result:res-2]]" },
+            results: [
+              {
+                artifactId: "res-1",
+                columns: [
+                  { name: "类目", type: "string" },
+                  { name: "销售额", type: "number" },
+                ],
+                rows: [["服饰", 100]],
+                rowCount: 6,
+                truncated: false,
+              },
+              {
+                artifactId: "res-2",
+                columns: [
+                  { name: "类目", type: "string" },
+                  { name: "销售额", type: "number" },
+                ],
+                rows: [["家居", 200]],
+                rowCount: 12,
+                truncated: false,
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: /类目 · 销售额 #1\s*6 行/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /类目 · 销售额 #2\s*12 行/ })).toBeInTheDocument();
+  });
+
+  it("uses an explicit result label on the chip and detail dialog title", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <MessageItem
+          message={message({
+            status: "ok",
+            assistant: { content: "[[result:res-1|类目销售明细]]" },
+            results: [
+              {
+                artifactId: "res-1",
+                columns: [{ name: "类目", type: "string" }],
+                rows: [["服饰"]],
+                rowCount: 6,
+                truncated: false,
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    const chip = screen.getByRole("button", { name: /类目销售明细\s*6 行/ });
+    await user.click(chip);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "类目销售明细" })).toBeInTheDocument();
   });
 
   it("shows a result without a recorded statement as a result card", () => {
@@ -312,6 +419,114 @@ describe("MessageItem", () => {
 
     expect(screen.getAllByText("月度趋势")).toHaveLength(1);
     expect(screen.queryByText(/\[\[chart:/)).not.toBeInTheDocument();
+  });
+
+  it("suppresses standalone fallback charts that are already included in a succeeded report", () => {
+    const runId = "run-report-charts";
+    const chart1: ChatArtifact = {
+      id: "chart-1",
+      runId,
+      kind: "chart",
+      columns: [],
+      rowCount: 6,
+      truncated: false,
+      spec: {
+        chart: { title: "月度趋势" },
+        option: { series: [{ type: "line", data: [1, 2] }] },
+      },
+      createdAt: 1,
+    };
+    const chart2: ChatArtifact = {
+      id: "chart-2",
+      runId,
+      kind: "chart",
+      columns: [],
+      rowCount: 5,
+      truncated: false,
+      spec: {
+        chart: { title: "渠道对比" },
+        option: { series: [{ type: "bar", data: [3, 4] }] },
+      },
+      createdAt: 2,
+    };
+    render(
+      <MemoryRouter>
+        <MessageItem
+          artifacts={[chart1, chart2]}
+          message={message({
+            runId,
+            status: "ok",
+            assistant: {
+              content: "趋势如下。\n\n[[chart:chart-1]]\n\n[查看完整报告](/reports/r-1)",
+            },
+            tools: [
+              {
+                toolCallId: "tc-report",
+                name: "create_report",
+                status: "ok",
+                args: { artifactIds: ["chart-1", "chart-2"] },
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("月度趋势")).toHaveLength(1);
+    expect(screen.queryByText("渠道对比")).not.toBeInTheDocument();
+  });
+
+  it("keeps unreferenced charts visible when create_report fails", () => {
+    const runId = "run-report-error";
+    const chart1: ChatArtifact = {
+      id: "chart-1",
+      runId,
+      kind: "chart",
+      columns: [],
+      rowCount: 6,
+      truncated: false,
+      spec: {
+        chart: { title: "月度趋势" },
+        option: { series: [{ type: "line", data: [1, 2] }] },
+      },
+      createdAt: 1,
+    };
+    const chart2: ChatArtifact = {
+      id: "chart-2",
+      runId,
+      kind: "chart",
+      columns: [],
+      rowCount: 5,
+      truncated: false,
+      spec: {
+        chart: { title: "渠道对比" },
+        option: { series: [{ type: "bar", data: [3, 4] }] },
+      },
+      createdAt: 2,
+    };
+    render(
+      <MemoryRouter>
+        <MessageItem
+          artifacts={[chart1, chart2]}
+          message={message({
+            runId,
+            status: "ok",
+            assistant: { content: "趋势如下。\n\n[[chart:chart-1]]" },
+            tools: [
+              {
+                toolCallId: "tc-report",
+                name: "create_report",
+                status: "error",
+                args: { artifactIds: ["chart-1", "chart-2"] },
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("月度趋势")).toBeInTheDocument();
+    expect(screen.getByText("渠道对比")).toBeInTheDocument();
   });
 
   it("turns a backticked report path into an internal link", () => {

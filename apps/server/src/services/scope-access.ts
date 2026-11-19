@@ -36,6 +36,7 @@ export function runScopeVisible(
   if (isAdmin) return true;
   const conversation = findConversation(db, run.conversationId);
   if (!conversation) return false;
+  if (!conversation.datasourceId) return true;
   const datasource = findDatasource(db, conversation.datasourceId);
   if (datasource?.dataScopeMode !== "enabled") return true;
   const snapshot = parseScopeSnapshot(run.scopeSnapshot);

@@ -91,6 +91,7 @@ export function getOpsMetrics(options: OpsMetricsOptions): OpsMetrics {
       endedAt: runs.endedAt,
       createdAt: runs.createdAt,
       datasourceId: conversations.datasourceId,
+      sourceKind: conversations.sourceKind,
     })
     .from(runs)
     .leftJoin(conversations, eq(runs.conversationId, conversations.id))
@@ -131,7 +132,8 @@ export function getOpsMetrics(options: OpsMetricsOptions): OpsMetrics {
       durations.push(row.endedAt - row.startedAt);
     }
 
-    const key = row.datasourceId ?? "unknown";
+    const key =
+      row.datasourceId ?? (row.sourceKind === "file" ? "__file__" : "unknown");
     const bucket = byDatasource.get(key) ?? { runs: 0, failed: 0 };
     bucket.runs += 1;
     if (row.status === "error" || row.status === "aborted") bucket.failed += 1;
@@ -163,7 +165,10 @@ export function getOpsMetrics(options: OpsMetricsOptions): OpsMetrics {
   const datasourceStats = [...byDatasource.entries()]
     .map(([datasourceId, value]) => ({
       datasourceId,
-      name: names.get(datasourceId) ?? "已删除的数据源",
+      name:
+        datasourceId === "__file__"
+          ? "文件分析（Excel/CSV）"
+          : (names.get(datasourceId) ?? "已删除的数据源"),
       runs: value.runs,
       failed: value.failed,
     }))

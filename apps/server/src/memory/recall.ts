@@ -228,7 +228,7 @@ export interface MemoryExtensionOptions {
   db: Db;
   userId: string;
   conversationId?: string;
-  datasourceId: string;
+  datasourceId: string | null;
   datasourceName?: string;
   /** Called with the memories that went into a turn's prompt, for the UI. */
   onMemoryUsed?: (items: MemoryUsageItem[]) => void;

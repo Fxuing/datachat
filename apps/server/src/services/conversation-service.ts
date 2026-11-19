@@ -1,12 +1,21 @@
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import { eq } from "drizzle-orm";
 import type { Column } from "@datachat/shared";
 import { runEventSchema, type RunEvent, type RunMemory } from "@datachat/shared";
 import type { Db } from "../db/client.js";
 import { artifacts } from "../db/schema.js";
 import {
+  listConversationFiles,
+  listConversationFileTables,
+  type ConversationFileSummary,
+  type ConversationFileTableSummary,
+} from "../db/repositories/conversation-files.js";
+import {
   encodeConversationCursor,
   listConversations,
   type ConversationRow,
+  type ConversationSourceKind,
 } from "../db/repositories/conversations.js";
 import { listConversationEvents } from "../db/repositories/run-events.js";
 import {
@@ -19,11 +28,13 @@ import {
 import { listFeedbackForRuns } from "../db/repositories/run-feedback.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { parseScopeSnapshot } from "./data-scope.js";
+import { removeConversationFileDir } from "./file-store.js";
 import { artifactRunVisible, runScopeVisible } from "./scope-access.js";
 
 export interface ConversationResponse {
   id: string;
-  datasourceId: string;
+  sourceKind: ConversationSourceKind;
+  datasourceId: string | null;
   title: string | null;
   modelId: string | null;
   thinkingLevel: string;
@@ -115,6 +126,8 @@ export interface ConversationDetail {
   conversation: ConversationResponse;
   messages: ConversationMessage[];
   artifacts: ConversationArtifact[];
+  files?: ConversationFileSummary[];
+  tables?: ConversationFileTableSummary[];
   /** Set while a run is queued/running, so a reloaded page can resume streaming. */
   activeRun: { id: string; status: "queued" | "running" } | null;
   /** Latest context usage reported by the agent session, if any. */
@@ -142,6 +155,7 @@ interface MessageGroup {
 export function toConversationResponse(row: ConversationRow): ConversationResponse {
   return {
     id: row.id,
+    sourceKind: row.sourceKind,
     datasourceId: row.datasourceId,
     title: row.title,
     modelId: row.modelId,
@@ -355,6 +369,14 @@ export function getConversationDetail(
         (row.runId === null || !viewer || artifactRunVisible(db, row.runId, viewer.isAdmin)),
     );
 
+  const fileDetails =
+    conversation.sourceKind === "file"
+      ? {
+          files: listConversationFiles(db, conversation.id),
+          tables: listConversationFileTables(db, conversation.id),
+        }
+      : {};
+
   return {
     conversation: toConversationResponse(conversation),
     messages,
@@ -363,6 +385,7 @@ export function getConversationDetail(
       const parsed = parseArtifactRow(row);
       return parsed ? [parsed] : [];
     }),
+    ...fileDetails,
     contextUsage,
   };
 }
@@ -435,14 +458,22 @@ function toFeedback(
 export async function deleteConversationFiles(
   artifactsStore: ArtifactStore,
   conversation: ConversationRow,
+  dataDir?: string,
 ): Promise<void> {
   // The store lists at most 100 rows per call; keep draining so a conversation
   // with many results does not leave files/rows behind.
   for (;;) {
     const batch = artifactsStore.list({ conversationId: conversation.id, limit: 100 });
-    if (batch.length === 0) return;
+    if (batch.length === 0) break;
     for (const artifact of batch) {
       await artifactsStore.delete(artifact.id);
     }
+  }
+  if (dataDir) {
+    await removeConversationFileDir(dataDir, conversation.id).catch(() => undefined);
+    await rm(path.join(dataDir, "workspaces", conversation.id), {
+      recursive: true,
+      force: true,
+    }).catch(() => undefined);
   }
 }

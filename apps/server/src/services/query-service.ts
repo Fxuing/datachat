@@ -1,8 +1,10 @@
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import { findDatasource, type DatasourceRow } from "../db/repositories/datasources.js";
+import { findOwnedConversation } from "../db/repositories/conversations.js";
 import { findUserById } from "../db/repositories/users.js";
 import { canAccessDatasource, resolveUserAccess } from "../auth/access.js";
+import { resolveConversationSqlitePath, sqliteFileExists } from "./file-store.js";
 import { decryptSecret, deriveSecretKey } from "../agent/datasource/crypto.js";
 import type { PoolRegistry } from "../agent/datasource/pool.js";
 import { guardSql, type GuardErrorCode } from "../agent/sql/guard.js";
@@ -18,6 +20,15 @@ export interface RunQueryInput {
   datasource: DatasourceRow;
   userId: string;
   conversationId: string | null;
+  runId: string | null;
+  sql: string;
+  action?: "query" | "explain";
+  signal?: AbortSignal;
+}
+
+export interface RunFileQueryInput {
+  conversationId: string;
+  userId: string;
   runId: string | null;
   sql: string;
   action?: "query" | "explain";
@@ -70,6 +81,26 @@ export function authorizeDatasourceAccess(
   if (user.status !== "active") return "用户已被禁用";
   const allowed = canAccessDatasource(resolveUserAccess(db, user), datasourceId);
   return allowed ? null : "无权访问该数据源";
+}
+
+/**
+ * Re-check user status, chat permission, and conversation ownership before opening
+ * a per-conversation uploaded SQLite database. Fails closed on missing or invalid state.
+ */
+export function authorizeFileConversationAccess(
+  db: Db,
+  userId: string,
+  conversationId: string,
+): string | null {
+  const user = findUserById(db, userId);
+  if (!user) return "用户不存在";
+  if (user.status !== "active") return "用户已被禁用";
+  const access = resolveUserAccess(db, user);
+  if (!access.permissions.has("chat.use")) return "当前角色没有对话权限";
+  const conversation = findOwnedConversation(db, conversationId, userId);
+  if (!conversation) return "会话不存在或无权访问";
+  if (conversation.sourceKind !== "file") return "该会话不是文件分析会话";
+  return null;
 }
 
 export async function runGuardedQuery(
@@ -276,6 +307,150 @@ export async function runGuardedQuery(
         datasourceId: input.datasource.id,
         action,
         sqlText: executableSql,
+        status: timeout ? "timeout" : "error",
+        durationMs: Date.now() - started,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    } catch {
+      // Audit storage failure must not mask the original query error.
+    }
+    return {
+      ok: false,
+      code: timeout ? "SQL_TIMEOUT" : aborted ? "SQL_ABORTED" : "SQL_ERROR",
+      reason: error instanceof Error ? error.message : String(error),
+      auditId,
+    };
+  }
+}
+
+export async function runGuardedFileQuery(
+  deps: Pick<QueryServiceDeps, "db" | "config" | "artifacts">,
+  input: RunFileQueryInput,
+): Promise<RunQueryResult> {
+  const { db, config, artifacts } = deps;
+  const action = input.action ?? "query";
+  const limits = resolveQueryLimits(db, config);
+
+  const denied = authorizeFileConversationAccess(db, input.userId, input.conversationId);
+  if (denied) {
+    const auditId = recordAudit(db, {
+      runId: input.runId,
+      conversationId: input.conversationId,
+      userId: input.userId,
+      datasourceId: null,
+      action,
+      sqlText: input.sql,
+      status: "rejected",
+      errorMessage: denied,
+    });
+    return { ok: false, code: "FORBIDDEN", reason: denied, auditId };
+  }
+
+  const guard = guardSql({
+    sql: input.sql,
+    dialect: "sqlite",
+    maxRows: limits.maxRows,
+  });
+
+  if (!guard.ok) {
+    const auditId = recordAudit(db, {
+      runId: input.runId,
+      conversationId: input.conversationId,
+      userId: input.userId,
+      datasourceId: null,
+      action,
+      sqlText: input.sql,
+      status: "rejected",
+      errorMessage: guard.reason,
+    });
+    return { ok: false, code: guard.code, reason: guard.reason, auditId };
+  }
+
+  const sqlitePath = resolveConversationSqlitePath(config.dataDir, input.conversationId);
+  if (!(await sqliteFileExists(sqlitePath))) {
+    const reason = "当前会话的数据文件不存在或已被清理";
+    const auditId = recordAudit(db, {
+      runId: input.runId,
+      conversationId: input.conversationId,
+      userId: input.userId,
+      datasourceId: null,
+      action,
+      sqlText: guard.sql,
+      status: "error",
+      errorMessage: reason,
+    });
+    return { ok: false, code: "SQL_ERROR", reason, auditId };
+  }
+
+  const started = Date.now();
+  const writer = artifacts.openResult({
+    userId: input.userId,
+    conversationId: input.conversationId,
+    runId: input.runId,
+  });
+  let finished = false;
+
+  try {
+    const result = await executeReadOnly(
+      {
+        dialect: "sqlite",
+        sqlitePath,
+        sql: guard.sql,
+        maxRows: limits.maxRows,
+        previewRows: limits.previewRows,
+        timeoutMs: limits.timeoutMs,
+        signal: input.signal,
+      },
+      (row) => writer.write(row),
+    );
+    const meta = await writer.finish({
+      columns: result.columns,
+      rowCount: result.rowCount,
+      truncated: result.truncated,
+    });
+    finished = true;
+
+    let auditId = "";
+    try {
+      auditId = recordAudit(db, {
+        runId: input.runId,
+        conversationId: input.conversationId,
+        userId: input.userId,
+        datasourceId: null,
+        action,
+        sqlText: guard.sql,
+        status: "ok",
+        rowCount: result.rowCount,
+        durationMs: Date.now() - started,
+        detail: { sourceKind: "file" },
+      });
+    } catch {
+      // Keep the successful result; only the audit row is lost.
+    }
+    return {
+      ok: true,
+      artifactId: meta.id,
+      columns: result.columns,
+      previewRows: result.previewRows,
+      rowCount: result.rowCount,
+      truncated: result.truncated,
+      durationMs: Date.now() - started,
+      guardedSql: guard.sql,
+      auditId,
+    };
+  } catch (error) {
+    if (!finished) await writer.abort().catch(() => undefined);
+    const timeout = error instanceof SqlTimeoutError;
+    const aborted = error instanceof SqlAbortedError;
+    let auditId = "";
+    try {
+      auditId = recordAudit(db, {
+        runId: input.runId,
+        conversationId: input.conversationId,
+        userId: input.userId,
+        datasourceId: null,
+        action,
+        sqlText: guard.sql,
         status: timeout ? "timeout" : "error",
         durationMs: Date.now() - started,
         errorMessage: error instanceof Error ? error.message : String(error),

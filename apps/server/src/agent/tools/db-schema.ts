@@ -9,10 +9,24 @@ import {
   SCHEMA_CACHE_TTL_MS,
   loadSchemaEntry,
 } from "../../db/repositories/schema-cache.js";
-import { authorizeDatasourceAccess } from "../../services/query-service.js";
+import {
+  listConversationFiles,
+  listConversationFileTables,
+  type FileColumnFormatHint,
+} from "../../db/repositories/conversation-files.js";
+import {
+  authorizeDatasourceAccess,
+  authorizeFileConversationAccess,
+} from "../../services/query-service.js";
 import { refreshDatasourceSchema } from "../../services/schema-refresh.js";
 import type { SchemaSnapshot, SchemaTable } from "../datasource/introspect.js";
-import { errorResult, safeJsonStringify, textResult, type AgentToolContext } from "./context.js";
+import {
+  errorResult,
+  isFileToolContext,
+  safeJsonStringify,
+  textResult,
+  type AgentToolContext,
+} from "./context.js";
 
 /** Keep the tool result small enough that one schema call cannot flood the context. */
 export const MAX_SCHEMA_BYTES = 8 * 1024;
@@ -144,6 +158,54 @@ function selectTables(
   return { tables: selected.map(toOutput), total: snapshot.tables.length };
 }
 
+const FORMAT_HINT_DESCRIPTIONS: Record<FileColumnFormatHint, string> = {
+  percent: "原格式为百分比，已存为小数",
+  currency: "已去掉货币符号和千分位并转为数值",
+  thousands: "已去掉千分位分隔符并转为数值",
+};
+
+function buildFileSnapshot(ctx: AgentToolContext): SchemaSnapshot {
+  const files = listConversationFiles(ctx.db, ctx.conversationId);
+  const fileNames = new Map(files.map((file) => [file.id, file.fileName]));
+  const fileTables = listConversationFileTables(ctx.db, ctx.conversationId);
+
+  const tables: SchemaTable[] = fileTables.map((table) => {
+    const fileName = fileNames.get(table.fileId);
+    const commentParts = [
+      fileName ? `来源文件：${fileName}` : null,
+      table.sheetName ? `工作表：${table.sheetName}` : null,
+      `共 ${table.rowCount} 行`,
+      table.warnings.length > 0 ? `提示：${table.warnings.join("；")}` : null,
+    ].filter((part): part is string => Boolean(part));
+
+    return {
+      schema: "main",
+      name: table.tableName,
+      comment: commentParts.join("；"),
+      rowEstimate: table.rowCount,
+      columns: table.columns.map((column) => {
+        const colNotes = [
+          column.originalName !== column.name ? `原列名：${column.originalName}` : null,
+          column.formatHint ? FORMAT_HINT_DESCRIPTIONS[column.formatHint] : null,
+          column.sampleValues.length > 0 ? `示例：${column.sampleValues.join(" / ")}` : null,
+        ].filter((part): part is string => Boolean(part));
+        return {
+          name: column.name,
+          type: column.type,
+          nullable: column.nullable,
+          defaultValue: null,
+          comment: colNotes.length > 0 ? colNotes.join("；") : null,
+        };
+      }),
+      primaryKey: [],
+      indexes: [],
+      foreignKeys: [],
+    };
+  });
+
+  return { tables, refreshedAt: Date.now() };
+}
+
 export function createDbSchemaTool(ctx: AgentToolContext): ToolDefinition<typeof schemaParameters, DbSchemaDetails> {
   return {
     name: "db_schema",
@@ -152,7 +214,36 @@ export function createDbSchemaTool(ctx: AgentToolContext): ToolDefinition<typeof
       "读取当前数据源的表结构（缓存缺失或过期时自动刷新）。可用 search 搜索表名/列名，或用 table 精确查看一张表；未传参数时返回全部表。写 SQL 前先调用它。",
     parameters: schemaParameters,
     async execute(_toolCallId, params) {
-      const denied = authorizeDatasourceAccess(ctx.db, ctx.userId, ctx.datasourceId);
+      if (isFileToolContext(ctx)) {
+        const denied = authorizeFileConversationAccess(ctx.db, ctx.userId, ctx.conversationId);
+        if (denied) {
+          return errorResult<DbSchemaDetails>("CONVERSATION_FORBIDDEN", denied, {
+            tableCount: 0,
+            returned: 0,
+            truncated: false,
+            code: "CONVERSATION_FORBIDDEN",
+            message: denied,
+          });
+        }
+        const snapshot = buildFileSnapshot(ctx);
+        if (snapshot.tables.length === 0) {
+          return errorResult<DbSchemaDetails>(
+            "SCHEMA_UNAVAILABLE",
+            "当前会话还没有导入可用的数据表，请先上传 Excel 或 CSV 文件。",
+            { tableCount: 0, returned: 0, truncated: false, code: "SCHEMA_UNAVAILABLE" },
+          );
+        }
+        const { tables, total } = selectTables(snapshot, params);
+        const { text, truncated } = renderTables(tables);
+        return textResult(text, {
+          tableCount: total,
+          returned: tables.length,
+          truncated,
+        });
+      }
+
+      const datasourceId = ctx.datasourceId!;
+      const denied = authorizeDatasourceAccess(ctx.db, ctx.userId, datasourceId);
       if (denied) {
         return errorResult<DbSchemaDetails>("DATASOURCE_FORBIDDEN", denied, {
           tableCount: 0,
@@ -163,12 +254,12 @@ export function createDbSchemaTool(ctx: AgentToolContext): ToolDefinition<typeof
         });
       }
 
-      const entry = loadSchemaEntry(ctx.db, ctx.datasourceId);
+      const entry = loadSchemaEntry(ctx.db, datasourceId);
       let snapshot = entry?.snapshot ?? null;
       let stale = false;
       const expired = entry ? Date.now() - entry.refreshedAt > SCHEMA_CACHE_TTL_MS : true;
       if (!snapshot || expired) {
-        const datasource = findDatasource(ctx.db, ctx.datasourceId);
+        const datasource = findDatasource(ctx.db, datasourceId);
         if (!datasource) {
           return errorResult<DbSchemaDetails>("SCHEMA_UNAVAILABLE", "数据源不存在", {
             tableCount: 0,
@@ -209,7 +300,7 @@ export function createDbSchemaTool(ctx: AgentToolContext): ToolDefinition<typeof
 
       // Scope hides the existence of tables this viewer could never query.
       let visibleSnapshot = snapshot;
-      const datasource = findDatasource(ctx.db, ctx.datasourceId);
+      const datasource = findDatasource(ctx.db, datasourceId);
       if (datasource?.dataScopeMode === "enabled" && findUserById(ctx.db, ctx.userId)?.role !== "admin") {
         if (userDepartmentScope(ctx.db, ctx.userId).size === 0) {
           const message = "当前数据源已启用部门数据权限，但你还没有加入任何部门";
@@ -222,7 +313,7 @@ export function createDbSchemaTool(ctx: AgentToolContext): ToolDefinition<typeof
           });
         }
         const allowed = new Set(
-          listScopePolicies(ctx.db, ctx.datasourceId)
+          listScopePolicies(ctx.db, datasourceId)
             .filter((policy) => policy.enabled && policy.mode !== "denied")
             .map((policy) => normalizeTableName(policy.tableName)),
         );

@@ -153,7 +153,7 @@ function shareTargetScopeEnforced(
           return report?.conversationId ? findConversation(db, report.conversationId) : undefined;
         })()
       : undefined;
-  if (!conversation) return false;
+  if (!conversation || !conversation.datasourceId) return false;
   return findDatasource(db, conversation.datasourceId)?.dataScopeMode === "enabled";
 }
 

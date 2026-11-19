@@ -20,20 +20,20 @@
 ### 召回（prompt 之前）
 
 1. 检查管理员全局开关和用户设置。任一关闭就不注入。
-2. 加载活跃记忆：全局 + 当前数据源；排除停用/归档项。
+2. 加载活跃记忆：全局 + 当前数据源；文件分析会话（`datasourceId` 为空）仅加载全局记忆；排除停用/归档项。
 3. 先放 `core` 的 `profile`/`instruction`/`preference` 记忆，随后自动纳入当前范围内置信度 ≥80（`MEMORY_ALWAYS_ON_PREFERENCE_CONFIDENCE = 80`）的活跃 `preference` 记忆（合计上限 `MEMORY_CORE_BUDGET = 2000` 字符、最多 20 条）；再放按查询分词排序后的相关记忆（如 `fact` 与低置信度条目，预算 `MEMORY_RECALL_BUDGET = 1500`，最多 `MEMORY_RECALL_LIMIT = 5`）。总量上限 `MEMORY_TOTAL_BUDGET = 3500`；超长条目跳过，不要从句子中间截断。
 4. 格式化成简短的“用户长期记忆”块，带标题/内容，标注 `[核心]` 和来源范围，作为隐藏的 prompt 上下文注入。不要把它伪装成用户消息或工具结果。
 
 ### `memory_save`（模型主动保存）
 
-用户明确陈述长期偏好/事实时，模型可以保存。必填字段包括 kind（`profile`/`preference`/`instruction`/`fact`）、scope（`global`/`datasource`）、title、content、confidence，可选 `core` 和 datasource id。`profile`/`instruction`/`preference` 可以是核心；`fact` 不可以。拒绝秘密和空白/超长内容。标题/内容重复时合并或返回受控冲突；绝不能留下两条相同的活跃记录。
+用户明确陈述长期偏好/事实时，模型可以保存。必填字段包括 kind（`profile`/`preference`/`instruction`/`fact`）、scope（`global`/`datasource`）、title、content、confidence，可选 `core` 和 datasource id。`profile`/`instruction`/`preference` 可以是核心；`fact` 不可以。当会话未绑定数据源（如 Excel/CSV 文件分析会话）时，`scope` 统一归入 `global` 保存。拒绝秘密和空白/超长内容。标题/内容重复时合并或返回受控冲突；绝不能留下两条相同的活跃记录。
 
 ### 提取（成功运行之后）
 
 1. 只在成功终止、记忆已启用且 `runs.memory_extracted_at` 为空时触发。
 2. 如果本轮已经通过 `memory_save` 写过（`sourceRunId` 计数 > 0），或已被重试替换，则跳过。
 3. 用与本轮相同的模型跑一个独立的、无工具的 agent 会话；传入精简对话记录和提取 prompt。输出最多 3 条记忆。
-4. 逐条校验：允许的 kind/scope、置信度阈值、无秘密、无 SQL 结果/表清单/临时筛选条件。低置信度可以保存但不注入；无效项丢弃。
+4. 逐条校验：允许的 kind/scope、置信度阈值、无秘密、无 SQL 结果/表清单/临时筛选条件。若当前会话未绑定数据源（文件分析会话）且模型输出 `scope: "datasource"`：`fact` 直接跳过以避免临时表事实污染全局记忆，其余类型（`preference`/`instruction`/`profile`）降级保存为 `global`。低置信度可以保存但不注入；无效项丢弃。
 5. 保存 `sourceConversationId`/`sourceRunId`，即使没提取到内容也要标记 `memory_extracted_at`；提取失败绝不能让本轮运行失败。
 
 ## 契约
