@@ -10,11 +10,22 @@ describe("renderSystemPrompt", () => {
     now,
   });
 
-  it("injects datasource name, dialect, database and time", () => {
+  it("injects datasource name, dialect, database and hour-precision time at the end", () => {
     expect(prompt).toContain("销售库");
     expect(prompt).toContain("MySQL");
     expect(prompt).toContain("sales");
-    expect(prompt).toContain("2026-11-06T08:00:00.000Z");
+    expect(prompt).toContain("当前时间：2026-11-06T08:00Z");
+    expect(prompt.indexOf("当前时间：")).toBeGreaterThan(prompt.indexOf("## 硬性规则"));
+  });
+
+  it("keeps the rendered prompt identical within the same hour for prompt caching", () => {
+    const later = renderSystemPrompt({
+      datasourceName: "销售库",
+      datasourceType: "mysql",
+      database: "sales",
+      now: new Date("2026-11-06T08:47:29.999Z"),
+    });
+    expect(later).toBe(prompt);
   });
 
   it("labels postgres as PostgreSQL", () => {
