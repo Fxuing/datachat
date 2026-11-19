@@ -214,6 +214,7 @@ describe("database lifecycle", () => {
     );
     expect(columnNames(sqlite, "runs")).toContain("retry_of_run_id");
     expect(columnNames(sqlite, "runs")).toContain("memory_extracted_at");
+    expect(columnNames(sqlite, "runs")).toContain("suggestions_json");
     expect(columnNames(sqlite, "conversations")).toEqual(
       expect.arrayContaining(["kind", "source_kind"]),
     );
@@ -288,14 +289,15 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(18);
-    expect(migrateDb(handle.db)).toBe(18);
+    expect(migrateDb(handle.db)).toBe(19);
+    expect(migrateDb(handle.db)).toBe(19);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");
     assertIntegrityIndexes(handle.sqlite);
     expect(columnNames(handle.sqlite, "datasources")).toContain("options_json");
     expect(columnNames(handle.sqlite, "datasources")).toContain("allow_write_account");
+    expect(columnNames(handle.sqlite, "runs")).toContain("suggestions_json");
     expect(() =>
       insertRawUser(handle.sqlite, { id: "bad", username: "bad", role: "superadmin" }),
     ).toThrow(/CHECK constraint failed/);

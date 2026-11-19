@@ -15,6 +15,7 @@
 | 行内结果 | 链接 + 详情弹窗 | [`ResultLink.tsx`](../../apps/web/src/components/chat/ResultLink.tsx) |
 | 图表 | 渲染校验后的图表 spec | [`ChartCard.tsx`](../../apps/web/src/components/chat/ChartCard.tsx) |
 | 报告 | 报告 artifact 卡片/链接 | [`ReportPage.tsx`](../../apps/web/src/pages/ReportPage.tsx) |
+| 建议追问 | 输入框上方的追问胶囊、点击直发与按轮次隐藏 | [`SuggestedQuestions.tsx`](../../apps/web/src/components/chat/SuggestedQuestions.tsx) |
 
 React Query 是服务端状态缓存；使用 `lib/query.ts` 的 `queryKeys` 和 `lib/api.ts` 的 `apiRequest`。能用 query/mutation 解决时，不要在 effect 里发请求。
 
@@ -58,6 +59,7 @@ Mermaid 代码块由 `MermaidDiagram` 在聊天、报告和公开分享中渲染
 - 结果预览有界；“加载更多”追加分页，导出流式发送完整 artifact；生成报告进行中禁用按钮防连点。初次渲染卡片时绝不拉取全部行。
 - 流式文本可能包含半个 `[[artifact:`/`[[chart:`/`[[result:` 标记；在完整前隐藏，不要显示原始语法。
 - 使用共享 `Button`/`Dialog`/`Sheet`/`ConfirmDialog` 原语，不在业务操作中调用原生 `window.confirm`；原生 `title` 只通过 `Tooltip` 组件使用；纯图标按钮要有可访问名称。
+- **建议追问栏**：位于 `Composer` 正上方（胶囊标签样式），仅在当前存在 `chat.use` 权限、流与重试已结束、无待回答 `QuestionCard` 且最后一条消息为成功轮次（`status === "ok"`）时显示。若 `latestMessage.suggestions === null` 且模型已配置，前端通过 `GET /api/runs/:id/suggestions` 按需懒加载一次并依赖服务端缓存（`runs.suggestions_json`）；点击任意建议会立即发起追问，点击隐藏按轮次收起（下一轮新回复出现时重新展示）。
 
 ## 失败行为
 
@@ -76,6 +78,7 @@ pnpm --filter @datachat/web exec vitest run \
   src/components/chat/MessageItem.test.tsx \
   src/components/chat/MessageList.test.tsx \
   src/components/chat/ConversationSidebar.test.tsx \
+  src/components/chat/SuggestedQuestions.test.tsx \
   src/pages/ChatPage.test.tsx
 pnpm --filter @datachat/web typecheck
 ```

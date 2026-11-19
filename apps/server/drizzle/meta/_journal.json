@@ -127,6 +127,13 @@
       "when": 1794600000000,
       "tag": "0017_file_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1794700000000,
+      "tag": "0018_run_suggestions",
+      "breakpoints": true
     }
   ]
 }

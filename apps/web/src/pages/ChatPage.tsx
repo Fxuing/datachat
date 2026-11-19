@@ -5,6 +5,7 @@ import { FileSpreadsheet, Share2, X } from "lucide-react";
 import { AppShell, type AppShellStatusIndicator } from "../components/AppShell";
 import { Composer } from "../components/chat/Composer";
 import { QuestionCard } from "../components/chat/QuestionCard";
+import { SuggestedQuestions } from "../components/chat/SuggestedQuestions";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { FileTablesDialog } from "../components/chat/FileTablesDialog";
 import { MessageList } from "../components/chat/MessageList";
@@ -23,6 +24,7 @@ import {
   deleteConversation,
   fetchMe,
   getConversation,
+  getRunSuggestions,
   listDatasources,
   listConversationSkills,
   listDatasourceSkills,
@@ -69,6 +71,7 @@ export default function ChatPage() {
   const previewSeqRef = useRef(0);
   const [draftModelId, setDraftModelId] = useState<string | null>(null);
   const [draftThinkingLevel, setDraftThinkingLevel] = useState<string>("off");
+  const [dismissedSuggestionRunId, setDismissedSuggestionRunId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const location = useLocation();
 
@@ -558,17 +561,11 @@ export default function ChatPage() {
     ? (content: string) => void handleSend(content)
     : undefined;
 
-  const user = meQuery.data?.user;
-  if (!user) {
-    return <PageSpinner />;
-  }
-
   const sendingForCurrent =
     sendMutation.isPending && sendMutation.variables?.targetConversationId === conversationId;
   const startingNew = !conversationId && (startMutation.isPending || startFileMutation.isPending);
   const showStream = !activeRunPersisted && (activeRunId !== null || optimisticText !== null);
   const active = sendingForCurrent || startingNew || stream.active;
-  const fileReady = Boolean(filePreview && filePreview.totalTables > 0 && !filePreviewLoading);
   const models = modelsQuery.data;
   const modelCount = models?.models.length ?? 0;
   const modelsStatus: ModelPickerStatus = modelsQuery.isPending
@@ -576,6 +573,46 @@ export default function ChatPage() {
     : modelsQuery.isError
       ? "error"
       : "ready";
+  const latestMessage =
+    conversationId && messages && messages.length > 0
+      ? messages[messages.length - 1]
+      : null;
+  const latestSuggestionRunId = latestMessage?.runId ?? "";
+  const turnSettled =
+    !active && !showStream && !retryingRunId && stream.state.questions.length === 0;
+  const shouldFetchSuggestions = Boolean(
+    conversationId &&
+      canUseChat &&
+      turnSettled &&
+      latestMessage &&
+      latestMessage.status === "ok" &&
+      latestMessage.suggestions === null &&
+      modelsStatus === "ready" &&
+      modelCount > 0,
+  );
+  const suggestionsQuery = useQuery({
+    queryKey: queryKeys.runSuggestions(latestSuggestionRunId),
+    queryFn: () => getRunSuggestions(latestSuggestionRunId),
+    enabled: shouldFetchSuggestions,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const visibleSuggestions =
+    conversationId &&
+    canUseChat &&
+    turnSettled &&
+    latestMessage &&
+    latestMessage.status === "ok" &&
+    dismissedSuggestionRunId !== latestMessage.runId
+      ? (latestMessage.suggestions ?? suggestionsQuery.data?.suggestions ?? [])
+      : [];
+
+  const user = meQuery.data?.user;
+  if (!user) {
+    return <PageSpinner />;
+  }
+
+  const fileReady = Boolean(filePreview && filePreview.totalTables > 0 && !filePreviewLoading);
   const currentModelId = conversation
     ? (conversation.modelId ?? models?.defaultId ?? "")
     : (draftModelId ?? models?.defaultId ?? "");
@@ -812,6 +849,14 @@ export default function ChatPage() {
             ))}
           </div>
         ) : null}
+        <SuggestedQuestions
+          suggestions={visibleSuggestions}
+          disabled={active}
+          onSelect={(question) => void handleSend(question)}
+          onDismiss={() => {
+            if (latestMessage) setDismissedSuggestionRunId(latestMessage.runId);
+          }}
+        />
         <Composer
           key={`composer-${conversationId ?? "new"}`}
           conversationReady={

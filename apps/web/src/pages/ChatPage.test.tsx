@@ -521,3 +521,161 @@ describe("ChatPage permission gates", () => {
     expect(await screen.findByText("新文件分析")).toBeInTheDocument();
   });
 });
+
+describe("ChatPage suggested questions", () => {
+  it("renders cached suggestions above the composer and sends immediately on click", async () => {
+    const detailWithSuggestions: ConversationDetail = {
+      conversation,
+      messages: [
+        {
+          ...message,
+          suggestions: ["按月拆解趋势", "查看高退货类目"],
+        },
+      ],
+      artifacts: [],
+      activeRun: null,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/auth/me") {
+        return jsonResponse({ user, permissions: FUNCTIONAL_PERMISSIONS, roles: [] });
+      }
+      if (url === "/api/conversations") return jsonResponse({ items: [], nextCursor: null });
+      if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
+      if (url === "/api/models") {
+        return jsonResponse({ configured: false, models: [], defaultId: null });
+      }
+      if (url === "/api/conversations/c-1") return jsonResponse(detailWithSuggestions);
+      if (url === "/api/conversations/c-1/skills") return jsonResponse({ skills: [] });
+      if (url === "/api/conversations/c-1/messages" && init?.method === "POST") {
+        return jsonResponse({ runId: "run-2", position: 1 }, 202);
+      }
+      throw new Error(`unexpected request: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const browser = userEvent.setup();
+    renderChatPage();
+
+    const suggestion = await screen.findByRole("button", { name: "按月拆解趋势" });
+    expect(screen.getByRole("button", { name: "查看高退货类目" })).toBeInTheDocument();
+    await browser.click(suggestion);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/conversations/c-1/messages",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ content: "按月拆解趋势" }),
+      }),
+    );
+    const urls = fetchMock.mock.calls.map(([input]) =>
+      typeof input === "string" ? input : input.toString(),
+    );
+    expect(urls).not.toContain("/api/runs/run-1/suggestions");
+  });
+
+  it("lazily fetches uncached suggestions when models are configured and hides on dismiss", async () => {
+    const detailNeedsFetch: ConversationDetail = {
+      conversation,
+      messages: [{ ...message, suggestions: null }],
+      artifacts: [],
+      activeRun: null,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/auth/me") {
+        return jsonResponse({ user, permissions: FUNCTIONAL_PERMISSIONS, roles: [] });
+      }
+      if (url === "/api/conversations") return jsonResponse({ items: [], nextCursor: null });
+      if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
+      if (url === "/api/models") {
+        return jsonResponse({
+          configured: true,
+          models: [
+            {
+              id: "m1",
+              modelId: "m1",
+              providerId: "p1",
+              providerName: "P1",
+              name: "Model 1",
+              contextWindow: 64_000,
+              maxTokens: 4096,
+            },
+          ],
+          defaultId: "m1",
+        });
+      }
+      if (url === "/api/conversations/c-1") return jsonResponse(detailNeedsFetch);
+      if (url === "/api/conversations/c-1/skills") return jsonResponse({ skills: [] });
+      if (url === "/api/runs/run-1/suggestions") {
+        return jsonResponse({ suggestions: ["按地区对比转化", "拆解客单价波动"] });
+      }
+      throw new Error(`unexpected request: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const browser = userEvent.setup();
+    renderChatPage();
+
+    expect(await screen.findByRole("button", { name: "按地区对比转化" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "拆解客单价波动" })).toBeInTheDocument();
+
+    await browser.click(screen.getByRole("button", { name: "隐藏建议问题" }));
+    expect(screen.queryByLabelText("建议追问")).not.toBeInTheDocument();
+  });
+
+  it("does not fetch suggestions without chat.use or for failed turns", async () => {
+    let permissions: Permission[] = [];
+    let turnStatus: ChatMessage["status"] = "ok";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/auth/me") {
+        return jsonResponse({ user, permissions, roles: [] });
+      }
+      if (url === "/api/conversations") return jsonResponse({ items: [], nextCursor: null });
+      if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
+      if (url === "/api/models") {
+        return jsonResponse({
+          configured: true,
+          models: [
+            {
+              id: "m1",
+              modelId: "m1",
+              providerId: "p1",
+              providerName: "P1",
+              name: "Model 1",
+              contextWindow: 64_000,
+              maxTokens: 4096,
+            },
+          ],
+          defaultId: "m1",
+        });
+      }
+      if (url === "/api/conversations/c-1") {
+        return jsonResponse({
+          conversation,
+          messages: [{ ...message, status: turnStatus, suggestions: null }],
+          artifacts: [],
+          activeRun: null,
+        });
+      }
+      if (url === "/api/conversations/c-1/skills") return jsonResponse({ skills: [] });
+      throw new Error(`unexpected request: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const firstRender = renderChatPage();
+
+    expect(await screen.findByText("权限测试会话")).toBeInTheDocument();
+    expect(screen.queryByLabelText("建议追问")).not.toBeInTheDocument();
+    firstRender.unmount();
+
+    permissions = FUNCTIONAL_PERMISSIONS;
+    turnStatus = "error";
+    renderChatPage();
+    expect(await screen.findByText("权限测试会话")).toBeInTheDocument();
+    expect(screen.queryByLabelText("建议追问")).not.toBeInTheDocument();
+
+    const requested = fetchMock.mock.calls.map(([input]) =>
+      typeof input === "string" ? input : input.toString(),
+    );
+    expect(requested).not.toContain("/api/runs/run-1/suggestions");
+  });
+});

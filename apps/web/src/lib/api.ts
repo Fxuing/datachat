@@ -433,6 +433,8 @@ export interface ChatMessage {
   sqls: ChatSql[];
   /** Department range that filtered this run; null when nothing was rewritten. */
   scope?: { departments: string[] } | null;
+  /** Cached follow-up suggestions; null means a finished run has not generated them yet. */
+  suggestions?: string[] | null;
   error: string | null;
   createdAt: number;
 }
@@ -745,6 +747,10 @@ export function abortRun(runId: string): Promise<void> {
 
 export function retryRun(runId: string): Promise<{ runId: string; position: number }> {
   return apiRequest(`/api/runs/${runId}/retry`, { method: "POST" });
+}
+
+export function getRunSuggestions(runId: string): Promise<{ suggestions: string[] }> {
+  return apiRequest(`/api/runs/${runId}/suggestions`);
 }
 
 export function listDatasources(): Promise<{ datasources: DatasourceSummary[] }> {

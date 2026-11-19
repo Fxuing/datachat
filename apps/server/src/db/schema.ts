@@ -322,6 +322,8 @@ export const runs = sqliteTable(
     memoryExtractedAt: integer("memory_extracted_at"),
     /** Frozen data scope at run start; legacy runs have no snapshot. */
     scopeSnapshot: text("scope_snapshot"),
+    /** Cached follow-up question suggestions JSON (`string[]`); null = not generated yet. */
+    suggestionsJson: text("suggestions_json"),
   },
   (t) => [
     index("runs_conversation_idx").on(t.conversationId),

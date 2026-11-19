@@ -36,6 +36,7 @@ import { notificationRoutes } from "./routes/notifications.js";
 import { memoryRoutes } from "./routes/memories.js";
 import { createScheduledTaskService, type ScheduledTaskService } from "./services/scheduled-tasks.js";
 import { ArtifactStore } from "./services/artifacts.js";
+import { createRunSuggestionsService } from "./services/suggestions.js";
 import type { AppConfig } from "./config.js";
 import type { Db } from "./db/client.js";
 
@@ -55,6 +56,8 @@ export interface BuildAppOptions {
   retention?: RetentionService;
   /** Reuse the scheduled task service so the scheduler and routes share one instance. */
   scheduledTasks?: ScheduledTaskService;
+  /** Test seam for post-reply follow-up suggestion generation. */
+  suggestionsGenerator?: (prompt: string) => Promise<string>;
 }
 
 export function normalizeOrigin(value: string): string | null {
@@ -93,6 +96,7 @@ export async function buildApp({
   mcpTestTimeoutMs,
   retention: injectedRetention,
   scheduledTasks: injectedScheduledTasks,
+  suggestionsGenerator,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: config.logLevel },
@@ -194,7 +198,14 @@ export async function buildApp({
   await app.register(artifactRoutes, { db, artifacts });
   await app.register(reportRoutes, { db, artifacts });
   await app.register(shareRoutes, { db, artifacts, config });
-  await app.register(runRoutes, { db, runtime: agentRuntime });
+  const runSuggestions = createRunSuggestionsService({
+    db,
+    config,
+    getModelRuntime: () => modelRuntime.get(),
+    ...(suggestionsGenerator ? { generateOverride: suggestionsGenerator } : {}),
+    log: (event, data) => console.info(JSON.stringify({ event, ...data })),
+  });
+  await app.register(runRoutes, { db, runtime: agentRuntime, suggestions: runSuggestions });
   await app.register(opsRoutes, { db, dataDir: config.dataDir, retention });
   await app.register(scheduledTaskRoutes, { db, scheduledTasks });
   await app.register(notificationRoutes, { db });

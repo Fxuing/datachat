@@ -13,6 +13,7 @@
 | 回放 | 按序号读取 `run_events` | [`run-events.ts`](../../apps/server/src/db/repositories/run-events.ts) |
 | SSE | 先回放再订阅、保活、清理 | [`runs.ts`](../../apps/server/src/routes/runs.ts) |
 | Web 消费端 | 重连并合并实时/历史状态 | [`useRunStream.ts`](../../apps/web/src/hooks/useRunStream.ts) |
+| 建议追问 | 按需生成并缓存 `runs.suggestions_json` | [`suggestions.ts`](../../apps/server/src/services/suggestions.ts)、[`runs.ts`](../../apps/server/src/routes/runs.ts) |
 
 `runs` 行保存状态/用量/错误；`run_events` 是持久事件日志。`RunEventBus` 只在进程内有效，不是事实来源。
 
@@ -37,6 +38,7 @@
 - **文件表动态可见。** `db_schema` 在文件会话每次执行时实时读取 `conversation_file_tables`，通过 `POST /api/conversations/:id/files` 追加上传文件后下一轮立即可查询、无需重建会话。删除会话与清理任务会同步删除 `DATA_DIR/files/<conversationId>` 与会话工作区目录。
 - **会话资源是快照。** 技能/MCP/报告工具在创建会话时装配。之后的权限变化影响新请求，但不会改变已有工具集；契约要求立即生效时，重建会话。
 - **队列满是对客户端可见的错误。** 路由把 run 标记为失败并返回稳定错误码；不要静默丢弃消息。
+- **建议追问独立于 `run_events`。** `GET /api/runs/:id/suggestions` 校验运行归属与 `runScopeVisible` 后，用无工具、关闭思考的独立会话生成最多 3 条追问并缓存到 `runs.suggestions_json`（同 `runId` 并发去重）；仅针对成功的聊天轮次按需触发，不向 `run_events` 追加事件以保持 `run_end` 为终止事件，也不在定时任务或错误/中止轮次额外调用模型。
 
 ## 失败行为
 

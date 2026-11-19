@@ -500,6 +500,24 @@ export function MessageList({
 
   useEffect(() => {
     const element = containerRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    let prevHeight = element.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const nextHeight = element.clientHeight;
+      if (nextHeight !== prevHeight) {
+        prevHeight = nextHeight;
+        if (stickToBottom.current) {
+          element.scrollTop = element.scrollHeight;
+          setShowJump(false);
+        }
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const element = containerRef.current;
     if (!element) return;
     const onScroll = () => {
       if (!scrollInitialized.current) return;
@@ -558,6 +576,24 @@ export function MessageList({
     setShowJump(false);
     setHasNewContent(false);
   }, [optimisticText]);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    let prevHeight = element.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const nextHeight = element.clientHeight;
+      if (nextHeight !== prevHeight) {
+        prevHeight = nextHeight;
+        if (stickToBottom.current) {
+          element.scrollTop = element.scrollHeight;
+          setShowJump(false);
+        }
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const element = containerRef.current;

@@ -51,6 +51,7 @@ export const queryKeys = {
   scheduledTasks: ["scheduled-tasks"] as const,
   scheduledRuns: (id: string) => ["scheduled-runs", id] as const,
   notifications: ["notifications"] as const,
+  runSuggestions: (runId: string) => ["run-suggestions", runId] as const,
   skills: ["skills"] as const,
   skill: (id: string) => ["skill", id] as const,
   mcpServers: ["mcpServers"] as const,

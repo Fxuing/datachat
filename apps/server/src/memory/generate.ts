@@ -30,6 +30,7 @@ export function createMemoryGenerator(
       noContextFiles: true,
       systemPrompt: EXTRACTION_SYSTEM_PROMPT,
     });
+    await loader.reload();
     const { session } = await createAgentSession({
       cwd: options.config.dataDir,
       agentDir: options.config.agentDir,

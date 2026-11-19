@@ -7,10 +7,13 @@ import { appendRunEvent, listRunEventsAfter } from "../db/repositories/run-event
 import { deleteRunFeedback, upsertRunFeedback } from "../db/repositories/run-feedback.js";
 import type { LiveRunEvent } from "../agent/event-bus.js";
 import type { RuntimeManager } from "../agent/runtime.js";
+import { runScopeVisible } from "../services/scope-access.js";
+import type { RunSuggestionsService } from "../services/suggestions.js";
 
 export interface RunRouteOptions {
   db: Db;
   runtime: RuntimeManager;
+  suggestions: RunSuggestionsService;
 }
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
@@ -289,6 +292,23 @@ export async function runRoutes(app: FastifyInstance, opts: RunRouteOptions): Pr
       }
       deleteRunFeedback(opts.db, run.id, request.user!.sub);
       return reply.code(204).send();
+    },
+  );
+
+  app.get(
+    "/api/runs/:id/suggestions",
+    { preHandler: app.requirePermission("chat.use") },
+    async (request, reply) => {
+      const params = idParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.code(400).send(error("VALIDATION", "参数不合法"));
+      }
+      const run = findOwnedRun(opts.db, params.data.id, request.user!.sub);
+      if (!run || !runScopeVisible(opts.db, run, request.access!.isAdmin, request.user!.sub)) {
+        return reply.code(404).send(error("NOT_FOUND", "运行不存在"));
+      }
+      const suggestions = await opts.suggestions.getForRun(run.id);
+      return { suggestions };
     },
   );
 }

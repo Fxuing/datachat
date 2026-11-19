@@ -755,6 +755,82 @@ describe("conversation routes", () => {
     }
   });
 
+  it("keeps a chart artifact from a retried run when referenced in the replacement reply", async () => {
+    const conversation = createConversation(db, { userId, datasourceId });
+    const failed = createRun(db, { conversationId: conversation.id, userId });
+    appendRunEvent(db, {
+      runId: failed.id,
+      conversationId: conversation.id,
+      type: "user_message",
+      payload: { content: "1月产品情况" },
+    });
+    markRun(db, failed.id, { status: "error", error: "server restarted", endedAt: Date.now() });
+
+    const retried = createRun(db, {
+      conversationId: conversation.id,
+      userId,
+      retryOfRunId: failed.id,
+    });
+    appendRunEvent(db, {
+      runId: retried.id,
+      conversationId: conversation.id,
+      type: "user_message",
+      payload: { content: "1月产品情况" },
+    });
+    appendRunEvent(db, {
+      runId: retried.id,
+      conversationId: conversation.id,
+      type: "assistant_message",
+      payload: { content: "分析如下。\n\n[[chart:chart-from-failed]]" },
+    });
+    markRun(db, retried.id, { status: "ok", endedAt: Date.now() });
+
+    const now = Date.now();
+    db.insert(artifacts)
+      .values([
+        {
+          id: "chart-from-failed",
+          conversationId: conversation.id,
+          runId: failed.id,
+          userId,
+          kind: "chart",
+          columnsJson: JSON.stringify([{ name: "商品", type: "string" }]),
+          specJson: JSON.stringify({ chart: { title: "1月热销" }, option: {} }),
+          rowCount: 12,
+          truncated: 0,
+          createdAt: now,
+        },
+        {
+          id: "unreferenced-from-failed",
+          conversationId: conversation.id,
+          runId: failed.id,
+          userId,
+          kind: "chart",
+          columnsJson: JSON.stringify([{ name: "类目", type: "string" }]),
+          specJson: JSON.stringify({ chart: { title: "未引用" }, option: {} }),
+          rowCount: 6,
+          truncated: 0,
+          createdAt: now + 1,
+        },
+      ])
+      .run();
+
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversation.id}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().artifacts.map((item: { id: string }) => item.id)).toEqual([
+        "chart-from-failed",
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("retries a failed run as a replacement turn", async () => {
     const conversation = createConversation(db, { userId, datasourceId });
     const failed = createRun(db, { conversationId: conversation.id, userId });

@@ -421,6 +421,37 @@ describe("MessageItem", () => {
     expect(screen.queryByText(/\[\[chart:/)).not.toBeInTheDocument();
   });
 
+  it("renders an explicit chart placeholder even when the chart artifact belongs to an earlier run", () => {
+    const chartFromEarlierRun: ChatArtifact = {
+      id: "chart-earlier",
+      runId: "run-failed-before",
+      kind: "chart",
+      columns: [],
+      rowCount: 12,
+      truncated: false,
+      spec: {
+        chart: { title: "1月热销商品" },
+        option: { series: [{ type: "bar", data: [10, 20] }] },
+      },
+      createdAt: 1,
+    };
+    render(
+      <MemoryRouter>
+        <MessageItem
+          artifacts={[chartFromEarlierRun]}
+          message={message({
+            runId: "run-retried",
+            status: "ok",
+            assistant: { content: "1月明细如下。\n\n[[chart:chart-earlier]]" },
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("1月热销商品")).toBeInTheDocument();
+    expect(screen.queryByText("图表引用不可用")).not.toBeInTheDocument();
+  });
+
   it("suppresses standalone fallback charts that are already included in a succeeded report", () => {
     const runId = "run-report-charts";
     const chart1: ChatArtifact = {

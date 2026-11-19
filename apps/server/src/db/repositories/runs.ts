@@ -59,6 +59,11 @@ export function saveRunScopeSnapshot(db: Db, id: string, snapshotJson: string): 
   db.update(runs).set({ scopeSnapshot: snapshotJson }).where(eq(runs.id, id)).run();
 }
 
+/** Cache generated follow-up suggestions (`string[]` JSON) on a finished run. */
+export function saveRunSuggestions(db: Db, id: string, suggestionsJson: string): void {
+  db.update(runs).set({ suggestionsJson }).where(eq(runs.id, id)).run();
+}
+
 export function findRun(db: Db, id: string): RunRow | undefined {
   return db.select().from(runs).where(eq(runs.id, id)).get();
 }

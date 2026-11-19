@@ -30,6 +30,7 @@ import type { ArtifactStore } from "./artifacts.js";
 import { parseScopeSnapshot } from "./data-scope.js";
 import { removeConversationFileDir } from "./file-store.js";
 import { artifactRunVisible, runScopeVisible } from "./scope-access.js";
+import { parseStoredSuggestions } from "./suggestions.js";
 
 export interface ConversationResponse {
   id: string;
@@ -106,6 +107,8 @@ export interface ConversationMessage {
   sqls: SqlMessage[];
   /** Department range that filtered this run; null when nothing was rewritten. */
   scope: { departments: string[] } | null;
+  /** Cached follow-up suggestions; null means completed turn can fetch lazily. */
+  suggestions?: string[] | null;
   /** Terminal run error, so a reloaded history can explain what went wrong. */
   error: string | null;
   createdAt: number;
@@ -321,15 +324,23 @@ export function getConversationDetail(
     if (group.user === null) continue;
     const run = findRun(db, group.runId);
     if (viewer && run && !runScopeVisible(db, run, viewer.isAdmin)) continue;
+    const assistantContent =
+      group.assistant !== null
+        ? group.assistant
+        : group.deltas.length > 0
+          ? group.deltas.join("")
+          : null;
+    const suggestions =
+      run?.status === "ok" && assistantContent?.trim()
+        ? run.suggestionsJson !== null
+          ? parseStoredSuggestions(run.suggestionsJson) ?? []
+          : null
+        : [];
     messages.push({
       runId: group.runId,
       status: toRunStatus(run?.status),
       user: group.user,
-      assistant: group.assistant !== null
-        ? { content: group.assistant }
-        : group.deltas.length > 0
-          ? { content: group.deltas.join("") }
-          : null,
+      assistant: assistantContent !== null ? { content: assistantContent } : null,
       thinking: group.thinking,
       thinkingSegments: group.thinkingSegments,
       memories: group.memories.length > 0 ? group.memories : null,
@@ -343,9 +354,18 @@ export function getConversationDetail(
       results: group.results,
       sqls: group.sqls,
       scope: toMessageScope(run),
+      suggestions,
       error: run?.error ?? null,
       createdAt: group.createdAt,
     });
+  }
+
+  const referencedChartIds = new Set<string>();
+  for (const message of messages) {
+    const content = message.assistant?.content ?? "";
+    for (const match of content.matchAll(/\[\[chart:([^\]\s|]+)\]\]/g)) {
+      if (match[1]) referencedChartIds.add(match[1]);
+    }
   }
 
   const artifactRows = db
@@ -365,7 +385,9 @@ export function getConversationDetail(
     .all()
     .filter(
       (row) =>
-        (row.runId === null || !retriedRunIds.has(row.runId)) &&
+        (row.runId === null ||
+          !retriedRunIds.has(row.runId) ||
+          (row.kind === "chart" && referencedChartIds.has(row.id))) &&
         (row.runId === null || !viewer || artifactRunVisible(db, row.runId, viewer.isAdmin)),
     );
 

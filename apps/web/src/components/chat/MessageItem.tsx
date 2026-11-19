@@ -228,9 +228,8 @@ export function MessageItem({
   onRetry?: (message: ChatMessage, modelId?: string) => void;
 }) {
   const assistantText = message.assistant?.content ?? "";
-  const charts = artifacts.filter(
-    (artifact) => artifact.kind === "chart" && artifact.runId === message.runId,
-  );
+  const allCharts = artifacts.filter((artifact) => artifact.kind === "chart");
+  const charts = allCharts.filter((artifact) => artifact.runId === message.runId);
   // Models sometimes paste report-style placeholders into a normal reply. Render
   // them in place instead of showing raw `[[artifact:<id>]]` text, and skip the
   // duplicate card below when the text already references that artifact.
@@ -306,7 +305,7 @@ export function MessageItem({
                 ) : null;
               }
               if (segment.type === "chart") {
-                const chart = charts.find((item) => item.id === segment.artifactId);
+                const chart = allCharts.find((item) => item.id === segment.artifactId);
                 return chart ? (
                   <HistoricalChart key={`chart-${index}`} artifact={chart} />
                 ) : (
