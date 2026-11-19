@@ -148,7 +148,7 @@ export default function LoginPage() {
             className="pointer-events-none absolute select-none"
             style={{
               left: "46.7%",
-              top: "31.5%",
+              top: "35.2%",
               width: "33.5%",
               transform: "translateX(-50%)",
             }}
