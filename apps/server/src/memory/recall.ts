@@ -14,6 +14,7 @@ export const MEMORY_CORE_BUDGET = 2000;
 export const MEMORY_RECALL_BUDGET = 1500;
 export const MEMORY_TOTAL_BUDGET = 3500;
 export const MEMORY_RECALL_LIMIT = 5;
+export const MEMORY_ALWAYS_ON_PREFERENCE_CONFIDENCE = 80;
 
 const KIND_LABELS: Record<MemoryKind, string> = {
   profile: "画像",
@@ -125,10 +126,24 @@ export function buildMemoryBlock(input: MemoryBlockInput): MemoryBlock {
   if (!isMemoryEnabled(input.db, input.userId)) return { text: "", usedIds: [], used: [] };
   try {
     const core = listCoreMemories(input.db, input.userId, input.datasourceId);
+    const coreIds = new Set(core.map((row) => row.id));
+    const allCandidates = listInjectionCandidates(input.db, input.userId, input.datasourceId);
+    // High-confidence display/formatting preferences apply cross-topic even when a
+    // prompt does not repeat the literal keyword (e.g. asking about refunds implies amounts).
+    const alwaysOnPreferences = allCandidates
+      .filter(
+        (row) =>
+          !coreIds.has(row.id) &&
+          row.kind === "preference" &&
+          row.confidence >= MEMORY_ALWAYS_ON_PREFERENCE_CONFIDENCE,
+      )
+      .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
+    const alwaysOn = [...core, ...alwaysOnPreferences];
+
     const coreLines: string[] = [];
     const coreRows: UserMemoryRow[] = [];
     let coreLength = 0;
-    for (const row of core.slice(0, 20)) {
+    for (const row of alwaysOn.slice(0, 20)) {
       const line = sanitize(lineFor(row, input.datasourceName), 400);
       if (coreLength + line.length + 1 > MEMORY_CORE_BUDGET) break;
       coreLines.push(line);
@@ -137,11 +152,10 @@ export function buildMemoryBlock(input: MemoryBlockInput): MemoryBlock {
     }
     if (coreLines.length === 0) coreLength = 0;
 
-    const coreIds = new Set(core.map((row) => row.id));
+    const includedCoreIds = new Set([...coreIds, ...coreRows.map((row) => row.id)]);
     const tokens = memoryTokens(input.query);
     const tokenSet = new Set(tokens);
-    const candidates = listInjectionCandidates(input.db, input.userId, input.datasourceId)
-      .filter((row) => !coreIds.has(row.id));
+    const candidates = allCandidates.filter((row) => !includedCoreIds.has(row.id));
     const recencyBase = candidates.reduce(
       (min, row) => Math.min(min, row.updatedAt),
       Number.MAX_SAFE_INTEGER,
@@ -195,7 +209,7 @@ export function buildMemoryBlock(input: MemoryBlockInput): MemoryBlock {
     // Only what fits the budget was actually injected, so only those rows are
     // reported (and only those get their last-used stamp refreshed).
     const used: MemoryUsageItem[] = [
-      ...coreRows.map((row) => toUsageItem(row, input.datasourceName, true)),
+      ...coreRows.map((row) => toUsageItem(row, input.datasourceName, row.core === 1)),
       ...recallRows.map((row) => toUsageItem(row, input.datasourceName, false)),
     ];
     const usedIds = used.map((item) => item.id);

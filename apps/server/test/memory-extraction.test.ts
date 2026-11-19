@@ -12,7 +12,7 @@ import {
   setUserMemorySettings,
   upsertUserMemory,
 } from "../src/db/repositories/user-memories.js";
-import { extractMemoriesForRun } from "../src/memory/extraction.js";
+import { extractMemoriesForRun, validateExtractedMemory } from "../src/memory/extraction.js";
 
 let handle: DbHandle;
 
@@ -102,5 +102,29 @@ describe("memory extraction", () => {
     const result = await extractMemoriesForRun({ db: handle.db, runId: run.id, generate });
     expect(result.status).toBe("extracted");
     expect(result.saved).toBe(0);
+  });
+
+  it("allows core=true for preference while forcing core=false for fact", () => {
+    expect(
+      validateExtractedMemory({
+        kind: "preference",
+        title: "金额单位",
+        content: "按万元展示",
+        scope: "global",
+        core: true,
+        confidence: 90,
+      }),
+    ).toMatchObject({ kind: "preference", core: true });
+
+    expect(
+      validateExtractedMemory({
+        kind: "fact",
+        title: "订单口径",
+        content: "仅统计已支付",
+        scope: "datasource",
+        core: true,
+        confidence: 90,
+      }),
+    ).toMatchObject({ kind: "fact", core: false });
   });
 });

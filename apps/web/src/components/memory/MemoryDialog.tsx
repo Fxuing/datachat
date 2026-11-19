@@ -80,7 +80,7 @@ export function MemoryDialog({
     setLocalError(null);
   }, [open, memory, datasources]);
 
-  const supportsCore = kind === "profile" || kind === "instruction";
+  const supportsCore = kind === "profile" || kind === "instruction" || kind === "preference";
 
   async function submit() {
     if (!title.trim()) return setLocalError("请填写标题");
@@ -205,7 +205,9 @@ export function MemoryDialog({
               />
               <span>
                 核心记忆
-                <span className="block text-[10px] text-muted">每次对话都注入</span>
+                <span className="block text-[10px] text-muted">
+                  每次对话优先注入（置信度 ≥80 的偏好也会自动常驻）
+                </span>
               </span>
             </label>
           </div>

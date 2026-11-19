@@ -3,6 +3,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { Db } from "../db/client.js";
 import { findActiveRunForConversation } from "../db/repositories/runs.js";
 import {
+  supportsCoreMemory,
   upsertUserMemory,
   type MemoryKind,
 } from "../db/repositories/user-memories.js";
@@ -50,7 +51,7 @@ export function createMemorySaveTool(
     name: "memory_save",
     label: "记住用户偏好",
     description:
-      "当用户表达跨会话仍然稳定的偏好、固定指令或业务口径时调用。不要保存查询结果、具体数字、临时筛选条件、密码/Token。保存前先判断是否长期有效；不确定时降低 confidence。",
+      "当用户表达跨会话仍然稳定的偏好、固定指令或业务口径时调用。不要保存查询结果、具体数字、临时筛选条件、密码/Token。跨话题全局生效的格式、单位、展示风格偏好（preference）或固定指令（instruction）及画像（profile）可设 core=true；不确定时降低 confidence。",
     parameters: memorySaveParameters,
     async execute(_toolCallId, params) {
       const kind = params.kind as MemoryKind;
@@ -63,11 +64,11 @@ export function createMemorySaveTool(
           message: "标题和内容不能为空",
         });
       }
-      if (params.core === true && kind !== "profile" && kind !== "instruction") {
-        return errorResult("MEMORY_CORE_INVALID", "只有画像或固定指令可以设为核心记忆", {
+      if (params.core === true && !supportsCoreMemory(kind)) {
+        return errorResult("MEMORY_CORE_INVALID", "只有画像、固定指令或偏好可以设为核心记忆", {
           saved: false,
           code: "MEMORY_CORE_INVALID",
-          message: "只有画像或固定指令可以设为核心记忆",
+          message: "只有画像、固定指令或偏好可以设为核心记忆",
         });
       }
       if (hasSensitiveMemory(`${title}\n${content}`)) {

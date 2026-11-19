@@ -104,4 +104,13 @@ describe("MemoryPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "清空" }));
     await waitFor(() => expect(mocks.clearMemories).toHaveBeenCalled());
   });
+
+  it("allows pinning a preference memory as core", async () => {
+    renderPage();
+    await screen.findByText("金额单位");
+    await userEvent.click(screen.getByRole("button", { name: "设为核心" }));
+    await waitFor(() =>
+      expect(mocks.updateMemory).toHaveBeenCalledWith("mem-1", { core: true }),
+    );
+  });
 });

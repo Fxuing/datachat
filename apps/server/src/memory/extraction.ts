@@ -6,12 +6,14 @@ import {
   countMemoriesBySourceRun,
   isMemoryEnabled,
   markRunMemoryExtracted,
+  supportsCoreMemory,
   upsertUserMemory,
 } from "../db/repositories/user-memories.js";
 import type { MemoryKind } from "../db/repositories/user-memories.js";
 import { hasSensitiveMemory } from "./secrets.js";
 
 export const EXTRACTION_SYSTEM_PROMPT = `你是 DataChat 的记忆提取器。只提取跨会话仍然成立的用户信息，不要提取查询结果、具体数字、临时筛选条件、SQL、表名清单或密码/Token。
+跨话题始终生效的通用展示偏好（如金额单位、小数位数、回答结构）、固定指令（instruction）或画像（profile）可将 core 设为 true；特定表或话题的业务事实（fact）保持 core: false。
 只输出 JSON，不要 Markdown：
 {"memories":[{"kind":"profile|instruction|preference|fact","title":"不超过60字","content":"不超过300字","scope":"global|datasource","core":false,"confidence":0-100}]}
 最多 3 条；没有可沉淀内容返回 {"memories":[]}。不确定时降低 confidence。`;
@@ -66,8 +68,7 @@ export function validateExtractedMemory(raw: unknown): ExtractMemoryInput | unde
   if (title.length > 60 || content.length > 300) return undefined;
   if (hasSensitiveMemory(`${title}\n${content}`)) return undefined;
   const scope = value.scope === "datasource" ? "datasource" : "global";
-  const core =
-    kind === "profile" || kind === "instruction" ? value.core === true : false;
+  const core = supportsCoreMemory(kind as MemoryKind) ? value.core === true : false;
   const confidence =
     typeof value.confidence === "number" && Number.isFinite(value.confidence)
       ? Math.max(0, Math.min(100, Math.round(value.confidence)))

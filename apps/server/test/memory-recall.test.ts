@@ -281,6 +281,85 @@ describe("memory recall", () => {
       )?.use_count,
     ).toBe(1);
   });
+
+  it("always includes high-confidence preferences in scope without literal keyword match", () => {
+    const owner = user("recall-pref");
+    upsertUserMemory(handle.db, {
+      userId: owner.id,
+      kind: "preference",
+      title: "金额单位",
+      content: "金额默认按万元展示",
+      scope: "global",
+      core: false,
+      confidence: 90,
+      now: 1,
+    });
+    upsertUserMemory(handle.db, {
+      userId: owner.id,
+      kind: "preference",
+      title: "低置信格式",
+      content: "金额保留三位小数",
+      scope: "global",
+      core: false,
+      confidence: 70,
+    });
+    upsertUserMemory(handle.db, {
+      userId: owner.id,
+      kind: "preference",
+      title: "他库展示",
+      content: "仅对其他库按千元展示",
+      scope: "datasource",
+      datasourceId: "ds-2",
+      core: false,
+      confidence: 95,
+    });
+    upsertUserMemory(handle.db, {
+      userId: owner.id,
+      kind: "fact",
+      title: "大客户口径",
+      content: "VIP 客户指年消费超十万",
+      scope: "global",
+      core: false,
+      confidence: 95,
+    });
+    upsertUserMemory(handle.db, {
+      userId: owner.id,
+      kind: "preference",
+      title: "本库小数",
+      content: "百分比保留两位小数",
+      scope: "datasource",
+      datasourceId: "ds-1",
+      core: false,
+      confidence: 85,
+      now: 2,
+    });
+
+    const block = buildMemoryBlock({
+      db: handle.db,
+      userId: owner.id,
+      datasourceId: "ds-1",
+      datasourceName: "示例商城",
+      query: "8 月份的退款数据怎么样",
+    });
+
+    expect(block.text).toContain("金额默认按万元展示");
+    expect(block.text).toContain("百分比保留两位小数");
+    expect(block.text).not.toContain("金额保留三位小数");
+    expect(block.text).not.toContain("仅对其他库按千元展示");
+    expect(block.text).not.toContain("VIP 客户指年消费超十万");
+    expect(block.used).toHaveLength(2);
+    expect(block.used[0]).toMatchObject({
+      kind: "preference",
+      content: "金额默认按万元展示",
+      core: false,
+    });
+    expect(block.used[1]).toMatchObject({
+      kind: "preference",
+      content: "百分比保留两位小数",
+      core: false,
+      scope: "数据源 示例商城",
+    });
+  });
 });
 
 describe("memory_save tool", () => {
@@ -327,13 +406,22 @@ describe("memory_save tool", () => {
     expect(secret.isError).toBe(true);
     expect(secret.details.code).toBe("MEMORY_SECRET_DETECTED");
 
-    const core = await tool.execute("call-core", {
+    const corePref = await tool.execute("call-core-pref", {
       kind: "preference",
       title: "偏好",
       content: "喜欢柱状图",
       core: true,
     }, undefined, undefined, undefined as never);
-    expect(core.isError).toBe(true);
-    expect(core.details.code).toBe("MEMORY_CORE_INVALID");
+    expect(corePref.isError).toBeUndefined();
+    expect(corePref.details.saved).toBe(true);
+
+    const coreFact = await tool.execute("call-core-fact", {
+      kind: "fact",
+      title: "业务口径",
+      content: "有效订单不含测试单",
+      core: true,
+    }, undefined, undefined, undefined as never);
+    expect(coreFact.isError).toBe(true);
+    expect(coreFact.details.code).toBe("MEMORY_CORE_INVALID");
   });
 });

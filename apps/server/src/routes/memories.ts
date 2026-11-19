@@ -10,6 +10,7 @@ import {
   findUserMemory,
   isGlobalMemoryEnabled,
   listUserMemories,
+  supportsCoreMemory,
   updateUserMemory,
   upsertUserMemory,
   type MemoryKind,
@@ -109,6 +110,11 @@ export function memoryRoutes(app: FastifyInstance, opts: { db: Db }): void {
             error: { code: "DATASOURCE_FORBIDDEN", message: "没有该数据源的访问权限" },
           });
         }
+      }
+      if (body.core === true && !supportsCoreMemory(body.kind)) {
+        return reply.code(400).send({
+          error: { code: "INVALID_MEMORY", message: "只有画像、固定指令或偏好可以设为核心记忆" },
+        });
       }
       if (hasSensitiveMemory(`${body.title}\n${body.content}`)) {
         return reply.code(400).send({

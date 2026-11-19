@@ -376,7 +376,9 @@ export default function MemoryPage() {
                     >
                       {memory.enabled ? "停用" : "启用"}
                     </Button>
-                    {(memory.kind === "profile" || memory.kind === "instruction") ? (
+                    {(memory.kind === "profile" ||
+                      memory.kind === "instruction" ||
+                      memory.kind === "preference") ? (
                       <Button
                         variant="ghost"
                         size="sm"

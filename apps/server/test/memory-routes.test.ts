@@ -131,4 +131,50 @@ describe("memory routes", () => {
     expect(cleared.json().cleared).toBe(1);
     expect((await a.inject({ method: "GET", url: "/api/memories", cookies: cookies(aliceCookie) })).json().memories).toEqual([]);
   });
+
+  it("allows core on preferences and rejects core on facts", async () => {
+    const a = await app();
+    const pref = await a.inject({
+      method: "POST",
+      url: "/api/memories",
+      cookies: cookies(aliceCookie),
+      payload: { kind: "preference", title: "金额单位", content: "按万元展示" },
+    });
+    expect(pref.statusCode).toBe(201);
+    const prefId = pref.json().memory.id as string;
+
+    const promoted = await a.inject({
+      method: "PATCH",
+      url: `/api/memories/${prefId}`,
+      cookies: cookies(aliceCookie),
+      payload: { core: true },
+    });
+    expect(promoted.statusCode).toBe(200);
+    expect(promoted.json().memory.core).toBe(true);
+
+    const invalidCreate = await a.inject({
+      method: "POST",
+      url: "/api/memories",
+      cookies: cookies(aliceCookie),
+      payload: { kind: "fact", title: "事实", content: "有效订单", core: true },
+    });
+    expect(invalidCreate.statusCode).toBe(400);
+    expect(invalidCreate.json().error.code).toBe("INVALID_MEMORY");
+
+    const fact = await a.inject({
+      method: "POST",
+      url: "/api/memories",
+      cookies: cookies(aliceCookie),
+      payload: { kind: "fact", title: "事实", content: "有效订单" },
+    });
+    expect(fact.statusCode).toBe(201);
+    const invalidPatch = await a.inject({
+      method: "PATCH",
+      url: `/api/memories/${fact.json().memory.id as string}`,
+      cookies: cookies(aliceCookie),
+      payload: { core: true },
+    });
+    expect(invalidPatch.statusCode).toBe(400);
+    expect(invalidPatch.json().error.code).toBe("INVALID_MEMORY");
+  });
 });

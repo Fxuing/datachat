@@ -6,6 +6,11 @@ import { readSettingRows } from "./settings.js";
 export type UserMemoryRow = typeof userMemories.$inferSelect;
 export type MemoryKind = "profile" | "instruction" | "preference" | "fact";
 
+/** Kinds that users or tools can pin as always-on core memories. */
+export function supportsCoreMemory(kind: MemoryKind): boolean {
+  return kind === "profile" || kind === "instruction" || kind === "preference";
+}
+
 export interface MemoryFilters {
   query?: string;
   kind?: MemoryKind;
@@ -176,8 +181,8 @@ export function updateUserMemory(
     patch.title === undefined ? existing.title : requireText(patch.title, "标题", 60);
   const content =
     patch.content === undefined ? existing.content : requireText(patch.content, "内容", 1000);
-  if (patch.core && existing.kind !== "profile" && existing.kind !== "instruction") {
-    throw new MemoryValidationError("只有画像或固定指令可以设为核心记忆");
+  if (patch.core && !supportsCoreMemory(existing.kind as MemoryKind)) {
+    throw new MemoryValidationError("只有画像、固定指令或偏好可以设为核心记忆");
   }
   const datasourceId = existing.datasourceId;
   const scope = datasourceId ? "datasource" : "global";
