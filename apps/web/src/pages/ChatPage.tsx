@@ -43,9 +43,12 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [optimisticText, setOptimisticText] = useState<string | null>(null);
-  const [optimisticSkill, setOptimisticSkill] = useState<string | null>(null);
+  const [activeTurn, setActiveTurn] = useState<{
+    conversationId: string;
+    runId: string | null;
+    optimisticText: string | null;
+    optimisticSkill: string | null;
+  } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [failedSend, setFailedSend] = useState<{ content: string; skill?: string } | null>(null);
   const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
@@ -54,6 +57,14 @@ export default function ChatPage() {
   const [draftThinkingLevel, setDraftThinkingLevel] = useState<string>("off");
   const [shareOpen, setShareOpen] = useState(false);
   const location = useLocation();
+
+  const currentTurn =
+    activeTurn && conversationId && activeTurn.conversationId === conversationId
+      ? activeTurn
+      : null;
+  const activeRunId = currentTurn?.runId ?? null;
+  const optimisticText = currentTurn?.optimisticText ?? null;
+  const optimisticSkill = currentTurn?.optimisticSkill ?? null;
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const canUseChat = useCan("chat.use");
@@ -98,10 +109,11 @@ export default function ChatPage() {
   const stream = useRunStream({ runId: activeRunId, conversationId: conversationId ?? null });
 
   const modelMutation = useMutation({
-    mutationFn: (modelId: string) => updateConversation(conversationId as string, { modelId }),
-    onSuccess: ({ conversation: updated }) => {
+    mutationFn: (input: { id: string; modelId: string }) =>
+      updateConversation(input.id, { modelId: input.modelId }),
+    onSuccess: ({ conversation: updated }, input) => {
       queryClient.setQueryData<ConversationDetail>(
-        queryKeys.conversation(conversationId as string),
+        queryKeys.conversation(input.id),
         (previous) => (previous ? { ...previous, conversation: updated } : previous),
       );
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
@@ -109,11 +121,11 @@ export default function ChatPage() {
   });
 
   const thinkingMutation = useMutation({
-    mutationFn: (thinkingLevel: string) =>
-      updateConversation(conversationId as string, { thinkingLevel }),
-    onSuccess: ({ conversation: updated }) => {
+    mutationFn: (input: { id: string; thinkingLevel: string }) =>
+      updateConversation(input.id, { thinkingLevel: input.thinkingLevel }),
+    onSuccess: ({ conversation: updated }, input) => {
       queryClient.setQueryData<ConversationDetail>(
-        queryKeys.conversation(conversationId as string),
+        queryKeys.conversation(input.id),
         (previous) => (previous ? { ...previous, conversation: updated } : previous),
       );
     },
@@ -158,25 +170,45 @@ export default function ChatPage() {
   });
 
   const sendMutation = useMutation({
-    mutationFn: (input: { content: string; skill?: string }) =>
-      sendMessage(conversationId as string, input.content, input.skill),
-    onSuccess: ({ runId }) => {
-      setActiveRunId(runId);
+    mutationFn: (input: { targetConversationId: string; content: string; skill?: string }) =>
+      sendMessage(input.targetConversationId, input.content, input.skill),
+    onSuccess: ({ runId }, input) => {
+      setActiveTurn((prev) =>
+        prev && prev.conversationId === input.targetConversationId
+          ? { ...prev, runId }
+          : {
+              conversationId: input.targetConversationId,
+              runId,
+              optimisticText: input.content,
+              optimisticSkill: input.skill ?? null,
+            },
+      );
       setFailedSend(null);
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
     },
     onError: (error, input) => {
-      setOptimisticText(null);
-      setOptimisticSkill(null);
-      setFailedSend(input);
-      setSendError(errorMessage(error, "发送失败，请稍后重试"));
+      setActiveTurn((prev) =>
+        prev && prev.conversationId === input.targetConversationId ? null : prev,
+      );
+      if (conversationId === input.targetConversationId) {
+        setFailedSend({ content: input.content, skill: input.skill });
+        setSendError(errorMessage(error, "发送失败，请稍后重试"));
+      }
     },
   });
 
   const retryMutation = useMutation({
-    mutationFn: async ({ message, modelId }: { message: ChatMessage; modelId?: string }) => {
+    mutationFn: async ({
+      targetConversationId,
+      message,
+      modelId,
+    }: {
+      targetConversationId: string;
+      message: ChatMessage;
+      modelId?: string;
+    }) => {
       if (modelId) {
-        await updateConversation(conversationId as string, { modelId });
+        await updateConversation(targetConversationId, { modelId });
       }
       return retryRun(message.runId);
     },
@@ -184,19 +216,24 @@ export default function ChatPage() {
       setRetryingRunId(message.runId);
       setSendError(null);
     },
-    onSuccess: ({ runId }, { message }) => {
-      setOptimisticText(message.user.content);
-      setOptimisticSkill(message.user.skill ?? null);
-      setActiveRunId(runId);
+    onSuccess: ({ runId }, { targetConversationId, message }) => {
+      setActiveTurn({
+        conversationId: targetConversationId,
+        runId,
+        optimisticText: message.user.content,
+        optimisticSkill: message.user.skill ?? null,
+      });
       setRetryingRunId(null);
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.conversation(conversationId as string),
+        queryKey: queryKeys.conversation(targetConversationId),
       });
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
     },
-    onError: (error) => {
+    onError: (error, { targetConversationId }) => {
       setRetryingRunId(null);
-      setSendError(errorMessage(error, "重试失败，请稍后重试"));
+      if (conversationId === targetConversationId) {
+        setSendError(errorMessage(error, "重试失败，请稍后重试"));
+      }
     },
   });
 
@@ -227,16 +264,14 @@ export default function ChatPage() {
   );
 
   useEffect(() => {
-    if (!activeRunPersisted) return;
-    setActiveRunId(null);
-    setOptimisticText(null);
-    setOptimisticSkill(null);
-  }, [activeRunPersisted]);
+    if (!activeRunPersisted || !conversationId) return;
+    setActiveTurn((prev) => (prev && prev.conversationId === conversationId ? null : prev));
+  }, [activeRunPersisted, conversationId]);
 
   useEffect(() => {
-    setActiveRunId(null);
-    setOptimisticText(null);
-    setOptimisticSkill(null);
+    setActiveTurn((prev) =>
+      prev && conversationId && prev.conversationId === conversationId ? prev : null,
+    );
     setSendError(null);
     setFailedSend(null);
   }, [conversationId]);
@@ -251,9 +286,12 @@ export default function ChatPage() {
         | null
     )?.pendingRun;
     if (!pending || !conversationId) return;
-    setActiveRunId(pending.runId);
-    setOptimisticText(pending.content);
-    setOptimisticSkill(pending.skill ?? null);
+    setActiveTurn({
+      conversationId,
+      runId: pending.runId,
+      optimisticText: pending.content,
+      optimisticSkill: pending.skill ?? null,
+    });
     navigate(location.pathname, { replace: true, state: null });
   }, [conversationId, location.pathname, location.state, navigate]);
 
@@ -276,15 +314,22 @@ export default function ChatPage() {
 
   // Reattach to a run that was still queued/running when the page was (re)loaded.
   useEffect(() => {
-    if (activeRunId || !activeRunFromServer) return;
+    if (activeRunId || !activeRunFromServer || !conversationId) return;
     const alreadyFinished = messages?.some(
       (message) =>
         message.runId === activeRunFromServer.id &&
         message.status !== "queued" &&
         message.status !== "running",
     );
-    if (!alreadyFinished) setActiveRunId(activeRunFromServer.id);
-  }, [activeRunId, activeRunFromServer, messages]);
+    if (!alreadyFinished) {
+      setActiveTurn({
+        conversationId,
+        runId: activeRunFromServer.id,
+        optimisticText: null,
+        optimisticSkill: null,
+      });
+    }
+  }, [activeRunId, activeRunFromServer, conversationId, messages]);
 
   const handleSend = async (content: string, skill?: string) => {
     if (!canUseChat) return;
@@ -308,14 +353,26 @@ export default function ChatPage() {
       return;
     }
     setSendError(null);
-    setOptimisticText(content);
-    setOptimisticSkill(skill ?? null);
-    await sendMutation.mutateAsync(skill ? { content, skill } : { content });
+    setActiveTurn({
+      conversationId,
+      runId: null,
+      optimisticText: content,
+      optimisticSkill: skill ?? null,
+    });
+    await sendMutation.mutateAsync(
+      skill
+        ? { targetConversationId: conversationId, content, skill }
+        : { targetConversationId: conversationId, content },
+    );
   };
 
   const handleRetry = (message: ChatMessage, modelId?: string) => {
-    if (!canUseChat) return;
-    retryMutation.mutate(modelId ? { message, modelId } : { message });
+    if (!canUseChat || !conversationId) return;
+    retryMutation.mutate(
+      modelId
+        ? { targetConversationId: conversationId, message, modelId }
+        : { targetConversationId: conversationId, message },
+    );
   };
 
   const handleExample = canUseChat
@@ -327,8 +384,11 @@ export default function ChatPage() {
     return <PageSpinner />;
   }
 
+  const sendingForCurrent =
+    sendMutation.isPending && sendMutation.variables?.targetConversationId === conversationId;
+  const startingNew = !conversationId && startMutation.isPending;
   const showStream = !activeRunPersisted && (activeRunId !== null || optimisticText !== null);
-  const active = sendMutation.isPending || startMutation.isPending || stream.active;
+  const active = sendingForCurrent || startingNew || stream.active;
   const models = modelsQuery.data;
   const modelCount = models?.models.length ?? 0;
   const modelsStatus: ModelPickerStatus = modelsQuery.isPending
@@ -396,8 +456,8 @@ export default function ChatPage() {
   if (!conversationId) {
     content = (
       <MessageList
-        key={conversationId ?? "new"}
-        conversationId={conversationId ?? null}
+        key="messages-new"
+        conversationId={null}
         messages={[]}
         stream={stream.state}
         showStream={false}
@@ -443,8 +503,8 @@ export default function ChatPage() {
   } else {
     content = (
       <MessageList
-        key={conversationId ?? "new"}
-        conversationId={conversationId ?? null}
+        key={`messages-${conversationId}`}
+        conversationId={conversationId}
         messages={messages ?? []}
         artifacts={conversationQuery.data?.artifacts ?? []}
         stream={stream.state}
@@ -535,7 +595,7 @@ export default function ChatPage() {
           </div>
         ) : null}
         <Composer
-          key={conversationId ?? "new"}
+          key={`composer-${conversationId ?? "new"}`}
           conversationReady={
             conversationId
               ? Boolean(conversation)
@@ -557,9 +617,15 @@ export default function ChatPage() {
           skills={canUseSkills ? skillsQuery.data?.skills ?? [] : []}
           readOnlyReason={canUseChat ? undefined : "当前角色没有对话权限，请联系管理员"}
           contextUsage={contextUsage}
-          onModelChange={(id) => (conversationId ? modelMutation.mutate(id) : setDraftModelId(id))}
+          onModelChange={(id) =>
+            conversationId
+              ? modelMutation.mutate({ id: conversationId, modelId: id })
+              : setDraftModelId(id)
+          }
           onThinkingChange={(level) =>
-            conversationId ? thinkingMutation.mutate(level) : setDraftThinkingLevel(level)
+            conversationId
+              ? thinkingMutation.mutate({ id: conversationId, thinkingLevel: level })
+              : setDraftThinkingLevel(level)
           }
           onSend={handleSend}
           onStop={stream.stop}

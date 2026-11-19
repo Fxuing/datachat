@@ -201,4 +201,66 @@ describe("ChatPage permission gates", () => {
       "/api/artifacts/art-1/download?format=csv",
     );
   });
+
+  it("switches conversations without duplicate React key warnings and resets composer draft", async () => {
+    const conversation2: Conversation = {
+      ...conversation,
+      id: "c-2",
+      title: "第二会话",
+    };
+    const detail2: ConversationDetail = {
+      conversation: conversation2,
+      messages: [
+        {
+          ...message,
+          runId: "run-2",
+          user: { content: "第二个问题" },
+          assistant: { content: "第二个回答" },
+          results: [],
+        },
+      ],
+      artifacts: [],
+      activeRun: null,
+    };
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/auth/me") {
+        return jsonResponse({ user, permissions: FUNCTIONAL_PERMISSIONS, roles: [] });
+      }
+      if (url === "/api/conversations") {
+        return jsonResponse({ items: [conversation, conversation2], nextCursor: null });
+      }
+      if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
+      if (url === "/api/models") {
+        return jsonResponse({ configured: false, models: [], defaultId: null });
+      }
+      if (url === "/api/notifications") return jsonResponse({ notifications: [], unread: 0 });
+      if (url === "/api/conversations/c-1") return jsonResponse(detail);
+      if (url === "/api/conversations/c-2") return jsonResponse(detail2);
+      if (url === "/api/conversations/c-1/skills" || url === "/api/conversations/c-2/skills") {
+        return jsonResponse({ skills: [] });
+      }
+      throw new Error(`unexpected request: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const browser = userEvent.setup();
+    renderChatPage();
+
+    expect(await screen.findByText("共 1 行")).toBeInTheDocument();
+    const composer = screen.getByRole("textbox", { name: "输入问题" });
+    await browser.type(composer, "未发送的草稿");
+    expect(composer).toHaveValue("未发送的草稿");
+
+    await browser.click(await screen.findByRole("button", { name: /第二会话/ }));
+
+    expect(await screen.findByText("第二个回答")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "输入问题" })).toHaveValue("");
+    const duplicateKeyCalls = errorSpy.mock.calls.filter((args) =>
+      args.some((arg) => typeof arg === "string" && arg.includes("same key")),
+    );
+    expect(duplicateKeyCalls).toEqual([]);
+    errorSpy.mockRestore();
+  });
 });

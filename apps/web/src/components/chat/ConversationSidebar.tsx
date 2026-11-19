@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useInfiniteQuery,
   useMutation,
@@ -63,7 +63,19 @@ export function ConversationSidebar({ activeId, datasources }: ConversationSideb
   const datasourceNames = new Map(
     (datasources ?? cachedDatasources).map((item) => [item.id, item.name]),
   );
-  const conversations = conversationsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const conversations = useMemo(() => {
+    const pages = conversationsQuery.data?.pages ?? [];
+    const seen = new Set<string>();
+    const list: Conversation[] = [];
+    for (const page of pages) {
+      for (const item of page.items) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        list.push(item);
+      }
+    }
+    return list;
+  }, [conversationsQuery.data?.pages]);
 
   useEffect(() => {
     if (debounceRef.current !== null) {
