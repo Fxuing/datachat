@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, Eye, EyeOff, Lock, User } from "lucide-react";
 import { ApiError, fetchMe, login } from "../lib/api";
 import { queryKeys } from "../lib/query";
+import { useTheme } from "../lib/theme";
 import { BrandMark } from "../components/BrandMark";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { Button } from "../components/ui/button";
@@ -82,9 +83,13 @@ const highlights = [
   { Icon: ShieldCheckIcon, title: "只读安全可控", body: "权限审计不出内网" },
 ];
 
+const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { theme } = useTheme();
+  const dark = theme === "dark";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -122,7 +127,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen w-full overflow-hidden bg-gradient-to-br from-slate-50 via-indigo-50/40 to-sky-50 dark:from-canvas dark:via-canvas dark:to-canvas lg:bg-none">
+    <div className="relative flex min-h-screen w-full overflow-hidden bg-gradient-to-br from-slate-50 via-indigo-50/40 to-sky-50 dark:from-canvas dark:via-canvas dark:to-canvas lg:bg-[linear-gradient(108deg,#0c1e4a_0%,#122b66_56%,#eef4ff_56.5%,#f8fafc_100%)] dark:lg:bg-[linear-gradient(108deg,#0c1e4a_0%,#122b66_56%,#0b1120_56.5%,#0b1120_100%)]">
       {/* Desktop full-bleed split artwork with hologram aligned to the floor stage */}
       <div
         aria-hidden="true"
@@ -135,27 +140,54 @@ export default function LoginPage() {
             aspectRatio: "2730 / 1536",
           }}
         >
-          <img
-            src="/login-bg.jpg"
-            alt=""
-            draggable={false}
-            className="h-full w-full select-none object-cover"
-          />
-          <img
-            src="/login-hologram.svg"
-            alt=""
-            draggable={false}
-            className="pointer-events-none absolute select-none"
-            style={{
-              left: "46.7%",
-              top: "35.2%",
-              width: "33.5%",
-              transform: "translateX(-50%)",
-            }}
-          />
+          {/* Both light and dark backdrops stay mounted on desktop so toggling
+              themes never flashes while decoding; the global View Transition
+              cross-fades the page, with an opacity transition fallback. */}
+          <picture className="absolute inset-0 block">
+            <source media="(min-width: 1024px)" srcSet="/login-bg.webp" type="image/webp" />
+            <img
+              src={TRANSPARENT_PIXEL}
+              alt=""
+              draggable={false}
+              fetchPriority={dark ? "low" : "high"}
+              decoding="async"
+              className="h-full w-full select-none object-cover"
+            />
+          </picture>
+          <div
+            data-testid="login-bg-dark-layer"
+            data-revealed={dark ? "true" : "false"}
+            className="absolute inset-0 opacity-0 transition-opacity duration-300 data-[revealed=true]:opacity-100 motion-reduce:transition-none"
+          >
+            <picture>
+              <source media="(min-width: 1024px)" srcSet="/login-bg-dark.webp" type="image/webp" />
+              <img
+                src={TRANSPARENT_PIXEL}
+                alt=""
+                draggable={false}
+                fetchPriority={dark ? "high" : "low"}
+                decoding="async"
+                className="h-full w-full select-none object-cover"
+              />
+            </picture>
+          </div>
+          <picture>
+            <source media="(min-width: 1024px)" srcSet="/login-hologram.svg" type="image/svg+xml" />
+            <img
+              src={TRANSPARENT_PIXEL}
+              alt=""
+              draggable={false}
+              decoding="async"
+              className="pointer-events-none absolute select-none"
+              style={{
+                left: "46.7%",
+                top: "35.2%",
+                width: "33.5%",
+                transform: "translateX(-50%)",
+              }}
+            />
+          </picture>
         </div>
-        {/* Keep dark theme readable on the light right panel without altering the hero left */}
-        <div className="absolute inset-y-0 left-[55%] right-0 bg-gradient-to-l from-slate-950/85 via-slate-950/65 to-transparent opacity-0 transition-opacity dark:opacity-100" />
       </div>
 
       <div className="relative z-10 grid min-h-screen w-full lg:grid-cols-[63%_37%]">
@@ -226,7 +258,7 @@ export default function LoginPage() {
             <ThemeToggle />
           </div>
 
-          <div className="w-full max-w-[clamp(340px,20.85vw,440px)] animate-fade-in rounded-2xl border border-white/80 bg-white/95 p-8 shadow-[0_24px_64px_-16px_rgba(30,58,138,0.18)] backdrop-blur-md dark:border-line dark:bg-surface/95 dark:shadow-2xl sm:p-9">
+          <div className="w-full max-w-[clamp(340px,20.85vw,440px)] animate-fade-in rounded-2xl border border-white/80 bg-white/95 p-8 shadow-[0_24px_64px_-16px_rgba(30,58,138,0.18)] backdrop-blur-md transition-[background-color,border-color,color,box-shadow] duration-500 dark:border-white/10 dark:bg-surface/95 dark:shadow-[0_24px_64px_-16px_rgba(2,6,23,0.75)] sm:p-9">
             <div className="flex flex-col items-center text-center">
               <BrandMark size={52} className="rounded-2xl shadow-md shadow-indigo-500/20" />
               <h2 className="mt-4 text-2xl font-bold tracking-tight text-ink">DataChat</h2>
@@ -249,7 +281,10 @@ export default function LoginPage() {
                     autoComplete="username"
                     autoFocus
                     value={username}
-                    onChange={(event) => setUsername(event.target.value)}
+                    onChange={(event) => {
+                      setUsername(event.target.value);
+                      if (validationError) setValidationError(null);
+                    }}
                     placeholder="请输入用户名"
                     disabled={mutation.isPending}
                     className="h-11 rounded-xl border-line/90 bg-subtle/40 pl-10 pr-3.5 transition-colors focus-visible:bg-surface dark:bg-subtle/60"
@@ -272,7 +307,10 @@ export default function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
                     value={password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      if (validationError) setValidationError(null);
+                    }}
                     placeholder="请输入密码"
                     disabled={mutation.isPending}
                     className="h-11 rounded-xl border-line/90 bg-subtle/40 pl-10 pr-10 transition-colors focus-visible:bg-surface dark:bg-subtle/60"

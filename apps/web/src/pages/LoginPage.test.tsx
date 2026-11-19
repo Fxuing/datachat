@@ -91,6 +91,9 @@ describe("LoginPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("请输入用户名和密码");
     expect(fetchMock).not.toHaveBeenCalled();
+
+    await browser.type(screen.getByLabelText("用户名"), "a");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("toggles password visibility", async () => {
@@ -106,5 +109,26 @@ describe("LoginPage", () => {
 
     await browser.click(screen.getByRole("button", { name: "隐藏密码" }));
     expect(passwordInput).toHaveAttribute("type", "password");
+  });
+
+  it("keeps both desktop backdrops mounted and reveals the dark curtain on theme toggle", async () => {
+    mockFetch(() => jsonResponse({ user, permissions: [], roles: [] }));
+    const browser = userEvent.setup();
+    const { container } = renderLoginPage();
+
+    const sources = Array.from(container.querySelectorAll('source[type="image/webp"]')).map((el) =>
+      el.getAttribute("srcset"),
+    );
+    expect(sources).toEqual(["/login-bg.webp", "/login-bg-dark.webp"]);
+
+    const darkLayer = screen.getByTestId("login-bg-dark-layer");
+    const initial = darkLayer.getAttribute("data-revealed");
+    expect(initial).toMatch(/^(true|false)$/);
+
+    await browser.click(screen.getByRole("button", { name: /切换到(深|浅)色主题/ }));
+    expect(darkLayer.getAttribute("data-revealed")).toBe(initial === "true" ? "false" : "true");
+
+    // Restore initial theme so later tests are unaffected.
+    await browser.click(screen.getByRole("button", { name: /切换到(深|浅)色主题/ }));
   });
 });

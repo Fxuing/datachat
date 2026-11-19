@@ -291,3 +291,35 @@
     opacity: 1;
   }
 }
+
+/* Global silky cross-fade via View Transitions API when switching themes anywhere in the app.
+   Old snapshot stays opaque underneath while the new snapshot dissolves in on top (no opacity dip). */
+:root[data-theme-transition="fade"] *,
+:root[data-theme-transition="fade"] *::before,
+:root[data-theme-transition="fade"] *::after {
+  transition: none !important;
+}
+
+:root[data-theme-transition="fade"]::view-transition-old(root),
+:root[data-theme-transition="fade"]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+:root[data-theme-transition="fade"]::view-transition-old(root) {
+  z-index: 1;
+}
+
+:root[data-theme-transition="fade"]::view-transition-new(root) {
+  z-index: 2;
+  animation: theme-fade-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes theme-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

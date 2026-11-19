@@ -8,6 +8,10 @@
       <feGaussianBlur stdDeviation="2.0" result="blur"/>
       <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
+    <filter id="glow-chart" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="1.6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
     <filter id="glow-strong" x="-70%" y="-70%" width="240%" height="240%">
       <feGaussianBlur stdDeviation="10" result="b1"/>
       <feGaussianBlur stdDeviation="3" result="b2"/>
@@ -77,9 +81,36 @@
       <stop offset="100%" stop-color="#46d2ff" stop-opacity="0.26"/>
     </linearGradient>
 
+    <!-- Diagonal glass reflection sheen + bottom projector light bloom -->
+    <linearGradient id="glass-sheen" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#ccf9ff" stop-opacity="0.14"/>
+      <stop offset="32%" stop-color="#6ce4ff" stop-opacity="0.02"/>
+      <stop offset="68%" stop-color="#53d6ff" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#c4f8ff" stop-opacity="0.18"/>
+    </linearGradient>
+
+    <radialGradient id="bottom-bloom" cx="50%" cy="100%" r="58%">
+      <stop offset="0%" stop-color="#a8f7ff" stop-opacity="0.42"/>
+      <stop offset="45%" stop-color="#3bc8ff" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#1966eb" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="node-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="35%" stop-color="#7ef0ff" stop-opacity="0.65"/>
+      <stop offset="100%" stop-color="#299eff" stop-opacity="0"/>
+    </radialGradient>
+
     <linearGradient id="glass-sub" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4fd5ff" stop-opacity="0.20"/>
-      <stop offset="100%" stop-color="#174ec4" stop-opacity="0.18"/>
+      <stop offset="0%" stop-color="#4fd5ff" stop-opacity="0.22"/>
+      <stop offset="55%" stop-color="#1a57d4" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#7beeff" stop-opacity="0.28"/>
+    </linearGradient>
+
+    <linearGradient id="card-sheen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8ef2ff" stop-opacity="0.24"/>
+      <stop offset="55%" stop-color="#2880f2" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#b8f8ff" stop-opacity="0.28"/>
     </linearGradient>
 
     <linearGradient id="glass-border" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -98,14 +129,16 @@
     </linearGradient>
 
     <linearGradient id="area-fill" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#4fe4ff" stop-opacity="0.38"/>
+      <stop offset="0%" stop-color="#69ecff" stop-opacity="0.52"/>
+      <stop offset="55%" stop-color="#2ea6ff" stop-opacity="0.20"/>
       <stop offset="100%" stop-color="#1657db" stop-opacity="0.02"/>
     </linearGradient>
 
     <linearGradient id="bar-fill" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#cffcff" stop-opacity="0.95"/>
-      <stop offset="45%" stop-color="#55d2ff" stop-opacity="0.78"/>
-      <stop offset="100%" stop-color="#1d64ea" stop-opacity="0.32"/>
+      <stop offset="0%" stop-color="#ecfeff" stop-opacity="0.98"/>
+      <stop offset="28%" stop-color="#85ebff" stop-opacity="0.88"/>
+      <stop offset="70%" stop-color="#3caeff" stop-opacity="0.58"/>
+      <stop offset="100%" stop-color="#1d64ea" stop-opacity="0.28"/>
     </linearGradient>
 
     <linearGradient id="cube-a" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -188,8 +221,10 @@
 
   <!-- 4. MAIN HOLOGRAPHIC DASHBOARD PANEL -->
   <g id="main-panel" class="holo-float">
-    <!-- Frosted Glass Fill -->
+    <!-- Frosted Glass Fill + Specular Sheen + Upward Emitter Bloom -->
     <path d="M 86.87 90.62 L 327.06 22.53 Q 336.0 20.0 336.0 28.06 L 336.0 235.94 Q 336.0 244.0 327.06 244.42 L 86.87 255.77 Q 82.0 256.0 82.0 250.1 L 82.0 97.9 Q 82.0 92.0 86.87 90.62 Z" fill="url(#glass-main)"/>
+    <path d="M 86.87 90.62 L 327.06 22.53 Q 336.0 20.0 336.0 28.06 L 336.0 235.94 Q 336.0 244.0 327.06 244.42 L 86.87 255.77 Q 82.0 256.0 82.0 250.1 L 82.0 97.9 Q 82.0 92.0 86.87 90.62 Z" fill="url(#glass-sheen)"/>
+    <path d="M 86.87 90.62 L 327.06 22.53 Q 336.0 20.0 336.0 28.06 L 336.0 235.94 Q 336.0 244.0 327.06 244.42 L 86.87 255.77 Q 82.0 256.0 82.0 250.1 L 82.0 97.9 Q 82.0 92.0 86.87 90.62 Z" fill="url(#bottom-bloom)"/>
 
     <!-- Filled 3D Glass Slab Bevel ONLY on right side (clean, realistic thickness) -->
     <path d="M 327.06 22.53 Q 336.0 20.0 336.0 28.06 L 336.0 235.94 Q 336.0 244.0 327.06 244.42 L 331.55 243.92 Q 340.5 243.5 340.5 235.47 L 340.5 28.53 Q 340.5 20.5 331.55 22.99 Z" fill="url(#bevel-slab)"/>
@@ -201,7 +236,7 @@
     <path d="M 82.0 229.76 L 82.0 250.1 Q 82.0 256.0 117.17 254.34" stroke="#9ef3ff" stroke-width="1.3" stroke-linecap="round" opacity="0.85"/>
 
     <!-- Top Header Pill Bar -->
-    <path d="M 94.49 97.14 L 235.51 58.9 Q 239.41 57.84 239.41 62.27 L 239.41 66.69 Q 239.41 71.12 235.51 72.12 L 94.49 108.16 Q 91.81 108.85 91.81 105.19 L 91.81 101.53 Q 91.81 97.87 94.49 97.14 Z" fill="#2b7ef0" fill-opacity="0.20" stroke="#85ebff" stroke-opacity="0.48" stroke-width="0.85"/>
+    <path d="M 94.49 97.14 L 235.51 58.9 Q 239.41 57.84 239.41 62.27 L 239.41 66.69 Q 239.41 71.12 235.51 72.12 L 94.49 108.16 Q 91.81 108.85 91.81 105.19 L 91.81 101.53 Q 91.81 97.87 94.49 97.14 Z" fill="#2b7ef0" fill-opacity="0.22" stroke="#9cf3ff" stroke-opacity="0.55" stroke-width="0.85"/>
 
     <!-- Faint Horizontal Chart Grid Lines -->
     <g stroke="#7be7ff" stroke-opacity="0.16" stroke-width="0.7">
@@ -212,36 +247,36 @@
     </g>
 
     <!-- Chart Baseline Axis + Ticks -->
-    <line x1="92.38" y1="173.95" x2="317.3" y2="137.29" stroke="#8eeeff" stroke-opacity="0.42" stroke-width="0.9"/>
+    <line x1="92.38" y1="173.95" x2="317.3" y2="137.29" stroke="#8eeeff" stroke-opacity="0.46" stroke-width="0.9"/>
     <g stroke="#8eeeff" stroke-opacity="0.38" stroke-width="0.8">
       <line x1="95.27" y1="173.48" x2="95.27" y2="176.15"/><line x1="112.28" y1="170.71" x2="112.28" y2="173.44"/><line x1="130.12" y1="167.8" x2="130.12" y2="170.6"/><line x1="148.87" y1="164.74" x2="148.87" y2="167.62"/><line x1="168.59" y1="161.53" x2="168.59" y2="164.48"/><line x1="189.36" y1="158.14" x2="189.36" y2="161.17"/><line x1="211.27" y1="154.57" x2="211.27" y2="157.68"/><line x1="234.4" y1="150.8" x2="234.4" y2="154.0"/><line x1="258.87" y1="146.81" x2="258.87" y2="150.1"/><line x1="284.8" y1="142.58" x2="284.8" y2="145.98"/><line x1="312.32" y1="138.1" x2="312.32" y2="141.59"/>
     </g>
 
-    <!-- Line Chart Area Glow + Crisp Polyline + Nodes -->
+    <!-- Line Chart Area Glow + Crisp Polyline + Radial Bloom Nodes -->
     <path d="M 94.3 173.63 L 94.3 163.95 L 109.45 147.98 L 123.8 150.05 L 141.57 129.43 L 162.52 112.18 L 183.94 118.02 L 209.18 93.21 L 209.18 154.91 Z" fill="url(#area-fill)"/>
-    <polyline points="94.3,163.95 109.45,147.98 123.8,150.05 141.57,129.43 162.52,112.18 183.94,118.02 209.18,93.21" stroke="#52e3ff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow-rim)" opacity="0.8"/>
+    <polyline points="94.3,163.95 109.45,147.98 123.8,150.05 141.57,129.43 162.52,112.18 183.94,118.02 209.18,93.21" stroke="#52e3ff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow-rim)" opacity="0.85"/>
     <polyline points="94.3,163.95 109.45,147.98 123.8,150.05 141.57,129.43 162.52,112.18 183.94,118.02 209.18,93.21" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     <polyline points="94.3,163.95 109.45,147.98 123.8,150.05 141.57,129.43 162.52,112.18 183.94,118.02 209.18,93.21" class="line-flow" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/>
 
-    <g filter="url(#glow-rim)">
-      <circle cx="94.3" cy="163.95" r="2.2" fill="#ffffff" stroke="#53e4ff" stroke-width="1.1"/><circle cx="109.45" cy="147.98" r="2.2" fill="#ffffff" stroke="#53e4ff" stroke-width="1.1"/><circle cx="123.8" cy="150.05" r="2.2" fill="#ffffff" stroke="#53e4ff" stroke-width="1.1"/><circle cx="141.57" cy="129.43" r="2.2" fill="#ffffff" stroke="#53e4ff" stroke-width="1.1"/><circle cx="162.52" cy="112.18" r="2.9" fill="#ffffff" stroke="#53e4ff" stroke-width="1.1"/><circle cx="183.94" cy="118.02" r="2.2" fill="#ffffff" stroke="#53e4ff" stroke-width="1.1"/><circle cx="209.18" cy="93.21" r="2.9" fill="#ffffff" stroke="#53e4ff" stroke-width="1.1"/>
+    <g>
+      <circle cx="94.3" cy="163.95" r="5.2" fill="url(#node-halo)"/><circle cx="94.3" cy="163.95" r="2.0" fill="#ffffff"/><circle cx="109.45" cy="147.98" r="5.2" fill="url(#node-halo)"/><circle cx="109.45" cy="147.98" r="2.0" fill="#ffffff"/><circle cx="123.8" cy="150.05" r="5.2" fill="url(#node-halo)"/><circle cx="123.8" cy="150.05" r="2.0" fill="#ffffff"/><circle cx="141.57" cy="129.43" r="5.2" fill="url(#node-halo)"/><circle cx="141.57" cy="129.43" r="2.0" fill="#ffffff"/><circle cx="162.52" cy="112.18" r="7.5" fill="url(#node-halo)"/><circle cx="162.52" cy="112.18" r="2.7" fill="#ffffff"/><circle cx="183.94" cy="118.02" r="5.2" fill="url(#node-halo)"/><circle cx="183.94" cy="118.02" r="2.0" fill="#ffffff"/><circle cx="209.18" cy="93.21" r="7.5" fill="url(#node-halo)"/><circle cx="209.18" cy="93.21" r="2.7" fill="#ffffff"/>
     </g>
 
-    <!-- Bar Chart (5 bars) -->
-    <g>
-      <path d="M 216.27 134.18 L 228.63 131.88 L 228.63 151.74 L 216.27 153.76 Z" fill="url(#bar-fill)"/><line x1="216.27" y1="134.18" x2="228.63" y2="131.88" stroke="#ffffff" stroke-width="1.3"/><path d="M 233.85 118.91 L 246.75 116.32 L 246.75 148.79 L 233.85 150.89 Z" fill="url(#bar-fill)"/><line x1="233.85" y1="118.91" x2="246.75" y2="116.32" stroke="#ffffff" stroke-width="1.3"/><path d="M 252.19 92.77 L 265.66 89.71 L 265.66 145.71 L 252.19 147.9 Z" fill="url(#bar-fill)"/><line x1="252.19" y1="92.77" x2="265.66" y2="89.71" stroke="#ffffff" stroke-width="1.3"/><path d="M 271.35 96.77 L 285.42 93.71 L 285.42 142.48 L 271.35 144.78 Z" fill="url(#bar-fill)"/><line x1="271.35" y1="96.77" x2="285.42" y2="93.71" stroke="#ffffff" stroke-width="1.3"/><path d="M 291.37 62.54 L 306.1 58.85 L 306.1 139.11 L 291.37 141.51 Z" fill="url(#bar-fill)"/><line x1="291.37" y1="62.54" x2="306.1" y2="58.85" stroke="#ffffff" stroke-width="1.3"/>
+    <!-- Bar Chart (5 bars with soft luminous glow + bright top specular cap) -->
+    <g filter="url(#glow-chart)">
+      <path d="M 216.27 134.18 L 228.63 131.88 L 228.63 151.74 L 216.27 153.76 Z" fill="url(#bar-fill)"/><line x1="216.27" y1="134.18" x2="228.63" y2="131.88" stroke="#ffffff" stroke-width="1.6"/><path d="M 233.85 118.91 L 246.75 116.32 L 246.75 148.79 L 233.85 150.89 Z" fill="url(#bar-fill)"/><line x1="233.85" y1="118.91" x2="246.75" y2="116.32" stroke="#ffffff" stroke-width="1.6"/><path d="M 252.19 92.77 L 265.66 89.71 L 265.66 145.71 L 252.19 147.9 Z" fill="url(#bar-fill)"/><line x1="252.19" y1="92.77" x2="265.66" y2="89.71" stroke="#ffffff" stroke-width="1.6"/><path d="M 271.35 96.77 L 285.42 93.71 L 285.42 142.48 L 271.35 144.78 Z" fill="url(#bar-fill)"/><line x1="271.35" y1="96.77" x2="285.42" y2="93.71" stroke="#ffffff" stroke-width="1.6"/><path d="M 291.37 62.54 L 306.1 58.85 L 306.1 139.11 L 291.37 141.51 Z" fill="url(#bar-fill)"/><line x1="291.37" y1="62.54" x2="306.1" y2="58.85" stroke="#ffffff" stroke-width="1.6"/>
     </g>
 
-    <!-- Bottom-Left 6-Segment Perspective Donut Chart (crisp edges) -->
-    <g>
+    <!-- Bottom-Left 6-Segment Perspective Donut Chart (soft light-projected bloom) -->
+    <g filter="url(#glow-chart)">
       <path d="M 124.43 180.91 L 126.6 180.68 L 128.77 180.63 L 130.93 180.75 L 133.07 181.06 L 135.16 181.55 L 137.19 182.22 L 139.16 183.06 L 141.04 184.08 L 142.82 185.26 L 144.5 186.61 L 146.06 188.1 L 147.49 189.74 L 148.77 191.5 L 149.9 193.4 L 150.88 195.39 L 151.68 197.49 L 137.81 203.64 L 137.42 202.6 L 136.95 201.61 L 136.4 200.66 L 135.78 199.78 L 135.09 198.96 L 134.33 198.21 L 133.51 197.52 L 132.64 196.92 L 131.72 196.4 L 130.75 195.96 L 129.75 195.61 L 128.72 195.34 L 127.67 195.17 L 126.59 195.08 L 125.51 195.08 L 124.43 195.18 Z" fill="#7ceaff" fill-opacity="0.78"/><path d="M 152.26 199.42 L 152.7 201.47 L 152.99 203.56 L 153.13 205.69 L 153.11 207.84 L 152.94 210.0 L 152.62 212.15 L 152.14 214.29 L 151.52 216.4 L 150.75 218.47 L 149.85 220.49 L 148.8 222.44 L 147.64 224.32 L 146.35 226.12 L 144.95 227.82 L 143.44 229.42 L 141.84 230.91 L 133.03 220.21 L 133.81 219.46 L 134.55 218.66 L 135.23 217.81 L 135.85 216.91 L 136.42 215.97 L 136.92 215.0 L 137.36 214.0 L 137.73 212.98 L 138.03 211.93 L 138.26 210.88 L 138.41 209.81 L 138.5 208.75 L 138.5 207.69 L 138.44 206.64 L 138.3 205.61 L 138.08 204.59 Z" fill="#ccfaff" fill-opacity="0.94"/><path d="M 140.21 232.24 L 138.56 233.41 L 136.86 234.47 L 135.1 235.41 L 133.3 236.22 L 131.47 236.91 L 129.62 237.47 L 127.75 237.9 L 125.87 238.19 L 124.0 238.36 L 122.14 238.39 L 120.3 238.29 L 118.49 238.07 L 116.72 237.71 L 114.98 237.23 L 113.3 236.63 L 111.67 235.9 L 117.99 222.95 L 118.82 223.3 L 119.67 223.59 L 120.55 223.82 L 121.45 223.98 L 122.36 224.08 L 123.28 224.11 L 124.21 224.08 L 125.15 223.98 L 126.08 223.81 L 127.01 223.58 L 127.93 223.29 L 128.84 222.93 L 129.72 222.5 L 130.59 222.02 L 131.43 221.48 L 132.24 220.88 Z" fill="#49c8ff" fill-opacity="0.86"/><path d="M 110.06 235.04 L 108.58 234.09 L 107.17 233.03 L 105.84 231.88 L 104.6 230.63 L 103.45 229.29 L 102.4 227.87 L 101.44 226.37 L 100.6 224.8 L 99.86 223.16 L 99.22 221.47 L 98.71 219.73 L 98.3 217.95 L 98.01 216.13 L 97.84 214.29 L 97.79 212.42 L 97.85 210.55 L 110.89 210.09 L 110.86 211.05 L 110.89 212.0 L 110.98 212.95 L 111.13 213.88 L 111.34 214.79 L 111.61 215.68 L 111.93 216.54 L 112.31 217.37 L 112.75 218.17 L 113.24 218.93 L 113.79 219.65 L 114.38 220.33 L 115.01 220.95 L 115.69 221.53 L 116.42 222.06 L 117.17 222.53 Z" fill="#2378ff" fill-opacity="0.86"/><path d="M 98.04 208.6 L 98.27 207.09 L 98.58 205.58 L 98.96 204.08 L 99.42 202.59 L 99.94 201.13 L 100.54 199.68 L 101.21 198.26 L 101.95 196.87 L 102.76 195.52 L 103.63 194.2 L 104.56 192.92 L 105.55 191.69 L 106.6 190.51 L 107.7 189.38 L 108.86 188.3 L 110.06 187.29 L 117.17 198.27 L 116.56 198.78 L 115.97 199.32 L 115.4 199.88 L 114.87 200.48 L 114.36 201.1 L 113.88 201.75 L 113.43 202.41 L 113.02 203.1 L 112.63 203.81 L 112.29 204.53 L 111.98 205.27 L 111.7 206.02 L 111.47 206.78 L 111.27 207.54 L 111.11 208.31 L 110.99 209.09 Z" fill="#62d6ff" fill-opacity="0.72"/><path d="M 111.67 186.08 L 112.3 185.65 L 112.93 185.24 L 113.57 184.84 L 114.22 184.46 L 114.87 184.1 L 115.54 183.75 L 116.21 183.42 L 116.89 183.11 L 117.57 182.82 L 118.26 182.54 L 118.96 182.28 L 119.66 182.04 L 120.36 181.82 L 121.07 181.61 L 121.79 181.42 L 122.5 181.26 L 123.46 195.33 L 123.1 195.41 L 122.75 195.5 L 122.39 195.59 L 122.03 195.7 L 121.68 195.81 L 121.33 195.94 L 120.98 196.07 L 120.64 196.21 L 120.29 196.37 L 119.95 196.53 L 119.62 196.7 L 119.28 196.87 L 118.96 197.06 L 118.63 197.26 L 118.31 197.46 L 117.99 197.67 Z" fill="#9df2ff" fill-opacity="0.88"/>
     </g>
 
     <!-- Bottom-Center Data List Card -->
     <g>
-      <path d="M 168.12 170.82 L 253.06 157.98 Q 259.46 157.01 259.46 163.19 L 259.46 222.91 Q 259.46 229.08 253.06 229.52 L 168.12 235.34 Q 162.99 235.69 162.99 230.2 L 162.99 177.09 Q 162.99 171.6 168.12 170.82 Z" fill="#1b65e0" fill-opacity="0.20" stroke="#85ebff" stroke-opacity="0.52" stroke-width="0.9"/>
-      <path d="M 170.48 178.78 L 205.81 173.82 L 205.81 179.04 L 170.48 183.78 Z" fill="#9cf3ff" fill-opacity="0.45"/>
-      <path d="M 170.48 191.73 L 176.19 191.02 L 176.19 198.47 L 170.48 199.12 Z" fill="#9df5ff" fill-opacity="0.82"/><path d="M 180.05 191.29 L 211.0 187.48 L 211.0 190.98 L 180.05 194.66 Z" fill="#c4f9ff" fill-opacity="0.80"/><path d="M 180.05 196.53 L 240.81 189.45 L 240.81 192.07 L 180.05 198.96 Z" fill="#64c8ff" fill-opacity="0.42"/><path d="M 170.48 206.52 L 176.19 205.92 L 176.19 213.37 L 170.48 213.92 Z" fill="#9df5ff" fill-opacity="0.82"/><path d="M 180.05 206.26 L 211.0 203.04 L 211.0 206.54 L 180.05 209.63 Z" fill="#c4f9ff" fill-opacity="0.80"/><path d="M 180.05 211.5 L 240.81 205.57 L 240.81 208.19 L 180.05 213.94 Z" fill="#64c8ff" fill-opacity="0.42"/><path d="M 170.48 221.31 L 176.19 220.82 L 176.19 228.27 L 170.48 228.71 Z" fill="#9df5ff" fill-opacity="0.82"/><path d="M 180.05 221.23 L 211.0 218.6 L 211.0 222.1 L 180.05 224.6 Z" fill="#c4f9ff" fill-opacity="0.80"/><path d="M 180.05 226.48 L 240.81 221.7 L 240.81 224.32 L 180.05 228.91 Z" fill="#64c8ff" fill-opacity="0.42"/>
+      <path d="M 168.12 170.82 L 253.06 157.98 Q 259.46 157.01 259.46 163.19 L 259.46 222.91 Q 259.46 229.08 253.06 229.52 L 168.12 235.34 Q 162.99 235.69 162.99 230.2 L 162.99 177.09 Q 162.99 171.6 168.12 170.82 Z" fill="url(#card-sheen)" stroke="#9cf3ff" stroke-opacity="0.58" stroke-width="0.95"/>
+      <path d="M 170.48 178.78 L 205.81 173.82 L 205.81 179.04 L 170.48 183.78 Z" fill="#baf7ff" fill-opacity="0.52"/>
+      <path d="M 170.48 191.73 L 176.19 191.02 L 176.19 198.47 L 170.48 199.12 Z" fill="#aef7ff" fill-opacity="0.88"/><path d="M 180.05 191.29 L 211.0 187.48 L 211.0 190.98 L 180.05 194.66 Z" fill="#d6fbff" fill-opacity="0.86"/><path d="M 180.05 196.53 L 240.81 189.45 L 240.81 192.07 L 180.05 198.96 Z" fill="#70d2ff" fill-opacity="0.46"/><path d="M 170.48 206.52 L 176.19 205.92 L 176.19 213.37 L 170.48 213.92 Z" fill="#aef7ff" fill-opacity="0.88"/><path d="M 180.05 206.26 L 211.0 203.04 L 211.0 206.54 L 180.05 209.63 Z" fill="#d6fbff" fill-opacity="0.86"/><path d="M 180.05 211.5 L 240.81 205.57 L 240.81 208.19 L 180.05 213.94 Z" fill="#70d2ff" fill-opacity="0.46"/><path d="M 170.48 221.31 L 176.19 220.82 L 176.19 228.27 L 170.48 228.71 Z" fill="#aef7ff" fill-opacity="0.88"/><path d="M 180.05 221.23 L 211.0 218.6 L 211.0 222.1 L 180.05 224.6 Z" fill="#d6fbff" fill-opacity="0.86"/><path d="M 180.05 226.48 L 240.81 221.7 L 240.81 224.32 L 180.05 228.91 Z" fill="#70d2ff" fill-opacity="0.46"/>
     </g>
   </g>
 
@@ -251,9 +286,9 @@
     <path d="M 388.04 138.86 Q 394.0 138.0 394.0 144.24 L 394.0 235.76 Q 394.0 242.0 388.04 242.52 L 391.98 242.02 Q 398.0 241.5 398.0 235.29 L 398.0 144.21 Q 398.0 138.0 391.98 138.84 Z" fill="url(#bevel-slab)"/>
     <path d="M 391.98 138.84 Q 398.0 138.0 398.0 144.21 L 398.0 235.29 Q 398.0 241.5 391.98 242.02" stroke="#e6fcff" stroke-width="1.1" stroke-linecap="round" filter="url(#glow-rim)"/>
     <path d="M 261.11 157.26 L 388.04 138.86 Q 394.0 138.0 394.0 144.24 L 394.0 235.76 Q 394.0 242.0 388.04 242.52 L 261.11 253.56 Q 256.0 254.0 256.0 248.24 L 256.0 163.76 Q 256.0 158.0 261.11 157.26 Z" stroke="url(#glass-border)" stroke-width="1.05"/>
-    <path d="M 302.09 175.99 L 371.56 166.93 Q 376.24 166.32 376.24 171.26 L 376.24 220.07 Q 376.24 225.01 371.56 225.47 L 302.09 232.23 Q 297.79 232.65 297.79 227.93 L 297.79 181.27 Q 297.79 176.55 302.09 175.99 Z" fill="#2880f2" fill-opacity="0.22" stroke="#9cf3ff" stroke-opacity="0.52" stroke-width="0.9"/>
-    <path d="M 308.57 190.0 L 338.93 186.3 L 338.93 193.36 L 308.57 196.93 Z" fill="#bdf8ff" fill-opacity="0.72"/>
-    <path d="M 308.57 205.85 L 361.7 199.87 L 361.7 206.0 L 308.57 211.79 Z" fill="#64d2ff" fill-opacity="0.46"/>
+    <path d="M 302.09 175.99 L 371.56 166.93 Q 376.24 166.32 376.24 171.26 L 376.24 220.07 Q 376.24 225.01 371.56 225.47 L 302.09 232.23 Q 297.79 232.65 297.79 227.93 L 297.79 181.27 Q 297.79 176.55 302.09 175.99 Z" fill="url(#card-sheen)" stroke="#b0f5ff" stroke-opacity="0.62" stroke-width="0.95" filter="url(#glow-chart)"/>
+    <path d="M 308.57 190.0 L 338.93 186.3 L 338.93 193.36 L 308.57 196.93 Z" fill="#d4fcff" fill-opacity="0.78"/>
+    <path d="M 308.57 205.85 L 361.7 199.87 L 361.7 206.0 L 308.57 211.79 Z" fill="#78dcff" fill-opacity="0.52"/>
   </g>
 
   <!-- 6. FLOATING 3D CUBES & PARTICLES -->
