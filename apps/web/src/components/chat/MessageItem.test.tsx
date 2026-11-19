@@ -328,4 +328,15 @@ describe("MessageItem", () => {
     render(<MessageItem message={message()} />);
     expect(screen.getByText("本次回答失败，请重试。")).toBeInTheDocument();
   });
+
+  it("opens external markdown links in a new tab", () => {
+    render(
+      <MemoryRouter>
+        <MarkdownText content="参考 [文档](https://example.com/docs)" />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole("link", { name: "文档" });
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
 });

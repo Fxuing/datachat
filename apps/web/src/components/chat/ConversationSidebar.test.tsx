@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationSidebar } from "./ConversationSidebar";
 import type { Conversation } from "../../lib/api";
@@ -43,14 +43,17 @@ const conversations: Conversation[] = [
   },
 ];
 
-function renderSidebar() {
+function renderSidebar(initialEntry = "/chat/c1") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <ConversationSidebar />
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path="/chat" element={<div><p>新对话页</p><ConversationSidebar /></div>} />
+          <Route path="/chat/:id" element={<ConversationSidebar activeId="c1" />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -127,5 +130,75 @@ describe("ConversationSidebar filter", () => {
 
     expect(await screen.findByRole("button", { name: "新建对话" })).toBeInTheDocument();
     expect(await screen.findByText("订单分析")).toBeInTheDocument();
+  });
+});
+
+describe("ConversationSidebar pagination and actions", () => {
+  it("loads the next cursor page on demand", async () => {
+    mocks.listConversations
+      .mockResolvedValueOnce({ items: conversations, nextCursor: "1:c2" })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: "c3",
+            datasourceId: "ds1",
+            title: "历史会话3",
+            modelId: null,
+            thinkingLevel: "medium",
+            status: "active",
+            createdAt: 0,
+            updatedAt: 0,
+            lastMessageAt: 0,
+          },
+        ],
+        nextCursor: null,
+      });
+
+    renderSidebar();
+    expect(await screen.findByText("订单分析")).toBeInTheDocument();
+
+    const loadMore = screen.getByRole("button", { name: "加载更多" });
+    await userEvent.click(loadMore);
+
+    await waitFor(() =>
+      expect(mocks.listConversations).toHaveBeenLastCalledWith({ before: "1:c2" }),
+    );
+    expect(await screen.findByText("历史会话3")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
+  });
+
+  it("filters conversations automatically after typing", async () => {
+    renderSidebar();
+    await screen.findByText("订单分析");
+
+    await userEvent.click(screen.getByRole("button", { name: "筛选对话" }));
+    await userEvent.type(screen.getByPlaceholderText("筛选对话…"), "订单");
+
+    await waitFor(
+      () => expect(mocks.listConversations).toHaveBeenLastCalledWith({ q: "订单" }),
+      { timeout: 1_500 },
+    );
+  });
+
+  it("keeps the rename draft open when update fails", async () => {
+    mocks.updateConversation.mockRejectedValueOnce(new Error("boom"));
+    renderSidebar();
+    await screen.findByText("订单分析");
+
+    await userEvent.click(screen.getAllByRole("button", { name: "重命名会话" })[0]!);
+    const input = screen.getByLabelText("会话名称");
+    await userEvent.clear(input);
+    await userEvent.type(input, "保留草稿{enter}");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("重命名失败");
+    expect(screen.getByLabelText("会话名称")).toHaveValue("保留草稿");
+  });
+
+  it("navigates directly to /chat when clicking 新建对话", async () => {
+    renderSidebar("/chat/c1");
+    await screen.findByText("订单分析");
+
+    await userEvent.click(screen.getByRole("button", { name: "新建对话" }));
+    expect(await screen.findByText("新对话页")).toBeInTheDocument();
   });
 });

@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Share2 } from "lucide-react";
-import { AppShell } from "../components/AppShell";
+import { Share2, X } from "lucide-react";
+import { AppShell, type AppShellStatusIndicator } from "../components/AppShell";
 import { Composer } from "../components/chat/Composer";
 import { QuestionCard } from "../components/chat/QuestionCard";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
@@ -50,6 +50,8 @@ export default function ChatPage() {
   const [failedSend, setFailedSend] = useState<{ content: string; skill?: string } | null>(null);
   const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
   const [draftDatasourceId, setDraftDatasourceId] = useState<string | null>(null);
+  const [draftModelId, setDraftModelId] = useState<string | null>(null);
+  const [draftThinkingLevel, setDraftThinkingLevel] = useState<string>("off");
   const [shareOpen, setShareOpen] = useState(false);
   const location = useLocation();
 
@@ -118,9 +120,19 @@ export default function ChatPage() {
   });
 
   const startMutation = useMutation({
-    mutationFn: async (input: { content: string; datasourceId: string; skill?: string }) => {
+    mutationFn: async (input: {
+      content: string;
+      datasourceId: string;
+      skill?: string;
+      modelId?: string;
+      thinkingLevel?: string;
+    }) => {
       const { conversation: created } = await createConversation({
         datasourceId: input.datasourceId,
+        ...(input.modelId ? { modelId: input.modelId } : {}),
+        ...(input.thinkingLevel && input.thinkingLevel !== "off"
+          ? { thinkingLevel: input.thinkingLevel }
+          : {}),
       });
       try {
         const { runId } = await sendMessage(created.id, input.content, input.skill);
@@ -132,6 +144,8 @@ export default function ChatPage() {
     },
     onSuccess: ({ conversationId: createdId, runId }, input) => {
       setFailedSend(null);
+      setDraftModelId(null);
+      setDraftThinkingLevel("off");
       queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
       navigate(`/chat/${createdId}`, {
         state: { pendingRun: { runId, content: input.content, skill: input.skill } },
@@ -224,6 +238,7 @@ export default function ChatPage() {
     setOptimisticText(null);
     setOptimisticSkill(null);
     setSendError(null);
+    setFailedSend(null);
   }, [conversationId]);
 
   // A brand-new conversation is created on the empty state and navigated to
@@ -242,7 +257,10 @@ export default function ChatPage() {
     navigate(location.pathname, { replace: true, state: null });
   }, [conversationId, location.pathname, location.state, navigate]);
 
-  const availableDatasources = datasourcesQuery.data?.datasources ?? [];
+  const availableDatasources = useMemo(
+    () => datasourcesQuery.data?.datasources ?? [],
+    [datasourcesQuery.data],
+  );
   useEffect(() => {
     if (availableDatasources.length === 0) {
       if (draftDatasourceId) setDraftDatasourceId(null);
@@ -280,7 +298,13 @@ export default function ChatPage() {
         return;
       }
       setSendError(null);
-      await startMutation.mutateAsync({ content, datasourceId: draftDatasourceId, skill });
+      await startMutation.mutateAsync({
+        content,
+        datasourceId: draftDatasourceId,
+        skill,
+        ...(draftModelId ? { modelId: draftModelId } : {}),
+        thinkingLevel: draftThinkingLevel,
+      });
       return;
     }
     setSendError(null);
@@ -312,8 +336,21 @@ export default function ChatPage() {
     : modelsQuery.isError
       ? "error"
       : "ready";
-  const currentModelId = conversation?.modelId ?? models?.defaultId ?? "";
+  const currentModelId = conversation
+    ? (conversation.modelId ?? models?.defaultId ?? "")
+    : (draftModelId ?? models?.defaultId ?? "");
+  const currentThinkingLevel = conversation
+    ? (conversation.thinkingLevel ?? "off")
+    : draftThinkingLevel;
   const selectedModel = models?.models.find((model) => model.id === currentModelId);
+  const statusIndicator: AppShellStatusIndicator | null =
+    stream.state.connection === "reconnecting"
+      ? { tone: "warning", label: "重连中…" }
+      : active
+        ? { tone: "busy", label: "生成中…" }
+        : modelsStatus === "error"
+          ? { tone: "error", label: "模型异常" }
+          : null;
   const contextUsage = applyContextWindow(
     stream.state.contextUsage ?? conversationQuery.data?.contextUsage ?? null,
     selectedModel?.contextWindow,
@@ -415,6 +452,7 @@ export default function ChatPage() {
         optimisticText={optimisticText}
         optimisticSkill={optimisticSkill}
         onCreateReport={handleCreateReport}
+        creatingReport={reportMutation.isPending}
         activeRunId={activeRunId}
         models={models?.models ?? []}
         retryingRunId={retryingRunId}
@@ -441,7 +479,12 @@ export default function ChatPage() {
   }
 
   return (
-    <AppShell user={user} sidebar={<ConversationSidebar activeId={conversationId} />} topbar={topbar}>
+    <AppShell
+      user={user}
+      sidebar={<ConversationSidebar activeId={conversationId} datasources={availableDatasources} />}
+      topbar={topbar}
+      statusIndicator={statusIndicator}
+    >
       <div className="flex min-h-0 flex-1 flex-col">
         {content}
         {sendError ? (
@@ -450,19 +493,32 @@ export default function ChatPage() {
               role="alert"
               className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-danger/20 bg-dangersoft px-3 py-2 text-xs text-danger"
             >
-              <span>{sendError}</span>
-              {failedSend ? (
-                <Button
+              <span className="min-w-0 flex-1">{sendError}</span>
+              <div className="flex shrink-0 items-center gap-1">
+                {failedSend ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[11px]"
+                    disabled={sendMutation.isPending || startMutation.isPending}
+                    onClick={() => void handleSend(failedSend.content, failedSend.skill)}
+                  >
+                    重新发送
+                  </Button>
+                ) : null}
+                <button
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 text-[11px]"
-                  disabled={sendMutation.isPending}
-                  onClick={() => void handleSend(failedSend.content, failedSend.skill)}
+                  aria-label="关闭错误提示"
+                  className="rounded p-1 text-danger/70 transition-colors hover:bg-danger/10 hover:text-danger"
+                  onClick={() => {
+                    setSendError(null);
+                    setFailedSend(null);
+                  }}
                 >
-                  重新发送
-                </Button>
-              ) : null}
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         ) : null}
@@ -479,6 +535,7 @@ export default function ChatPage() {
           </div>
         ) : null}
         <Composer
+          key={conversationId ?? "new"}
           conversationReady={
             conversationId
               ? Boolean(conversation)
@@ -490,14 +547,20 @@ export default function ChatPage() {
           modelId={currentModelId}
           modelsStatus={modelsStatus}
           modelPickerDisabled={
-            modelsQuery.isPending || modelMutation.isPending || !conversation || !canUseChat
+            modelsQuery.isPending ||
+            modelMutation.isPending ||
+            thinkingMutation.isPending ||
+            (Boolean(conversationId) && !conversation) ||
+            !canUseChat
           }
-          thinkingLevel={conversation?.thinkingLevel ?? "off"}
+          thinkingLevel={currentThinkingLevel}
           skills={canUseSkills ? skillsQuery.data?.skills ?? [] : []}
           readOnlyReason={canUseChat ? undefined : "当前角色没有对话权限，请联系管理员"}
           contextUsage={contextUsage}
-          onModelChange={(modelId) => modelMutation.mutate(modelId)}
-          onThinkingChange={(level) => thinkingMutation.mutate(level)}
+          onModelChange={(id) => (conversationId ? modelMutation.mutate(id) : setDraftModelId(id))}
+          onThinkingChange={(level) =>
+            conversationId ? thinkingMutation.mutate(level) : setDraftThinkingLevel(level)
+          }
           onSend={handleSend}
           onStop={stream.stop}
         />

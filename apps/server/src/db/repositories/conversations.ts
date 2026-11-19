@@ -29,6 +29,7 @@ export interface CreateConversationInput {
   datasourceId: string;
   title?: string | null;
   modelId?: string | null;
+  thinkingLevel?: string;
   kind?: "chat" | "scheduled";
 }
 
@@ -42,6 +43,7 @@ export function createConversation(db: Db, input: CreateConversationInput): Conv
       datasourceId: input.datasourceId,
       title: input.title ?? null,
       modelId: input.modelId ?? null,
+      ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}),
       kind: input.kind ?? "chat",
       createdAt: now,
       updatedAt: now,

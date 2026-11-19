@@ -62,7 +62,7 @@ export function NotificationBell() {
           ) : null}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-0">
+      <PopoverContent align="start" className="w-80 p-0">
         <div className="flex items-center justify-between border-b border-line px-3 py-2">
           <span className="text-[12px] font-semibold text-ink">通知</span>
           <button
@@ -77,6 +77,19 @@ export function NotificationBell() {
         <div className="max-h-80 overflow-y-auto">
           {notificationsQuery.isPending ? (
             <p className="px-3 py-6 text-center text-[12px] text-muted">加载中…</p>
+          ) : notificationsQuery.isError ? (
+            <div className="flex flex-col items-center gap-2 px-3 py-6 text-center text-[12px] text-danger">
+              <p>通知加载失败</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2.5 text-[11px]"
+                onClick={() => void notificationsQuery.refetch()}
+              >
+                重试
+              </Button>
+            </div>
           ) : notifications.length === 0 ? (
             <p className="px-3 py-6 text-center text-[12px] text-muted">还没有通知</p>
           ) : (

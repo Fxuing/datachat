@@ -22,15 +22,21 @@ const SheetOverlay = forwardRef<
 
 const SheetContent = forwardRef<
   ElementRef<typeof DialogPrimitive.Content>,
-  ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { hideClose?: boolean }
->(function SheetContent({ className, children, hideClose = false, ...props }, ref) {
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    hideClose?: boolean;
+    side?: "right" | "left";
+  }
+>(function SheetContent({ className, children, hideClose = false, side = "right", ...props }, ref) {
   return (
     <DialogPrimitive.Portal>
       <SheetOverlay />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-xl flex-col border-l border-line bg-surface text-ink shadow-pop",
+          "fixed inset-y-0 z-50 flex h-full w-full flex-col bg-surface text-ink shadow-pop",
+          side === "left"
+            ? "left-0 max-w-xs border-r border-line"
+            : "right-0 max-w-xl border-l border-line",
           className,
         )}
         {...props}

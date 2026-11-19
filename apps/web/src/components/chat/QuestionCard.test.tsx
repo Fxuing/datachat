@@ -86,4 +86,23 @@ describe("QuestionCard", () => {
     await user.click(screen.getByRole("button", { name: /取消/ }));
     expect(answerQuestion).toHaveBeenCalledWith("c1", "call-3", { cancel: true });
   });
+
+  it("navigates across multiple questions using previous and next buttons", async () => {
+    const user = userEvent.setup();
+    render(<QuestionCard conversationId="c1" toolCallId="call-4" questions={questions} />);
+
+    const prev = screen.getByRole("button", { name: "上一题" });
+    const next = screen.getByRole("button", { name: "下一题" });
+    expect(prev).toBeDisabled();
+    expect(next).toBeEnabled();
+    expect(screen.getByText("要查哪个库？")).toBeInTheDocument();
+
+    await user.click(next);
+    expect(screen.getByText("需要哪些指标？")).toBeInTheDocument();
+    expect(prev).toBeEnabled();
+    expect(next).toBeDisabled();
+
+    await user.click(prev);
+    expect(screen.getByText("要查哪个库？")).toBeInTheDocument();
+  });
 });

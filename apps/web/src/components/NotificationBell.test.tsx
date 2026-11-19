@@ -76,4 +76,18 @@ describe("NotificationBell", () => {
     await user.click(await screen.findByRole("button", { name: "全部已读" }));
     await waitFor(() => expect(mocks.markAllNotificationsRead).toHaveBeenCalled());
   });
+
+  it("shows an error state and retries loading notifications", async () => {
+    mocks.listNotifications
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce({ unread: 0, notifications: [] });
+    const user = userEvent.setup();
+    renderBell();
+
+    await user.click(await screen.findByLabelText("通知"));
+    expect(await screen.findByText("通知加载失败")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    expect(await screen.findByText("还没有通知")).toBeInTheDocument();
+  });
 });

@@ -1,25 +1,30 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Check, ListFilter, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   ApiError,
-  createConversation,
   deleteConversation,
   listConversations,
-  listDatasources,
   updateConversation,
   type Conversation,
+  type DatasourceSummary,
 } from "../../lib/api";
 import { queryKeys } from "../../lib/query";
 import { cn, formatClock } from "../../lib/utils";
+import { ConfirmDialog } from "../admin/ConfirmDialog";
 import { Button } from "../ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Input } from "../ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 export interface ConversationSidebarProps {
   activeId?: string;
+  datasources?: DatasourceSummary[];
 }
 
 function errorMessage(error: unknown): string {
@@ -27,51 +32,10 @@ function errorMessage(error: unknown): string {
   return "操作失败，请稍后重试";
 }
 
-function Modal({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
-      onMouseDown={onClose}
-      role="presentation"
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="w-full max-w-sm rounded-lg border border-line bg-surface shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">
-          {title}
-        </div>
-        <div className="p-4">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
+export function ConversationSidebar({ activeId, datasources }: ConversationSidebarProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [datasourceId, setDatasourceId] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [deleting, setDeleting] = useState<Conversation | null>(null);
@@ -79,39 +43,62 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
   const [filterInput, setFilterInput] = useState("");
   const [filterQuery, setFilterQuery] = useState("");
   const filterInputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<number | null>(null);
 
-  const conversationsQuery = useQuery({
+  const conversationsQuery = useInfiniteQuery({
     queryKey: filterQuery ? queryKeys.conversationList(filterQuery) : queryKeys.conversations,
-    queryFn: () => listConversations(filterQuery ? { q: filterQuery } : {}),
-  });
-  const datasourcesQuery = useQuery({
-    queryKey: queryKeys.datasources,
-    queryFn: listDatasources,
-    enabled: dialogOpen,
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) => {
+      const params: { q?: string; before?: string } = {};
+      if (filterQuery) params.q = filterQuery;
+      if (pageParam) params.before = pageParam;
+      return listConversations(params);
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
 
-  const datasources = datasourcesQuery.data?.datasources ?? [];
-  const conversations = conversationsQuery.data?.items ?? [];
+  const cachedDatasources =
+    queryClient.getQueryData<{ datasources: DatasourceSummary[] }>(queryKeys.datasources)
+      ?.datasources ?? [];
+  const datasourceNames = new Map(
+    (datasources ?? cachedDatasources).map((item) => [item.id, item.name]),
+  );
+  const conversations = conversationsQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
   useEffect(() => {
-    if (!dialogOpen || datasourceId) return;
-    const first = datasources[0];
-    if (first) setDatasourceId(first.id);
-  }, [dialogOpen, datasourceId, datasources]);
-
-  const closeDialog = () => {
-    setDialogOpen(false);
-    setDatasourceId("");
-    createMutation.reset();
-  };
+    if (debounceRef.current !== null) {
+      window.clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    if (!filterOpen) return;
+    const trimmed = filterInput.trim();
+    debounceRef.current = window.setTimeout(() => {
+      setFilterQuery(trimmed);
+      debounceRef.current = null;
+    }, 300);
+    return () => {
+      if (debounceRef.current !== null) {
+        window.clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
+  }, [filterOpen, filterInput]);
 
   const closeFilter = () => {
+    if (debounceRef.current !== null) {
+      window.clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     setFilterOpen(false);
     setFilterInput("");
     setFilterQuery("");
   };
 
   const submitFilter = () => {
+    if (debounceRef.current !== null) {
+      window.clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     const q = filterInput.trim();
     if (!q) {
       closeFilter();
@@ -121,29 +108,14 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
   };
 
   const clearFilterInput = () => {
+    if (debounceRef.current !== null) {
+      window.clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     setFilterInput("");
     setFilterQuery("");
     filterInputRef.current?.focus();
   };
-
-  const createMutation = useMutation({
-    mutationFn: (id: string) => createConversation({ datasourceId: id }),
-    onSuccess: ({ conversation }) => {
-      queryClient.setQueryData<{ items: Conversation[]; nextCursor: string | null }>(
-        queryKeys.conversations,
-        (previous) =>
-          previous
-            ? { ...previous, items: [conversation, ...previous.items] }
-            : { items: [conversation], nextCursor: null },
-      );
-      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
-      closeDialog();
-      setFilterOpen(false);
-      setFilterInput("");
-      setFilterQuery("");
-      navigate(`/chat/${conversation.id}`);
-    },
-  });
 
   const renameMutation = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => updateConversation(id, { title }),
@@ -152,16 +124,23 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversation(conversation.id) });
       setRenamingId(null);
     },
-    onSettled: () => setRenamingId(null),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteConversation(id),
     onSuccess: (_data, id) => {
-      queryClient.setQueryData<{ items: Conversation[]; nextCursor: string | null }>(
-        queryKeys.conversations,
-        (previous) =>
-          previous ? { ...previous, items: previous.items.filter((item) => item.id !== id) } : previous,
+      queryClient.setQueriesData<
+        InfiniteData<{ items: Conversation[]; nextCursor: string | null }>
+      >({ queryKey: queryKeys.conversations }, (previous) =>
+        previous
+          ? {
+              ...previous,
+              pages: previous.pages.map((page) => ({
+                ...page,
+                items: page.items.filter((item) => item.id !== id),
+              })),
+            }
+          : previous,
       );
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
       setDeleting(null);
@@ -170,19 +149,20 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
   });
 
   const startRename = (conversation: Conversation) => {
+    renameMutation.reset();
     setRenamingId(conversation.id);
     setDraft(conversation.title ?? "");
+  };
+
+  const cancelRename = () => {
+    renameMutation.reset();
+    setRenamingId(null);
   };
 
   const submitRename = (id: string) => {
     const title = draft.trim();
     if (!title) return;
     renameMutation.mutate({ id, title });
-  };
-
-  const submitCreate = () => {
-    if (!datasourceId) return;
-    createMutation.mutate(datasourceId);
   };
 
   return (
@@ -228,7 +208,7 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
             variant="outline"
             size="sm"
             className="min-w-0 flex-1 justify-start gap-2"
-            onClick={() => setDialogOpen(true)}
+            onClick={() => navigate("/chat")}
           >
             <Plus className="h-4 w-4" />
             新建对话
@@ -276,208 +256,164 @@ export function ConversationSidebar({ activeId }: ConversationSidebarProps) {
             <p className="px-2 py-3 text-xs text-muted">还没有会话，点击上方新建对话开始。</p>
           )
         ) : (
-          <ul className="flex flex-col gap-0.5">
-            {conversations.map((conversation) => {
-              const title = conversation.title || "未命名会话";
-              const active = conversation.id === activeId;
-              return (
-                <li
-                  key={conversation.id}
-                  className={cn(
-                    "group flex items-center gap-1 rounded-lg px-2.5 py-2",
-                    active ? "bg-brandsoft" : "hover:bg-subtle",
-                  )}
-                >
-                  {renamingId === conversation.id ? (
-                    <form
-                      className="flex w-full items-center gap-1"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        submitRename(conversation.id);
-                      }}
-                    >
-                      <Input
-                        autoFocus
-                        aria-label="会话名称"
-                        value={draft}
-                        maxLength={120}
-                        onChange={(event) => setDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Escape") setRenamingId(null);
+          <>
+            <ul className="flex flex-col gap-0.5">
+              {conversations.map((conversation) => {
+                const title = conversation.title || "未命名会话";
+                const active = conversation.id === activeId;
+                const datasourceName = datasourceNames.get(conversation.datasourceId);
+                return (
+                  <li
+                    key={conversation.id}
+                    className={cn(
+                      "group flex items-center gap-1 rounded-lg px-2.5 py-2",
+                      active ? "bg-brandsoft" : "hover:bg-subtle",
+                    )}
+                  >
+                    {renamingId === conversation.id ? (
+                      <form
+                        className="flex w-full items-center gap-1"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          submitRename(conversation.id);
                         }}
-                        className="h-7 min-w-0 flex-1 px-2 text-xs"
-                      />
-                      <button
-                        type="submit"
-                        aria-label="保存名称"
-                        className="rounded p-1 text-muted hover:bg-line hover:text-ink"
                       >
-                        <Check className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="取消重命名"
-                        onClick={() => setRenamingId(null)}
-                        className="rounded p-1 text-muted hover:bg-line hover:text-ink"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </form>
-                  ) : (
-                    <>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/chat/${conversation.id}`)}
-                            className="min-w-0 flex-1 truncate text-left"
-                          >
-                            <span
-                              className={cn(
-                                "block truncate text-sm",
-                                active ? "font-medium text-brandtext" : "text-inksoft",
-                              )}
-                            >
-                              {title}
-                            </span>
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" align="start" className="max-w-[16rem]">
-                          {title}
-                        </TooltipContent>
-                      </Tooltip>
-                      <span className="shrink-0 text-[10px] text-muted group-hover:hidden group-focus-within:hidden">
-                        {formatClock(conversation.lastMessageAt ?? conversation.updatedAt)}
-                      </span>
-                      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                        <Input
+                          autoFocus
+                          aria-label="会话名称"
+                          value={draft}
+                          maxLength={120}
+                          disabled={renameMutation.isPending}
+                          onChange={(event) => setDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") cancelRename();
+                          }}
+                          className="h-7 min-w-0 flex-1 px-2 text-xs"
+                        />
+                        <button
+                          type="submit"
+                          aria-label="保存名称"
+                          disabled={renameMutation.isPending}
+                          className="rounded p-1 text-muted hover:bg-line hover:text-ink disabled:opacity-50"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="取消重命名"
+                          disabled={renameMutation.isPending}
+                          onClick={cancelRename}
+                          className="rounded p-1 text-muted hover:bg-line hover:text-ink disabled:opacity-50"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </form>
+                    ) : (
+                      <>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
                               type="button"
-                              aria-label="重命名会话"
-                              onClick={() => startRename(conversation)}
-                              className="rounded p-1 text-muted hover:bg-line hover:text-inksoft"
+                              onClick={() => navigate(`/chat/${conversation.id}`)}
+                              className="min-w-0 flex-1 truncate text-left"
                             >
-                              <Pencil className="h-3.5 w-3.5" />
+                              <span
+                                className={cn(
+                                  "block truncate text-sm",
+                                  active ? "font-medium text-brandtext" : "text-inksoft",
+                                )}
+                              >
+                                {title}
+                              </span>
+                              {datasourceName ? (
+                                <span className="block truncate text-[10px] text-muted">
+                                  {datasourceName}
+                                </span>
+                              ) : null}
                             </button>
                           </TooltipTrigger>
-                          <TooltipContent side="top">重命名</TooltipContent>
+                          <TooltipContent side="bottom" align="start" className="max-w-[16rem]">
+                            {title}
+                          </TooltipContent>
                         </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              aria-label="删除会话"
-                              onClick={() => setDeleting(conversation)}
-                              className="rounded p-1 text-muted hover:bg-line hover:text-danger"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">删除</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                        <span className="shrink-0 text-[10px] text-muted group-hover:hidden group-focus-within:hidden [@media(hover:none)]:hidden">
+                          {formatClock(conversation.lastMessageAt ?? conversation.updatedAt)}
+                        </span>
+                        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label="重命名会话"
+                                onClick={() => startRename(conversation)}
+                                className="rounded p-1 text-muted hover:bg-line hover:text-inksoft"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">重命名</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label="删除会话"
+                                onClick={() => {
+                                  deleteMutation.reset();
+                                  setDeleting(conversation);
+                                }}
+                                className="rounded p-1 text-muted hover:bg-line hover:text-danger"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">删除</TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {conversationsQuery.hasNextPage ? (
+              <div className="pt-1.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-muted hover:text-ink"
+                  disabled={conversationsQuery.isFetchingNextPage}
+                  onClick={() => void conversationsQuery.fetchNextPage()}
+                >
+                  {conversationsQuery.isFetchingNextPage ? "加载中…" : "加载更多"}
+                </Button>
+              </div>
+            ) : null}
+          </>
         )}
       </div>
 
       {renameMutation.error ? (
-        <p className="px-3 pb-2 text-xs text-danger">
+        <p role="alert" className="px-3 pb-2 text-xs text-danger">
           重命名失败：{errorMessage(renameMutation.error)}
         </p>
       ) : null}
 
-      {dialogOpen ? (
-        <Modal title="新建对话" onClose={closeDialog}>
-          <form
-            className="space-y-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submitCreate();
-            }}
-          >
-            <div>
-              <label
-                htmlFor="new-chat-datasource"
-                className="mb-1 block text-xs font-medium text-muted"
-              >
-                选择数据源
-              </label>
-              {datasourcesQuery.isPending ? (
-                <p className="text-sm text-muted">正在加载数据源…</p>
-              ) : datasourcesQuery.isError ? (
-                <p className="text-sm text-danger">数据源加载失败，请稍后重试。</p>
-              ) : datasources.length === 0 ? (
-                <p className="rounded-md bg-warningsoft px-3 py-2 text-sm text-warning">
-                  还没有可用的数据源，请联系管理员授权。
-                </p>
-              ) : (
-                <Select
-                  value={datasourceId || "__none__"}
-                  onValueChange={(value) => setDatasourceId(value === "__none__" ? "" : value)}
-                >
-                  <SelectTrigger id="new-chat-datasource">
-                    <SelectValue placeholder="请选择数据源" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">请选择数据源</SelectItem>
-                    {datasources.map((datasource) => (
-                      <SelectItem key={datasource.id} value={datasource.id}>
-                        {datasource.name}（
-                        {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"} ·{" "}
-                        {datasource.database}）
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-            {createMutation.error ? (
-              <p className="text-xs text-danger">{errorMessage(createMutation.error)}</p>
-            ) : null}
-            <div className="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" size="sm" onClick={closeDialog}>
-                取消
-              </Button>
-              <Button
-                type="submit"
-                size="sm"
-                disabled={!datasourceId || createMutation.isPending}
-              >
-                {createMutation.isPending ? "创建中…" : "创建并开始对话"}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      ) : null}
-
       {deleting ? (
-        <Modal title="删除会话" onClose={() => setDeleting(null)}>
-          <p className="text-sm text-muted">
-            确定删除「{deleting.title || "未命名会话"}」吗？消息与查询结果将一并删除，且无法恢复。
-          </p>
-          {deleteMutation.error ? (
-            <p className="mt-2 text-xs text-danger">{errorMessage(deleteMutation.error)}</p>
-          ) : null}
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setDeleting(null)}>
-              取消
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={deleteMutation.isPending}
-              onClick={() => deleteMutation.mutate(deleting.id)}
-            >
-              {deleteMutation.isPending ? "删除中…" : "删除"}
-            </Button>
-          </div>
-        </Modal>
+        <ConfirmDialog
+          title="删除会话"
+          description={`确定删除「${deleting.title || "未命名会话"}」吗？消息与查询结果将一并删除，且无法恢复。`}
+          confirmLabel={deleteMutation.isPending ? "删除中…" : "删除"}
+          variant="danger"
+          pending={deleteMutation.isPending}
+          error={deleteMutation.error ? errorMessage(deleteMutation.error) : null}
+          onConfirm={() => deleteMutation.mutate(deleting.id)}
+          onCancel={() => {
+            deleteMutation.reset();
+            setDeleting(null);
+          }}
+        />
       ) : null}
     </div>
   );

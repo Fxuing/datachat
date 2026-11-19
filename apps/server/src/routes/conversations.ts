@@ -58,12 +58,13 @@ const listQuerySchema = z.object({
   before: z.string().trim().min(1).optional(),
   q: z.string().trim().max(100).optional(),
 });
+const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const createBodySchema = z.object({
   datasourceId: z.string().uuid(),
   title: z.string().trim().min(1).max(100).optional(),
   modelId: z.string().trim().min(1).max(200).optional(),
+  thinkingLevel: z.enum(THINKING_LEVELS).optional(),
 });
-const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const updateBodySchema = z.object({
   title: z.string().trim().max(100).optional(),
   modelId: z.string().trim().min(1).max(200).optional(),
@@ -200,6 +201,7 @@ export async function conversationRoutes(
         datasourceId: datasource.id,
         title: body.data.title ?? null,
         modelId: modelId ?? null,
+        thinkingLevel: body.data.thinkingLevel,
       });
       return reply.code(201).send({ conversation: toConversationResponse(conversation) });
     },

@@ -214,6 +214,23 @@ describe("conversation routes", () => {
         payload: { thinkingLevel: "loud" },
       });
       expect(badThinking.statusCode).toBe(400);
+
+      const withThinking = await app.inject({
+        method: "POST",
+        url: "/api/conversations",
+        cookies: { dc_session: cookie },
+        payload: { datasourceId, thinkingLevel: "high" },
+      });
+      expect(withThinking.statusCode).toBe(201);
+      expect(withThinking.json().conversation.thinkingLevel).toBe("high");
+
+      const invalidCreateThinking = await app.inject({
+        method: "POST",
+        url: "/api/conversations",
+        cookies: { dc_session: cookie },
+        payload: { datasourceId, thinkingLevel: "loud" },
+      });
+      expect(invalidCreateThinking.statusCode).toBe(400);
     } finally {
       await app.close();
     }

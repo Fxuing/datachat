@@ -133,15 +133,32 @@ describe("ScheduledTasksPage", () => {
     await waitFor(() => expect(button).toBeEnabled());
     button.click();
     await waitFor(() => expect(mocks.runScheduledTask).toHaveBeenCalledWith("task-1"));
+    expect(await screen.findByText(/已触发「每日订单」执行/)).toBeInTheDocument();
   });
 
-  it("deletes a task after confirmation", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("toggles a task enabled state inline", async () => {
+    mocks.updateScheduledTask.mockResolvedValue({ ...task, enabled: 0 });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("每日订单");
+
+    await user.click(screen.getByRole("switch", { name: "暂停 每日订单" }));
+    await waitFor(() =>
+      expect(mocks.updateScheduledTask).toHaveBeenCalledWith("task-1", { enabled: false }),
+    );
+  });
+
+  it("deletes a task after dialog confirmation", async () => {
+    const user = userEvent.setup();
     renderPage();
     await screen.findByText("每日订单");
     const button = screen.getAllByRole("button", { name: "删除" })[0]!;
     await waitFor(() => expect(button).toBeEnabled());
-    button.click();
+    await user.click(button);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("删除定时任务")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "删除" }));
     await waitFor(() => expect(mocks.deleteScheduledTask).toHaveBeenCalledWith("task-1"));
   });
 

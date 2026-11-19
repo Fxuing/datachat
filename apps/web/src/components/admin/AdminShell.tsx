@@ -67,8 +67,13 @@ export function AdminShell({ user, children }: AdminShellProps) {
     if (accessActive) setAccessOpen(true);
   }, [accessActive]);
 
+  const itemClass = (active: boolean) =>
+    `flex w-full items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[13px] transition-colors ${
+      active ? "bg-brandsoft font-medium text-brandtext" : "text-inksoft hover:bg-subtle hover:text-ink"
+    }`;
+
   const sidebar = (
-    <div className="p-2">
+    <div className="space-y-2 p-2">
       <Button
         variant="ghost"
         size="sm"
@@ -78,92 +83,85 @@ export function AdminShell({ user, children }: AdminShellProps) {
         <ArrowLeft className="h-4 w-4" />
         返回对话
       </Button>
+      <div className="border-t border-line pt-2">
+        <nav aria-label="管理导航" className="flex flex-col gap-0.5">
+          <p className="section-label px-2.5 pb-1 pt-1">设置</p>
+          {SETTINGS_SECTIONS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.id}
+                to={`/admin/settings?section=${item.id}`}
+                aria-current={activeSection === item.id ? "page" : undefined}
+                className={itemClass(activeSection === item.id)}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {item.label}
+              </Link>
+            );
+          })}
+          <p className="section-label px-2.5 pb-1 pt-3">管理</p>
+          <div>
+            <button
+              type="button"
+              aria-expanded={accessOpen}
+              aria-label={ACCESS_GROUP.label}
+              className={`${itemClass(accessActive)} justify-between`}
+              onClick={() => setAccessOpen((open) => !open)}
+            >
+              <span className="flex items-center gap-2.5">
+                <AccessIcon className="h-4 w-4 shrink-0" />
+                {ACCESS_GROUP.label}
+              </span>
+              {accessOpen ? (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+              )}
+            </button>
+            {accessOpen ? (
+              <div className="ml-4 mt-0.5 space-y-0.5 border-l border-line pl-1.5">
+                {ACCESS_GROUP.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      aria-current={active ? "page" : undefined}
+                      className={itemClass(active)}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+          {ADMIN_LINKS.map((item) => {
+            const Icon = item.icon;
+            const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={active ? "page" : undefined}
+                className={itemClass(active)}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
     </div>
   );
 
-  const itemClass = (active: boolean) =>
-    `flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${
-      active ? "bg-brandsoft font-medium text-brandtext" : "text-inksoft hover:bg-subtle"
-    }`;
-
   return (
     <AppShell user={user} sidebar={sidebar}>
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <aside className="shrink-0 border-b border-line p-2 md:w-48 md:overflow-y-auto md:border-b-0 md:border-r">
-          <nav aria-label="管理导航" className="flex gap-1 overflow-x-auto md:flex-col">
-            <p className="section-label hidden px-3 pb-1 pt-2 md:block">设置</p>
-            {SETTINGS_SECTIONS.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.id}
-                  to={`/admin/settings?section=${item.id}`}
-                  aria-current={activeSection === item.id ? "page" : undefined}
-                  className={itemClass(activeSection === item.id)}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {item.label}
-                </Link>
-              );
-            })}
-            <p className="section-label hidden px-3 pb-1 pt-4 md:block">管理</p>
-            <div className="md:col-span-1">
-              <button
-                type="button"
-                aria-expanded={accessOpen}
-                aria-label={ACCESS_GROUP.label}
-                className={`${itemClass(accessActive)} justify-between`}
-                onClick={() => setAccessOpen((open) => !open)}
-              >
-                <span className="flex items-center gap-2">
-                  <AccessIcon className="h-4 w-4 shrink-0" />
-                  {ACCESS_GROUP.label}
-                </span>
-                {accessOpen ? (
-                  <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                ) : (
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                )}
-              </button>
-              {accessOpen ? (
-                <div className="mt-0.5 space-y-0.5 md:ml-4 md:border-l md:border-line md:pl-1">
-                  {ACCESS_GROUP.items.map((item) => {
-                    const Icon = item.icon;
-                    const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
-                    return (
-                      <Link
-                        key={item.to}
-                        to={item.to}
-                        aria-current={active ? "page" : undefined}
-                        className={itemClass(active)}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        {item.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-            {ADMIN_LINKS.map((item) => {
-              const Icon = item.icon;
-              const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  aria-current={active ? "page" : undefined}
-                  className={itemClass(active)}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </aside>
-        {children}
-      </div>
+      {children}
     </AppShell>
   );
 }

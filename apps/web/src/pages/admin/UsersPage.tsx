@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Shield } from "lucide-react";
+import { Plus, Search, Shield, X } from "lucide-react";
 import { AdminShell } from "../../components/admin/AdminShell";
 import { DepartmentMultiSelect } from "../../components/admin/DepartmentMultiSelect";
 import { Button } from "../../components/ui/button";
@@ -352,6 +352,7 @@ export default function UsersPage() {
   const [editor, setEditor] = useState<{ mode: "new" } | { mode: "edit"; user: AdminUser } | null>(
     null,
   );
+  const [search, setSearch] = useState("");
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const usersQuery = useQuery({ queryKey: queryKeys.adminUsers, queryFn: listAdminUsers });
@@ -408,6 +409,16 @@ export default function UsersPage() {
   if (!user) return <PageSpinner />;
 
   const users = usersQuery.data?.users ?? [];
+  const trimmedSearch = search.trim().toLowerCase();
+  const filteredUsers = trimmedSearch
+    ? users.filter((row) => {
+        if (row.username.toLowerCase().includes(trimmedSearch)) return true;
+        if ((row.displayName ?? "").toLowerCase().includes(trimmedSearch)) return true;
+        return (row.departments ?? []).some((department) =>
+          department.name.toLowerCase().includes(trimmedSearch),
+        );
+      })
+    : users;
   const roles = rolesQuery.data?.roles ?? [];
   const departmentRows = departmentsQuery.data?.flat ?? [];
   const rolesError = rolesQuery.isError
@@ -426,7 +437,7 @@ export default function UsersPage() {
             <div>
               <h1 className="text-xl font-semibold tracking-tight text-ink">用户管理</h1>
               <p className="mt-1 text-sm text-muted">
-                用户拥有多个角色时，权限和数据源取并集；管理员不受角色限制。
+                用户拥有多个角色时功能权限取并集；数据源访问由部门授权与特例直授决定，管理员不受限制。
               </p>
             </div>
             <Button size="sm" className="gap-1.5" onClick={openCreate}>
@@ -434,6 +445,36 @@ export default function UsersPage() {
               新建用户
             </Button>
           </div>
+
+          {!usersQuery.isPending && !usersQuery.isError && users.length > 0 ? (
+            <div className="mt-4 flex items-center gap-2">
+              <div className="relative w-full max-w-xs">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+                <Input
+                  aria-label="搜索用户"
+                  placeholder="搜索用户名、显示名称或部门…"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  className="h-9 pl-8 pr-8 text-xs"
+                />
+                {search ? (
+                  <button
+                    type="button"
+                    aria-label="清除搜索"
+                    onClick={() => setSearch("")}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted hover:bg-subtle hover:text-ink"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
+              {trimmedSearch ? (
+                <span className="text-xs text-muted">
+                  共 {filteredUsers.length} / {users.length} 人
+                </span>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="mt-4 overflow-hidden rounded-xl border border-line bg-surface shadow-card">
             {usersQuery.isPending ? (
@@ -449,6 +490,13 @@ export default function UsersPage() {
               <div className="px-4 py-10 text-center text-sm text-muted">
                 还没有用户，点击右上角新建。
               </div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 px-4 py-10 text-sm text-muted">
+                <p>没有匹配的用户。</p>
+                <Button variant="outline" size="sm" onClick={() => setSearch("")}>
+                  清除搜索
+                </Button>
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -456,13 +504,14 @@ export default function UsersPage() {
                     <tr>
                       <th className="px-4 py-2 font-medium">用户</th>
                       <th className="px-4 py-2 font-medium">角色</th>
+                      <th className="px-4 py-2 font-medium">部门</th>
                       <th className="px-4 py-2 font-medium">状态</th>
                       <th className="px-4 py-2 font-medium">创建时间</th>
                       <th className="px-4 py-2 text-right font-medium">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map((row) => (
+                    {filteredUsers.map((row) => (
                       <tr key={row.id} className="border-t border-line">
                         <td className="px-4 py-2.5">
                           <div className="font-medium text-ink">{row.displayName ?? row.username}</div>
@@ -487,6 +536,27 @@ export default function UsersPage() {
                             {row.role !== "admin" && row.roles.length === 0 ? (
                               <span className="text-xs text-muted">—</span>
                             ) : null}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex flex-wrap items-center gap-1">
+                            {(row.departments ?? []).length > 0 ? (
+                              (row.departments ?? []).map((department) => (
+                                <span
+                                  key={department.id}
+                                  className={cn(
+                                    "rounded px-1.5 py-0.5 text-[10px]",
+                                    department.isPrimary
+                                      ? "bg-brandsoft/70 font-medium text-brandtext"
+                                      : "bg-subtle text-inksoft",
+                                  )}
+                                >
+                                  {department.name}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-muted">—</span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-2.5">

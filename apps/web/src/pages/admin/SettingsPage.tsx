@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Bot, Gauge, RotateCcw, Save, Settings, Share2 } from "lucide-react";
 import { AdminShell } from "../../components/admin/AdminShell";
+import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { LlmProvidersSection } from "../../components/admin/LlmProvidersSection";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -134,6 +135,14 @@ function groupModels(models: ChatModelInfo[]): Array<[string, ChatModelInfo[]]> 
   return [...groups.entries()];
 }
 
+function resetPatchForSection(section: Exclude<Section, "providers">): AdminSettingsPatch {
+  if (section === "general") return { defaultModelId: null, memoryEnabled: null };
+  if (section === "query") {
+    return { queryMaxRows: null, queryPreviewRows: null, queryTimeoutMs: null };
+  }
+  return { shareMaxDays: null };
+}
+
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [params] = useSearchParams();
@@ -153,6 +162,7 @@ export default function SettingsPage() {
   const [errors, setErrors] = useState<DraftErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => {
     if (settingsQuery.data && draft === null) {
@@ -177,15 +187,10 @@ export default function SettingsPage() {
   });
 
   const resetMutation = useMutation({
-    mutationFn: () =>
-      updateAdminSettings({
-        defaultModelId: null,
-        queryMaxRows: null,
-        queryPreviewRows: null,
-        queryTimeoutMs: null,
-        shareMaxDays: null,
-      }),
+    mutationFn: (target: Exclude<Section, "providers">) =>
+      updateAdminSettings(resetPatchForSection(target)),
     onSuccess: (data) => {
+      setConfirmReset(false);
       setDraft(toDraft(data.settings));
       setErrors({});
       setSaveError(null);
@@ -194,6 +199,7 @@ export default function SettingsPage() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.models });
     },
     onError: (error) => {
+      setConfirmReset(false);
       setNotice(null);
       setSaveError(describeApiError(error, "恢复默认失败，请稍后重试"));
     },
@@ -298,7 +304,7 @@ export default function SettingsPage() {
                       onClick={() => {
                         setNotice(null);
                         setSaveError(null);
-                        resetMutation.mutate();
+                        setConfirmReset(true);
                       }}
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
@@ -451,6 +457,18 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+      {confirmReset && section !== "providers" ? (
+        <ConfirmDialog
+          title={`恢复「${current.label}」默认设置`}
+          description={`将仅重置「${current.label}」分栏的设置项为系统默认值，不会影响其他分栏的配置。`}
+          confirmLabel={resetMutation.isPending ? "恢复中…" : "确认恢复"}
+          pending={resetMutation.isPending}
+          onConfirm={() => resetMutation.mutate(section)}
+          onCancel={() => {
+            if (!resetMutation.isPending) setConfirmReset(false);
+          }}
+        />
+      ) : null}
     </AdminShell>
   );
 }

@@ -62,7 +62,7 @@ export function MarkdownText({ content }: { content: string }) {
               );
             }
             return (
-              <a href={href} {...props}>
+              <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
                 {children}
               </a>
             );
@@ -151,17 +151,26 @@ function InlineArtifact({
   results,
   charts,
   onCreateReport,
+  creatingReport,
   canExport,
 }: {
   artifactId: string;
   results: ChatResult[];
   charts: ChatArtifact[];
   onCreateReport?: (artifactId: string) => void;
+  creatingReport?: boolean;
   canExport?: boolean;
 }) {
   const result = results.find((item) => item.artifactId === artifactId);
   if (result) {
-    return <ResultCard {...result} onCreateReport={onCreateReport} canExport={canExport} />;
+    return (
+      <ResultCard
+        {...result}
+        onCreateReport={onCreateReport}
+        creatingReport={creatingReport}
+        canExport={canExport}
+      />
+    );
   }
   const chart = charts.find((item) => item.id === artifactId);
   if (chart) {
@@ -200,6 +209,7 @@ export function MessageItem({
   artifacts = [],
   models = [],
   retrying = false,
+  creatingReport = false,
   onCreateReport,
   canExport = true,
   onRetry,
@@ -208,6 +218,7 @@ export function MessageItem({
   artifacts?: ChatArtifact[];
   models?: ChatModelInfo[];
   retrying?: boolean;
+  creatingReport?: boolean;
   onCreateReport?: (artifactId: string) => void;
   canExport?: boolean;
   onRetry?: (message: ChatMessage, modelId?: string) => void;
@@ -259,6 +270,7 @@ export function MessageItem({
           usage={message.usage ?? null}
           memories={message.memories}
           onCreateReport={onCreateReport}
+          creatingReport={creatingReport}
           canExport={canExport}
         />
         {message.scope && message.scope.departments.length > 0 ? (
@@ -317,6 +329,7 @@ export function MessageItem({
                   results={message.results}
                   charts={charts}
                   onCreateReport={onCreateReport}
+                  creatingReport={creatingReport}
                   canExport={canExport}
                 />
               );
@@ -369,6 +382,7 @@ export function MessageItem({
                 {...item}
                 index={unmatched.length > 1 ? index + 1 : undefined}
                 onCreateReport={onCreateReport}
+                creatingReport={creatingReport}
                 canExport={canExport}
               />
             ))}
@@ -380,6 +394,7 @@ export function MessageItem({
           usage={hasTrace ? null : (message.usage ?? null)}
           durationMs={hasTrace ? null : (message.durationMs ?? null)}
           feedback={message.feedback ?? null}
+          copyText={assistantText}
         />
       </div>
     </div>

@@ -114,4 +114,18 @@ describe("Composer", () => {
     await browser.keyboard("{Enter}");
     expect(onSend).toHaveBeenCalledWith("近三个月流失", undefined);
   });
+
+  it("clears the selected skill when pressing Backspace on empty input", async () => {
+    renderComposer({
+      skills: [{ name: "churn", description: "流失分析", scope: "global" }],
+    });
+    const browser = userEvent.setup();
+
+    const textarea = screen.getByLabelText("输入问题");
+    await browser.type(textarea, "/churn{enter}");
+    expect(screen.getByText(/技能 · churn/)).toBeInTheDocument();
+
+    await browser.keyboard("{Backspace}");
+    expect(screen.queryByText(/技能 · churn/)).not.toBeInTheDocument();
+  });
 });

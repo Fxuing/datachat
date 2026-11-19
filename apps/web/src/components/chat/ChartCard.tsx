@@ -1,7 +1,8 @@
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useRef, useState } from "react";
 import type { EChartsType } from "echarts/core";
 import { Download, Maximize2, X } from "lucide-react";
 import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
 import type { ChartOption } from "./EChart";
 import { normalizeChartOption } from "../../lib/chart-option";
 
@@ -65,16 +66,8 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
   const closeFullscreen = () => {
     setFullscreen(false);
     setFullscreenReady(false);
+    fullscreenRef.current = null;
   };
-
-  useEffect(() => {
-    if (!fullscreen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeFullscreen();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [fullscreen]);
 
   const handleDownload = () => {
     const instance = fullscreen ? fullscreenRef.current : inlineRef.current;
@@ -147,21 +140,24 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
         </p>
       ) : null}
 
-      {fullscreen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          role="presentation"
-          onClick={() => closeFullscreen()}
+      <Dialog open={fullscreen} onOpenChange={(open) => { if (!open) closeFullscreen(); }}>
+        <DialogContent
+          hideClose
+          className="flex h-[85vh] max-h-[85vh] max-w-5xl flex-col gap-0 p-0"
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={title}
-            className="flex h-[80vh] w-full max-w-5xl flex-col rounded-lg bg-surface shadow-xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
-              <span className="truncate text-sm font-medium text-inksoft">{title}</span>
+          <DialogDescription className="sr-only">{title} 全屏图表视图</DialogDescription>
+          <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
+            <DialogTitle className="truncate text-sm font-medium text-inksoft">{title}</DialogTitle>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDownload}
+                disabled={!fullscreenReady}
+              >
+                <Download className="h-3.5 w-3.5" />
+                下载 PNG
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -171,21 +167,26 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="min-h-0 flex-1 p-3">
-              <Suspense fallback={<ChartLoading />}>
-                <LazyEChart
-                  option={normalized}
-                  ariaLabel={title}
-                  onReady={(instance) => {
-                    fullscreenRef.current = instance;
-                    setFullscreenReady(instance !== null);
-                  }}
-                />
-              </Suspense>
-            </div>
           </div>
-        </div>
-      ) : null}
+          <div className="min-h-0 flex-1 p-3">
+            <Suspense fallback={<ChartLoading />}>
+              <LazyEChart
+                option={normalized}
+                ariaLabel={title}
+                onReady={(instance) => {
+                  fullscreenRef.current = instance;
+                  setFullscreenReady(instance !== null);
+                }}
+              />
+            </Suspense>
+          </div>
+          {downloadError ? (
+            <p role="alert" className="border-t border-line px-4 py-2 text-[11px] text-danger">
+              {downloadError}
+            </p>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

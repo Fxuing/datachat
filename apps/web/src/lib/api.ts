@@ -456,17 +456,25 @@ export function logout(): Promise<{ ok: boolean }> {
   return apiRequest("/api/auth/logout", { method: "POST" });
 }
 
-export function listConversations(params: { q?: string } = {}): Promise<{
+export function listConversations(
+  params: { q?: string; before?: string } = {},
+): Promise<{
   items: Conversation[];
   nextCursor: string | null;
 }> {
+  const search = new URLSearchParams();
   const q = params.q?.trim();
-  return apiRequest(q ? `/api/conversations?q=${encodeURIComponent(q)}` : "/api/conversations");
+  if (q) search.set("q", q);
+  if (params.before) search.set("before", params.before);
+  const qs = search.toString();
+  return apiRequest(qs ? `/api/conversations?${qs}` : "/api/conversations");
 }
 
 export function createConversation(input: {
   datasourceId: string;
   title?: string;
+  modelId?: string;
+  thinkingLevel?: string;
 }): Promise<{ conversation: Conversation }> {
   return apiRequest("/api/conversations", {
     method: "POST",

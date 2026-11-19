@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { SendHorizontal, Sparkles, Square, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
@@ -51,6 +51,7 @@ export function Composer({
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useLayoutEffect(() => {
     const element = textareaRef.current;
@@ -86,6 +87,11 @@ export function Composer({
       )
     : [];
   const highlighted = filtered.length === 0 ? 0 : Math.min(activeIndex, filtered.length - 1);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    optionRefs.current[highlighted]?.scrollIntoView?.({ block: "nearest" });
+  }, [menuOpen, highlighted]);
 
   const submit = async () => {
     if (!trimmed || disabled || menuOpen) return;
@@ -133,6 +139,11 @@ export function Composer({
         return;
       }
     }
+    if (!menuOpen && event.key === "Backspace" && text === "" && selectedSkill) {
+      event.preventDefault();
+      setSelectedSkill(null);
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       void submit();
@@ -164,6 +175,9 @@ export function Composer({
                 filtered.map((skill, index) => (
                   <button
                     key={skill.name}
+                    ref={(element) => {
+                      optionRefs.current[index] = element;
+                    }}
                     type="button"
                     role="option"
                     aria-selected={index === highlighted}
@@ -237,8 +251,8 @@ export function Composer({
             />
           </div>
           <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-1 text-[11px] text-muted">
-            <span className="truncate">Enter 发送，Shift + Enter 换行</span>
-            <div className="flex shrink-0 items-center gap-2">
+            <span className="hidden truncate sm:inline">Enter 发送，Shift + Enter 换行</span>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               {trimmed.length > MAX_LENGTH - 1_000 ? (
                 <span className="tabular-nums">{`${trimmed.length} / ${MAX_LENGTH}`}</span>
               ) : null}

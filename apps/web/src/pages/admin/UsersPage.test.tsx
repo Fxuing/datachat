@@ -31,6 +31,7 @@ const bob: AdminUser = {
     { id: "role_member", name: "成员" },
     { id: "role_analyst", name: "分析师" },
   ],
+  departments: [{ id: "dept-sales", name: "销售部", code: "SALES", isPrimary: true }],
 };
 
 const member = {
@@ -202,11 +203,20 @@ describe("UsersPage", () => {
     const bobRow = rowOf("Bob");
     expect(within(bobRow).getByText("成员")).toBeInTheDocument();
     expect(within(bobRow).getByText("分析师")).toBeInTheDocument();
+    expect(within(bobRow).getByText("销售部")).toBeInTheDocument();
     expect(within(bobRow).getByText("启用")).toBeInTheDocument();
 
     const selfRow = rowOf("@root");
     expect(within(selfRow).getAllByText("管理员")).toHaveLength(2);
     expect(within(selfRow).getByText("成员")).toBeInTheDocument();
+
+    const search = screen.getByLabelText("搜索用户");
+    await userEvent.type(search, "销售");
+    expect(screen.getByText("Bob")).toBeInTheDocument();
+    expect(screen.queryByText("@root")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "清除搜索" }));
+    expect(screen.getByText("@root")).toBeInTheDocument();
   });
 
   it("creates a user with two roles and a display name", async () => {

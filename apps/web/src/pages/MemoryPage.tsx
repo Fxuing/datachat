@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Filter, Pencil, Plus, Search, Star, Trash2 } from "lucide-react";
+import { Brain, Filter, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   clearMemories,
@@ -50,8 +50,8 @@ const kindLabels: Record<MemoryKind, string> = {
 
 const kindTones: Record<MemoryKind, string> = {
   profile: "bg-brandsoft text-brandtext",
-  instruction: "bg-amber-500/10 text-amber-700",
-  preference: "bg-emerald-500/10 text-emerald-700",
+  instruction: "bg-warningsoft text-warning",
+  preference: "bg-successsoft text-success",
   fact: "bg-subtle text-inksoft",
 };
 
@@ -68,6 +68,7 @@ export default function MemoryPage() {
   const [deleteTarget, setDeleteTarget] = useState<MemoryItem | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -121,34 +122,51 @@ export default function MemoryPage() {
   const rowMutation = useMutation({
     mutationFn: (input: { id: string; patch: Parameters<typeof updateMemory>[1] }) =>
       updateMemory(input.id, input.patch),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["memories"] }),
+    onSuccess: () => {
+      setPageError(null);
+      void queryClient.invalidateQueries({ queryKey: ["memories"] });
+    },
+    onError: (error) => setPageError(describeApiError(error, "操作失败，请稍后重试")),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteMemory,
     onSuccess: () => {
+      setPageError(null);
       setDeleteTarget(null);
       void queryClient.invalidateQueries({ queryKey: ["memories"] });
+    },
+    onError: (error) => {
+      setDeleteTarget(null);
+      setPageError(describeApiError(error, "删除失败，请稍后重试"));
     },
   });
 
   const clearMutation = useMutation({
     mutationFn: clearMemories,
     onSuccess: () => {
+      setPageError(null);
       setClearOpen(false);
       void queryClient.invalidateQueries({ queryKey: ["memories"] });
+    },
+    onError: (error) => {
+      setClearOpen(false);
+      setPageError(describeApiError(error, "清空失败，请稍后重试"));
     },
   });
 
   const settingsMutation = useMutation({
     mutationFn: updateMemorySettings,
     onSuccess: () => {
+      setPageError(null);
       void queryClient.invalidateQueries({ queryKey: queryKeys.memorySettings });
       void queryClient.invalidateQueries({ queryKey: ["memories"] });
     },
+    onError: (error) => setPageError(describeApiError(error, "记忆开关切换失败，请稍后重试")),
   });
 
   const memories = memoriesQuery.data?.memories ?? [];
+  const hasActiveFilter = Boolean(debouncedQuery || kind !== "all" || scope !== "all");
   const settings = settingsQuery.data;
   const enabled = settings?.enabled ?? true;
   const globalEnabled = settings?.globalEnabled ?? true;
@@ -197,43 +215,66 @@ export default function MemoryPage() {
         </div>
       }
     >
-      <div className="mx-auto w-full max-w-5xl px-6 py-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-[13px] text-muted">
-              记住你的角色、口径和习惯，后续对话会自动参考；不会保存查询结果或密钥。
-            </p>
-            <p className="mt-1 text-[11px] text-muted">
-              {memories.length} 条记忆 · {enabled && globalEnabled ? "已开启" : "已关闭"}
-            </p>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-5xl px-6 py-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[13px] text-muted">
+                记住你的角色、口径和习惯，后续对话会自动参考；不会保存查询结果或密钥。
+              </p>
+              <p className="mt-1 text-[11px] text-muted">
+                {memories.length} 条记忆 · {enabled && globalEnabled ? "已开启" : "已关闭"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canChat || (!hasActiveFilter && memories.length === 0)}
+                onClick={() => setClearOpen(true)}
+              >
+                清空全部
+              </Button>
+              <Button
+                size="sm"
+                disabled={!canChat || !globalEnabled}
+                onClick={() => {
+                  setEditing(null);
+                  setFormError(null);
+                  setDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" /> 新增记忆
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={!canChat} onClick={() => setClearOpen(true)}>
-              清空全部
-            </Button>
-            <Button
-              size="sm"
-              disabled={!canChat || !globalEnabled}
-              onClick={() => {
-                setEditing(null);
-                setFormError(null);
-                setDialogOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" /> 新增记忆
-            </Button>
-          </div>
-        </div>
 
-        {!globalEnabled ? (
-          <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-700">
-            管理员已全局关闭记忆功能；已有记忆不会被删除，恢复后继续生效。
-          </p>
-        ) : !enabled ? (
-          <p className="mt-4 rounded-lg border border-line bg-subtle px-3 py-2 text-[12px] text-muted">
-            记忆已关闭，历史记忆不会删除；重新开启后恢复注入。
-          </p>
-        ) : null}
+          {!globalEnabled ? (
+            <p className="mt-4 rounded-lg border border-warning/30 bg-warningsoft px-3 py-2 text-[12px] text-warning">
+              管理员已全局关闭记忆功能；已有记忆不会被删除，恢复后继续生效。
+            </p>
+          ) : !enabled ? (
+            <p className="mt-4 rounded-lg border border-line bg-subtle px-3 py-2 text-[12px] text-muted">
+              记忆已关闭，历史记忆不会删除；重新开启后恢复注入。
+            </p>
+          ) : null}
+
+          {pageError ? (
+            <div
+              role="alert"
+              className="mt-4 flex items-center justify-between gap-2 rounded-lg border border-danger/20 bg-dangersoft px-3 py-2 text-[12px] text-danger"
+            >
+              <span>{pageError}</span>
+              <button
+                type="button"
+                aria-label="关闭错误提示"
+                className="rounded p-0.5 text-danger/70 hover:bg-danger/10 hover:text-danger"
+                onClick={() => setPageError(null)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : null}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1">
@@ -272,7 +313,12 @@ export default function MemoryPage() {
         {memoriesQuery.isPending ? (
           <p className="py-10 text-center text-sm text-muted">加载中…</p>
         ) : memoriesQuery.isError ? (
-          <p className="py-10 text-center text-sm text-danger">{describeApiError(memoriesQuery.error, "加载记忆失败")}</p>
+          <div className="flex flex-col items-center gap-3 py-10 text-center text-sm text-danger">
+            <p>{describeApiError(memoriesQuery.error, "加载记忆失败")}</p>
+            <Button variant="outline" size="sm" onClick={() => void memoriesQuery.refetch()}>
+              重试
+            </Button>
+          </div>
         ) : memories.length === 0 ? (
           <div className="mt-6 rounded-xl border border-dashed border-line py-14 text-center">
             <Brain className="mx-auto h-7 w-7 text-muted" />
@@ -302,7 +348,7 @@ export default function MemoryPage() {
                       {kindLabels[memory.kind]}
                     </span>
                     {memory.core ? (
-                      <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700">
+                      <span className="inline-flex items-center gap-0.5 rounded bg-warningsoft px-1.5 py-0.5 text-[10px] text-warning">
                         <Star className="h-2.5 w-2.5 fill-current" /> 核心
                       </span>
                     ) : null}
@@ -337,7 +383,7 @@ export default function MemoryPage() {
                         className="h-7 px-2 text-[11px]"
                         onClick={() => rowMutation.mutate({ id: memory.id, patch: { core: !memory.core } })}
                       >
-                        <Star className={cn("h-3 w-3", memory.core && "fill-current text-amber-500")} />
+                        <Star className={cn("h-3 w-3", memory.core && "fill-current text-warning")} />
                         {memory.core ? "取消核心" : "设为核心"}
                       </Button>
                     ) : null}
@@ -367,6 +413,7 @@ export default function MemoryPage() {
             })}
           </div>
         )}
+        </div>
       </div>
 
       <MemoryDialog

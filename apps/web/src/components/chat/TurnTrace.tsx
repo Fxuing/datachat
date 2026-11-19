@@ -26,6 +26,7 @@ export interface TurnTraceProps {
   /** Memories the agent was given for this turn. */
   memories?: RunMemory[] | null;
   onCreateReport?: (artifactId: string) => void;
+  creatingReport?: boolean;
   canExport?: boolean;
   className?: string;
 }
@@ -79,11 +80,13 @@ function QueryDetail({
   sql,
   result,
   onCreateReport,
+  creatingReport,
   canExport,
 }: {
   sql: ChatSql;
   result?: ChatResult;
   onCreateReport?: (artifactId: string) => void;
+  creatingReport?: boolean;
   canExport: boolean;
 }) {
   return (
@@ -96,6 +99,7 @@ function QueryDetail({
             sql={undefined}
             flat
             onCreateReport={onCreateReport}
+            creatingReport={creatingReport}
             canExport={canExport}
           />
         </div>
@@ -217,6 +221,7 @@ function queryStep(
   pair: QueryPair<ChatResult>,
   tool: TurnTool | undefined,
   onCreateReport: ((artifactId: string) => void) | undefined,
+  creatingReport: boolean | undefined,
   canExport: boolean,
 ): TurnStep {
   const { sql, result } = pair;
@@ -234,6 +239,7 @@ function queryStep(
         sql={sql}
         result={result}
         onCreateReport={onCreateReport}
+        creatingReport={creatingReport}
         canExport={canExport}
       />
     ),
@@ -262,6 +268,7 @@ function buildTurnSteps({
   tools,
   queries,
   onCreateReport,
+  creatingReport,
   canExport,
 }: {
   status: RunStatusValue;
@@ -270,6 +277,7 @@ function buildTurnSteps({
   tools: TurnTool[];
   queries: QueryPair<ChatResult>[];
   onCreateReport?: (artifactId: string) => void;
+  creatingReport?: boolean;
   canExport: boolean;
 }): TurnStep[] {
   // One entry per reasoning stretch; empty entries mark a tool boundary, so the
@@ -289,7 +297,7 @@ function buildTurnSteps({
 
   const queryTools = tools.filter((item) => item.name === "db_query");
   const querySteps = queries.map((pair, index) =>
-    queryStep(pair, queryTools[index], onCreateReport, canExport),
+    queryStep(pair, queryTools[index], onCreateReport, creatingReport, canExport),
   );
 
   // `db_query` tools and recorded SQL describe the same step: prefer the SQL
@@ -336,6 +344,7 @@ export function TurnTrace({
   usage,
   memories: injectedMemories,
   onCreateReport,
+  creatingReport = false,
   canExport = true,
   className,
 }: TurnTraceProps) {
@@ -346,6 +355,7 @@ export function TurnTrace({
     tools,
     queries,
     onCreateReport,
+    creatingReport,
     canExport,
   });
   // Memories are context, not a step the agent took: they get their own badge

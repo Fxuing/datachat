@@ -208,12 +208,34 @@ export function QuestionCard({ conversationId, toolCallId, questions }: Question
         {error && <p className="text-xs text-danger">{error}</p>}
       </div>
 
-      <div className="flex items-center gap-3 border-t border-line/70 bg-subtle/30 px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 border-t border-line/70 bg-subtle/30 px-4 py-2.5">
         <p className="min-w-0 flex-1 truncate text-[11px] text-muted">
           {questions.length > 1 && !complete
             ? `还有 ${questions.length - answeredCount} 个问题未回答`
             : "提交后模型会继续执行"}
         </p>
+        {questions.length > 1 ? (
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pending || active === 0}
+              onClick={() => setActive((index) => Math.max(0, index - 1))}
+            >
+              上一题
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pending || active === questions.length - 1}
+              onClick={() => setActive((index) => Math.min(questions.length - 1, index + 1))}
+            >
+              下一题
+            </Button>
+          </div>
+        ) : null}
         <Button variant="ghost" size="sm" onClick={() => void cancel()} disabled={pending}>
           <X className="size-3.5" />
           取消

@@ -39,6 +39,8 @@ export interface MessageListProps {
   artifacts?: ChatArtifact[];
   /** Turns a result artifact into a report and opens it. */
   onCreateReport?: (artifactId: string) => void;
+  /** Disables report creation while a report mutation is running. */
+  creatingReport?: boolean;
   /** The run currently streaming, if any (enables feedback once it ends). */
   activeRunId?: string | null;
   /** Models available for retrying a failed turn on another model. */
@@ -172,7 +174,7 @@ function EmptyChat({
             </div>
           ) : datasources.length > 0 ? (
             <Select
-              value={selectedDatasourceId ?? undefined}
+              value={selectedDatasourceId ?? ""}
               onValueChange={onSelectDatasource}
               disabled={starting}
             >
@@ -290,6 +292,7 @@ export function MessageList({
   loading = false,
   artifacts = [],
   onCreateReport,
+  creatingReport = false,
   activeRunId = null,
   models = [],
   retryingRunId = null,
@@ -494,6 +497,7 @@ export function MessageList({
               artifacts={artifacts}
               models={models}
               retrying={retryingRunId === message.runId}
+              creatingReport={creatingReport}
               onCreateReport={onCreateReport}
               canExport={canExport}
               onRetry={onRetry}
@@ -521,6 +525,7 @@ export function MessageList({
                 usage={stream.usage}
                 memories={stream.memories}
                 onCreateReport={onCreateReport}
+                creatingReport={creatingReport}
                 canExport={canExport}
               />
               {streamSegments.map((segment, index) => {
@@ -537,7 +542,13 @@ export function MessageList({
                     (item) => item.artifactId === segment.artifactId,
                   );
                   return result ? (
-                    <ResultCard key={`result-${index}`} {...result} canExport={canExport} />
+                    <ResultCard
+                      key={`result-${index}`}
+                      {...result}
+                      onCreateReport={onCreateReport}
+                      creatingReport={creatingReport}
+                      canExport={canExport}
+                    />
                   ) : null;
                 }
                 if (segment.type === "result") {
@@ -581,6 +592,7 @@ export function MessageList({
                       {...item}
                       index={unmatchedResults.length > 1 ? index + 1 : undefined}
                       onCreateReport={onCreateReport}
+                      creatingReport={creatingReport}
                       canExport={canExport}
                     />
                   ))}
@@ -602,6 +614,7 @@ export function MessageList({
                 status={stream.status}
                 usage={hasTrace ? null : stream.usage}
                 durationMs={hasTrace ? null : stream.durationMs}
+                copyText={stream.text}
               />
             </div>
           </div>

@@ -16,15 +16,11 @@ export function MarkdownCodeBlock({ children }: { children: ReactNode }) {
 
   const copy = async () => {
     const text = preRef.current?.textContent?.replace(/\n$/, "");
-    if (!text || !navigator.clipboard) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => setCopied(false), 1_500);
-    } catch {
-      // Clipboard access can be blocked; keep the code visible for manual copy.
-    }
+    if (!text) return;
+    if (!(await copyToClipboard(text))) return;
+    setCopied(true);
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setCopied(false), 1_500);
   };
 
   return (

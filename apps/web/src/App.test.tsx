@@ -27,6 +27,16 @@ const datasource: DatasourceSummary = {
   lastCheckedAt: null,
 };
 
+const model = {
+  id: "siliconflow::Qwen/Qwen3",
+  modelId: "Qwen/Qwen3",
+  providerId: "siliconflow",
+  providerName: "SiliconFlow",
+  name: "Qwen3",
+  contextWindow: 128_000,
+  maxTokens: 8_192,
+};
+
 const conversation: Conversation = {
   id: "c-1",
   datasourceId: datasource.id,
@@ -84,7 +94,7 @@ describe("app routes", () => {
       const url = typeof input === "string" ? input : input.toString();
       if (url === "/api/auth/me") return jsonResponse({ user, permissions: ["chat.use"], roles: [] });
       if (url === "/api/models") {
-        return jsonResponse({ configured: false, models: [], defaultId: null });
+        return jsonResponse({ configured: true, models: [model], defaultId: model.id });
       }
       if (url === "/api/conversations" && (init?.method ?? "GET") === "GET") {
         return jsonResponse({ items: [], nextCursor: null });
@@ -94,6 +104,9 @@ describe("app routes", () => {
       if (url === "/api/conversations" && init?.method === "POST") {
         return jsonResponse({ conversation }, 201);
       }
+      if (url === `/api/conversations/${conversation.id}/messages` && init?.method === "POST") {
+        return jsonResponse({ runId: "run-1", position: 1 }, 202);
+      }
       if (url === `/api/conversations/${conversation.id}`) return jsonResponse(detail);
       throw new Error(`unexpected request: ${init?.method ?? "GET"} ${url}`);
     });
@@ -102,16 +115,13 @@ describe("app routes", () => {
 
     render(<App />);
 
-    await browser.click(
-      await screen.findByRole("button", { name: "新建对话" }, { timeout: 10_000 }),
-    );
-    const createButton = await screen.findByRole(
+    const exampleButton = await screen.findByRole(
       "button",
-      { name: "创建并开始对话" },
-      { timeout: 5_000 },
+      { name: /先了解数据结构/ },
+      { timeout: 10_000 },
     );
-    await waitFor(() => expect(createButton).toBeEnabled());
-    await browser.click(createButton);
+    await waitFor(() => expect(exampleButton).toBeEnabled());
+    await browser.click(exampleButton);
 
     expect(await screen.findByText("第一会话", {}, { timeout: 5_000 })).toBeInTheDocument();
     await waitFor(() => expect(window.location.pathname).toBe(`/chat/${conversation.id}`));
@@ -124,6 +134,21 @@ describe("app routes", () => {
       "/api/conversations",
       expect.objectContaining({ method: "POST" }),
     );
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/conversations/${conversation.id}/messages`,
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    const postCount = fetchMock.mock.calls.filter(
+      ([input, init]) => String(input) === "/api/conversations" && init?.method === "POST",
+    ).length;
+    await browser.click(screen.getByRole("button", { name: "新建对话" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/chat"));
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input, init]) => String(input) === "/api/conversations" && init?.method === "POST",
+      ),
+    ).toHaveLength(postCount);
   }, 15_000);
 });
 

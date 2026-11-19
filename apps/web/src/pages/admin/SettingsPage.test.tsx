@@ -179,24 +179,35 @@ describe("SettingsPage", () => {
     expect(putBodies).toEqual([]);
   });
 
-  it("restores defaults by clearing every override", async () => {
+  it("restores defaults only for the active section after confirmation", async () => {
     const { putBodies } = stubApi();
     const user = userEvent.setup();
     renderPage();
 
     await screen.findByRole("combobox", { name: "默认模型" });
     await user.click(screen.getByRole("button", { name: "恢复默认" }));
+    expect(putBodies).toEqual([]);
 
+    await user.click(await screen.findByRole("button", { name: "确认恢复" }));
     await screen.findByText("已恢复默认设置");
     expect(putBodies).toEqual([
       {
         defaultModelId: null,
-        queryMaxRows: null,
-        queryPreviewRows: null,
-        queryTimeoutMs: null,
-        shareMaxDays: null,
+        memoryEnabled: null,
       },
     ]);
+
+    await user.click(screen.getByRole("link", { name: "查询限制" }));
+    await screen.findByRole("spinbutton", { name: "查询最大行数" });
+    await user.click(screen.getByRole("button", { name: "恢复默认" }));
+    await user.click(await screen.findByRole("button", { name: "确认恢复" }));
+
+    await waitFor(() => expect(putBodies).toHaveLength(2));
+    expect(putBodies[1]).toEqual({
+      queryMaxRows: null,
+      queryPreviewRows: null,
+      queryTimeoutMs: null,
+    });
   });
 
   it("surfaces server validation errors", async () => {
