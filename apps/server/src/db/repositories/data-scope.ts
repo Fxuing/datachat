@@ -30,6 +30,14 @@ export type PolicyMode = (typeof POLICY_MODES)[number];
 
 /** Operators that compare against a single value. */
 const COMPARISON_OPERATORS: RuleOperator[] = ["gt", "gte", "lt", "lte"];
+/** Value modes that can resolve to multiple values (department subtrees / multi-membership). */
+const MULTI_VALUE_MODES = new Set<ValueMode>([
+  "department_id",
+  "department_code",
+  "external_id",
+  "external_code",
+  "external_org_code",
+]);
 
 export class DataScopeError extends Error {
   constructor(
@@ -174,6 +182,20 @@ function normalizeRule(input: ScopeRuleInput): Omit<ScopeRule, "id"> {
       );
     }
   }
+  if (operator === "eq") {
+    if (MULTI_VALUE_MODES.has(valueMode)) {
+      throw new DataScopeError(
+        "EQ_REQUIRES_SINGLE_VALUE",
+        `字段 ${columnName} 的部门/组织类取值可能包含多个值，请改用「属于（IN）」或「不属于（NOT IN）」`,
+      );
+    }
+    if (valueMode === "literal" && literalValues.length !== 1) {
+      throw new DataScopeError(
+        "EQ_REQUIRES_SINGLE_VALUE",
+        `等于条件 ${columnName} 只能填写一个固定值，多个值请改用「属于（IN）」`,
+      );
+    }
+  }
   return {
     columnName,
     operator,
@@ -269,6 +291,14 @@ export function replaceScopePolicies(
 ): ScopePolicy[] {
   requireDatasource(db, datasourceId);
   const policies = inputs.map((input) => normalizePolicy({ ...input, datasourceId }));
+  const seenTables = new Set<string>();
+  for (const policy of policies) {
+    const key = policy.tableName.toLowerCase();
+    if (seenTables.has(key)) {
+      throw new DataScopeError("DUPLICATE_TABLE", `表 ${policy.tableName} 重复配置`);
+    }
+    seenTables.add(key);
+  }
   const now = Date.now();
   db.transaction((tx) => {
     const t = tx as unknown as Db;
@@ -484,20 +514,43 @@ export function deleteDepartmentMapping(
     .run();
 }
 
-/** Mapping coverage over the supplied department ids (usually the whole active tree). */
+export type ExternalMappingField = "externalId" | "externalCode" | "externalOrgCode";
+
+/**
+ * Mapping coverage over the supplied department ids (usually the active tree).
+ * When `requiredFields` is provided, a department only counts as mapped if every
+ * required external column is non-empty.
+ */
 export function coverageForDatasource(
   db: Db,
   datasourceId: string,
   departmentIds: string[],
+  requiredFields?: ReadonlySet<ExternalMappingField>,
 ): { mapped: number; unmapped: number; unmappedIds: string[] } {
-  const mapped = new Set(
-    db
-      .select({ id: departmentOrgMap.departmentId })
-      .from(departmentOrgMap)
-      .where(eq(departmentOrgMap.datasourceId, datasourceId))
-      .all()
-      .map((row) => row.id),
-  );
+  const rows = db
+    .select({
+      departmentId: departmentOrgMap.departmentId,
+      externalId: departmentOrgMap.externalId,
+      externalCode: departmentOrgMap.externalCode,
+      externalOrgCode: departmentOrgMap.externalOrgCode,
+    })
+    .from(departmentOrgMap)
+    .where(eq(departmentOrgMap.datasourceId, datasourceId))
+    .all();
+  const mapped = new Set<string>();
+  for (const row of rows) {
+    if (requiredFields && requiredFields.size > 0) {
+      let ok = true;
+      for (const field of requiredFields) {
+        if (!row[field]) {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok) continue;
+    }
+    mapped.add(row.departmentId);
+  }
   const unmappedIds = departmentIds.filter((id) => !mapped.has(id));
   return {
     mapped: departmentIds.length - unmappedIds.length,
@@ -513,8 +566,8 @@ export function policyCoverageForDatasource(
   tableNames: string[],
 ): { total: number; classified: number; unclassified: string[] } {
   const policies = listScopePolicies(db, datasourceId).filter((policy) => policy.enabled);
-  const classified = new Set(policies.map((policy) => policy.tableName));
-  const unclassified = tableNames.filter((table) => !classified.has(table));
+  const classified = new Set(policies.map((policy) => policy.tableName.toLowerCase()));
+  const unclassified = tableNames.filter((table) => !classified.has(table.toLowerCase()));
   return { total: tableNames.length, classified: tableNames.length - unclassified.length, unclassified };
 }
 

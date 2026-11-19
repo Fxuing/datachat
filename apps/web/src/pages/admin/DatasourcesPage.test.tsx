@@ -115,14 +115,55 @@ function stubApi(override?: Override) {
     if (url === "/api/admin/users") {
       return jsonResponse({
         users: [
-          { ...admin, displayName: "Alice" },
-          { id: "u-bob", username: "bob", displayName: "Bob", role: "user", status: "active" },
+          { ...admin, displayName: "Alice", departments: [] },
+          {
+            id: "u-bob",
+            username: "bob",
+            displayName: "Bob",
+            role: "user",
+            status: "active",
+            departments: [{ id: "dept-east", name: "华东区", code: "east", isPrimary: true }],
+          },
           { id: "u-old", username: "old", displayName: "Old", role: "user", status: "disabled" },
         ],
       });
     }
+    if (url === "/api/admin/departments") {
+      return jsonResponse({
+        departments: [
+          {
+            id: "dept-sales",
+            name: "销售部",
+            code: "sales",
+            parentId: null,
+            sortOrder: 0,
+            status: "active",
+            createdAt: 1,
+            updatedAt: 1,
+            memberCount: 0,
+            datasourceIds: [],
+            children: [
+              {
+                id: "dept-east",
+                name: "华东区",
+                code: "east",
+                parentId: "dept-sales",
+                sortOrder: 0,
+                status: "active",
+                createdAt: 1,
+                updatedAt: 1,
+                memberCount: 1,
+                datasourceIds: [],
+                children: [],
+              },
+            ],
+          },
+        ],
+        flat: [],
+      });
+    }
     if (url === "/api/admin/datasources/ds-1/grants" && method === "GET") {
-      return jsonResponse({ userIds: ["u-admin"] });
+      return jsonResponse({ userIds: ["u-admin"], departmentIds: [], inheritedUsers: {} });
     }
     if (url === "/api/admin/datasources/ds-1/grants" && method === "PUT") {
       return jsonResponse({ ok: true });
@@ -295,7 +336,7 @@ describe("DatasourcesPage", () => {
     expect(screen.getByRole("dialog", { name: "删除数据源" })).toBeInTheDocument();
   });
 
-  it("saves grants for active users only", async () => {
+  it("manages department grants and active-user exceptions in one dialog", async () => {
     const fetchMock = stubApi();
     const browser = userEvent.setup();
     renderPage();
@@ -305,8 +346,16 @@ describe("DatasourcesPage", () => {
     await browser.click(within(menu).getByRole("menuitem", { name: "授权" }));
     const dialog = await screen.findByRole("dialog", { name: "analytics 的授权" });
 
+    // Select parent department -> child immediately shows inherited badge.
+    const salesCheckbox = await within(dialog).findByRole("checkbox", { name: /销售部/ });
+    await browser.click(salesCheckbox);
+    expect(within(dialog).getByText("已继承自 销售部")).toBeInTheDocument();
+
+    // Switch to direct user exceptions tab: active users only, and Bob shows department grant source.
+    await browser.click(within(dialog).getByRole("tab", { name: /个人特例直授/ }));
     expect(await within(dialog).findByText("Alice")).toBeInTheDocument();
     expect(within(dialog).getByText("Bob")).toBeInTheDocument();
+    expect(within(dialog).getByText("部门已授权：销售部")).toBeInTheDocument();
     expect(within(dialog).queryByText("Old")).not.toBeInTheDocument();
 
     const alice = within(dialog).getByRole("checkbox", { name: /Alice/ });
@@ -322,8 +371,9 @@ describe("DatasourcesPage", () => {
         fetchMock,
         "/api/admin/datasources/ds-1/grants",
         "PUT",
-      ) as { userIds: string[] };
+      ) as { userIds: string[]; departmentIds: string[] };
       expect([...body.userIds].sort()).toEqual(["u-admin", "u-bob"]);
+      expect(body.departmentIds).toEqual(["dept-sales"]);
     });
   });
 

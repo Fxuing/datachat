@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
 import { AdminShell } from "../../components/admin/AdminShell";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { DepartmentTree } from "../../components/admin/DepartmentTree";
@@ -31,7 +32,6 @@ import {
   listDepartmentMembers,
   listDepartments,
   moveDepartment,
-  setDepartmentGrants,
   updateDepartment,
   type DepartmentNode,
 } from "../../lib/api";
@@ -78,7 +78,7 @@ export default function DepartmentsPage() {
     enabled: Boolean(selectedId),
   });
   const grantsQuery = useQuery({
-    queryKey: ["department-grants", selectedId],
+    queryKey: queryKeys.departmentGrants(selectedId ?? ""),
     queryFn: () => getDepartmentGrants(selectedId as string),
     enabled: Boolean(selectedId),
   });
@@ -117,15 +117,6 @@ export default function DepartmentsPage() {
       moveDepartment(id, parentId),
     onSuccess: () => invalidate(),
     onError: (error) => setBanner(describeApiError(error, "移动部门失败")),
-  });
-
-  const grantsMutation = useMutation({
-    mutationFn: (datasourceIds: string[]) => setDepartmentGrants(selectedId as string, datasourceIds),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["department-grants", selectedId] });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.departments });
-    },
-    onError: (error) => setBanner(describeApiError(error, "保存授权失败")),
   });
 
   const deleteMutation = useMutation({
@@ -282,40 +273,42 @@ export default function DepartmentsPage() {
                   </div>
 
                   <div>
-                    <h3 className="text-xs font-medium text-muted">数据源授权（向下继承）</h3>
-                    {datasources.length === 0 ? (
-                      <p className="py-2 text-xs text-muted">暂无数据源。</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-xs font-medium text-muted">可访问数据源（含上级继承）</h3>
+                      <Link
+                        to="/admin/datasources"
+                        className="inline-flex items-center gap-0.5 text-[11px] text-brandtext hover:underline"
+                      >
+                        前往数据源管理配置授权
+                        <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                      </Link>
+                    </div>
+                    {grantsQuery.isPending ? (
+                      <p className="py-2 text-xs text-muted">加载中…</p>
+                    ) : granted.size === 0 ? (
+                      <p className="py-2 text-xs text-muted">
+                        暂无已授权数据源，可在「数据源 → 授权」中按部门分配。
+                      </p>
                     ) : (
-                      <>
-                        <div className="mt-1 divide-y divide-line rounded-md border border-line">
-                          {datasources.map((datasource) => (
-                            <label
+                      <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                        {datasources
+                          .filter((datasource) => granted.has(datasource.id))
+                          .map((datasource) => (
+                            <li
                               key={datasource.id}
-                              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-inksoft hover:bg-subtle"
+                              className="inline-flex items-center gap-1 rounded-md border border-line bg-subtle px-2 py-1 text-xs text-inksoft"
                             >
-                              <input
-                                type="checkbox"
-                                className="h-3.5 w-3.5 accent-brand"
-                                checked={granted.has(datasource.id)}
-                                disabled={grantsMutation.isPending}
-                                onChange={(event) => {
-                                  const next = new Set(granted);
-                                  if (event.target.checked) next.add(datasource.id);
-                                  else next.delete(datasource.id);
-                                  grantsMutation.mutate([...next]);
-                                }}
-                              />
-                              <span className="truncate">
-                                {datasource.name} · {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}
+                              <span>{datasource.name}</span>
+                              <span className="text-[10px] text-muted">
+                                {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}
                               </span>
-                            </label>
+                            </li>
                           ))}
-                        </div>
-                        <p className="mt-1 text-[11px] text-muted">
-                          子部门成员自动获得上级部门勾选的数据源。
-                        </p>
-                      </>
+                      </ul>
                     )}
+                    <p className="mt-1.5 text-[11px] text-muted">
+                      子部门自动继承上级部门的数据源访问权；如需增删授权请统一在「数据源 → 授权」中操作。
+                    </p>
                   </div>
                 </div>
               )}

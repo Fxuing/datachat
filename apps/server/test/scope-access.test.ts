@@ -146,9 +146,10 @@ describe("run scope visibility", () => {
     expect(runScopeVisible(db, run, false)).toBe(false);
   });
 
-  it("treats snapshots without a department list as unrestricted", async () => {
+  it("hides unrestricted snapshots (empty departments) from non-admins on enabled datasources", async () => {
     const { run } = await seedRun([]);
-    expect(runScopeVisible(db, run, false)).toBe(true);
+    expect(runScopeVisible(db, run, false)).toBe(false);
+    expect(runScopeVisible(db, run, true)).toBe(true);
   });
 
   it("hides legacy runs without a snapshot once the datasource is enabled", async () => {

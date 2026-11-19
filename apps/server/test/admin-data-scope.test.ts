@@ -5,7 +5,7 @@ import { createDb, type Db } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { insertUser } from "../src/db/repositories/users.js";
 import { insertDatasource } from "../src/db/repositories/datasources.js";
-import { createDepartment, setUserDepartments } from "../src/db/repositories/departments.js";
+import { createDepartment, setUserDepartments, updateDepartment } from "../src/db/repositories/departments.js";
 import { saveSchema } from "../src/db/repositories/schema-cache.js";
 import { createSessionSigner } from "../src/auth/jwt.js";
 import { queryAudit } from "../src/db/schema.js";
@@ -272,6 +272,158 @@ describe("admin data scope", () => {
         .all()
         .some((row) => row.action === "data_scope_change"),
     ).toBe(true);
+    await a.close();
+  });
+
+  it("returns 400 for DataScopeError in PUT /scope/policies", async () => {
+    const a = await app();
+    const invalidEq = await putPolicies(a, [
+      {
+        tableName: "orders",
+        mode: "scoped",
+        rules: [{ columnName: "dept_id", operator: "eq", valueMode: "department_id" }],
+      },
+    ]);
+    expect(invalidEq.statusCode).toBe(400);
+    expect(invalidEq.json().error.code).toBe("EQ_REQUIRES_SINGLE_VALUE");
+
+    const duplicate = await putPolicies(a, [
+      { tableName: "orders", mode: "public" },
+      { tableName: "Orders", mode: "denied" },
+    ]);
+    expect(duplicate.statusCode).toBe(400);
+    expect(duplicate.json().error.code).toBe("DUPLICATE_TABLE");
+    await a.close();
+  });
+
+  it("checks active departments and required external fields when enabling", async () => {
+    const archived = createDepartment(db, { name: "旧部门", code: "old" });
+    updateDepartment(db, archived.id, { status: "archived" });
+
+    const a = await app();
+    await putPolicies(a, [
+      {
+        ...SCOPED,
+        rules: [{ columnName: "dept_id", operator: "in", valueMode: "external_org_code" }],
+      },
+      PUBLIC,
+    ]);
+    await a.inject({
+      method: "PUT",
+      url: `/api/admin/datasources/${DS_ID}/scope/mappings`,
+      cookies: { dc_session: adminCookie },
+      payload: { mappings: [{ departmentCode: "sales", externalId: "S-1" }] },
+    });
+
+    // externalId is set, but externalOrgCode is still missing -> must refuse enable.
+    const missingField = await a.inject({
+      method: "POST",
+      url: `/api/admin/datasources/${DS_ID}/scope/enable`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(missingField.statusCode).toBe(409);
+
+    await a.inject({
+      method: "PUT",
+      url: `/api/admin/datasources/${DS_ID}/scope/mappings`,
+      cookies: { dc_session: adminCookie },
+      payload: { mappings: [{ departmentCode: "sales", externalId: "S-1", externalOrgCode: "ORG-1" }] },
+    });
+
+    // Archived department has no mapping, but active department is mapped -> allowed.
+    const enabled = await a.inject({
+      method: "POST",
+      url: `/api/admin/datasources/${DS_ID}/scope/enable`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(enabled.statusCode).toBe(200);
+    await a.close();
+  });
+
+  it("reports literal rules for admins and unconfigured tables in diagnostics, and deduplicates autoMatched", async () => {
+    saveSchema(db, DS_ID, {
+      refreshedAt: Date.now(),
+      tables: [
+        {
+          schema: "demo",
+          name: "orders",
+          comment: null,
+          rowEstimate: 1,
+          columns: [
+            { name: "id", type: "int", nullable: false, defaultValue: null, comment: null },
+            { name: "dept_id", type: "varchar", nullable: true, defaultValue: null, comment: null },
+            { name: "org_code", type: "varchar", nullable: true, defaultValue: null, comment: null },
+            { name: "is_deleted", type: "int", nullable: true, defaultValue: null, comment: null },
+          ],
+          primaryKey: ["id"],
+          indexes: [],
+          foreignKeys: [],
+        },
+        {
+          schema: "demo",
+          name: "settings",
+          comment: null,
+          rowEstimate: 1,
+          columns: [{ name: "id", type: "int", nullable: false, defaultValue: null, comment: null }],
+          primaryKey: ["id"],
+          indexes: [],
+          foreignKeys: [],
+        },
+      ],
+    });
+
+    const a = await app();
+    const columns = await a.inject({
+      method: "GET",
+      url: `/api/admin/datasources/${DS_ID}/scope/columns`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(columns.json().candidates).toHaveLength(2);
+    expect(columns.json().autoMatched).toHaveLength(1);
+    expect(columns.json().autoMatched[0].rules[0].columnName).toBe("dept_id");
+
+    await putPolicies(a, [
+      {
+        tableName: "orders",
+        mode: "scoped",
+        rules: [
+          { columnName: "dept_id", operator: "in", valueMode: "department_id" },
+          { columnName: "is_deleted", operator: "eq", valueMode: "literal", literalValues: ["0"] },
+        ],
+      },
+    ]);
+
+    const adminDiag = await a.inject({
+      method: "GET",
+      url: `/api/admin/datasources/${DS_ID}/scope/diagnostics?userId=${adminId}`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(adminDiag.json().tables).toEqual([
+      {
+        table: "orders",
+        decision: "scoped",
+        rules: [
+          {
+            column: "is_deleted",
+            operator: "eq",
+            valueMode: "literal",
+            literalValues: ["0"],
+            nullVisible: false,
+          },
+        ],
+      },
+      { table: "settings", decision: "admin_all" },
+    ]);
+
+    const userDiag = await a.inject({
+      method: "GET",
+      url: `/api/admin/datasources/${DS_ID}/scope/diagnostics?userId=${userId}`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(userDiag.json().tables.find((row: { table: string }) => row.table === "settings")).toEqual({
+      table: "settings",
+      decision: "unconfigured",
+    });
     await a.close();
   });
 });

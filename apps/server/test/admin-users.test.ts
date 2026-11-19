@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { createDb, type Db } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
+import { insertDatasource } from "../src/db/repositories/datasources.js";
 import { insertUser } from "../src/db/repositories/users.js";
+import { createDepartment, setUserDepartments } from "../src/db/repositories/departments.js";
 import { queryAudit } from "../src/db/schema.js";
 import { hashPassword } from "../src/auth/password.js";
 import { createSessionSigner } from "../src/auth/jwt.js";
@@ -37,6 +39,19 @@ beforeEach(async () => {
     passwordHash: await hashPassword("user-pass"),
     role: "user",
     createdAt: Date.now(),
+  });
+  insertDatasource(db, {
+    id: DS_ID,
+    name: "demo",
+    type: "mysql",
+    host: "127.0.0.1",
+    port: 3306,
+    database: "demo",
+    username: "demo",
+    passwordCipher: "cipher",
+    createdBy: adminId,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
   });
   const signer = createSessionSigner(config.appSecret);
   adminCookie = await signer.sign({ sub: adminId, username: "root", role: "admin" });
@@ -88,11 +103,15 @@ describe("admin users", () => {
     });
     expect(duplicate.statusCode).toBe(409);
 
+    const sales = createDepartment(db, { name: "销售部", code: "sales" });
+    const east = createDepartment(db, { name: "华东区", code: "east", parentId: sales.id });
+    setUserDepartments(db, id, [east.id]);
+
     const granted = await a.inject({
       method: "PUT",
       url: `/api/admin/datasources/${DS_ID}/grants`,
       cookies: { dc_session: adminCookie },
-      payload: { userIds: [id] },
+      payload: { userIds: [id], departmentIds: [sales.id] },
     });
     expect(granted.statusCode).toBe(200);
 
@@ -101,7 +120,11 @@ describe("admin users", () => {
       url: `/api/admin/datasources/${DS_ID}/grants`,
       cookies: { dc_session: adminCookie },
     });
-    expect(list.json().userIds).toEqual([id]);
+    expect(list.json()).toEqual({
+      userIds: [id],
+      departmentIds: [sales.id],
+      inheritedUsers: { [id]: ["销售部"] },
+    });
     const actions = db.select().from(queryAudit).all().map((row) => row.action);
     expect(actions).toEqual(expect.arrayContaining(["user_create", "grant_update"]));
     await a.close();

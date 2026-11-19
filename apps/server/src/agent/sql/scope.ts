@@ -66,12 +66,7 @@ interface AstNode {
 }
 
 function isSelectNode(node: unknown): node is AstNode {
-  return (
-    typeof node === "object" &&
-    node !== null &&
-    (node as AstNode).type === "select" &&
-    Array.isArray((node as AstNode).from)
-  );
+  return typeof node === "object" && node !== null && (node as AstNode).type === "select";
 }
 
 function cteName(cte: AstNode): string | null {
@@ -92,48 +87,124 @@ function cteStatement(cte: AstNode): unknown {
   return stmt;
 }
 
-function withNames(select: AstNode, inherited: Set<string>): Set<string> {
-  const names = new Set(inherited);
-  const withClause = select.with;
-  if (Array.isArray(withClause)) {
-    for (const cte of withClause) {
-      if (cte && typeof cte === "object") {
-        const name = cteName(cte as AstNode);
-        if (name) names.add(name);
-      }
-    }
-  }
-  return names;
-}
-
-/** Visits every select node, including CTE bodies, derived tables, unions, and nested subqueries. */
-function walkSelects(node: unknown, visit: (select: AstNode) => void, seen = new WeakSet<object>()): void {
+/**
+ * Walks an AST while maintaining accurate CTE visibility:
+ * - Non-recursive CTEs cannot shadow a physical table inside their own body.
+ * - Recursive CTEs only see themselves in the UNION recursive branch (`_next`),
+ *   never in the anchor term.
+ * - Inner subqueries, derived tables, and UNION branches inherit outer CTEs.
+ */
+function walkWithCtes(
+  node: unknown,
+  inherited: ReadonlySet<string>,
+  onFromEntry: (entry: AstNode, visibleCtes: ReadonlySet<string>) => void,
+  seen = new WeakSet<object>(),
+): void {
   if (Array.isArray(node)) {
-    for (const item of node) walkSelects(item, visit, seen);
+    for (const item of node) walkWithCtes(item, inherited, onFromEntry, seen);
     return;
   }
   if (typeof node !== "object" || node === null) return;
   if (seen.has(node)) return;
   seen.add(node);
-  if (isSelectNode(node)) visit(node);
-  for (const value of Object.values(node as AstNode)) walkSelects(value, visit, seen);
+
+  if (isSelectNode(node)) {
+    const visible = new Set(inherited);
+    const withClause = node.with;
+    if (Array.isArray(withClause)) {
+      const recursive = withClause.some(
+        (cte) => Boolean(cte && typeof cte === "object" && (cte as AstNode).recursive),
+      );
+      for (const cte of withClause) {
+        if (!cte || typeof cte !== "object") continue;
+        const name = cteName(cte as AstNode);
+        const stmt = cteStatement(cte as AstNode);
+        if (recursive && name && isSelectNode(stmt) && stmt._next) {
+          // Anchor term cannot reference the CTE itself; only the recursive branch can.
+          walkSelectBody(stmt, visible, onFromEntry, seen, false);
+          visible.add(name);
+          const nexts = Array.isArray(stmt._next) ? stmt._next : [stmt._next];
+          for (const next of nexts) walkWithCtes(next, visible, onFromEntry, seen);
+        } else {
+          walkWithCtes(stmt, visible, onFromEntry, seen);
+          if (name) visible.add(name);
+        }
+      }
+    }
+    walkSelectBody(node, visible, onFromEntry, seen, true);
+    return;
+  }
+
+  for (const value of Object.values(node as AstNode)) {
+    walkWithCtes(value, inherited, onFromEntry, seen);
+  }
+}
+
+function walkSelectBody(
+  select: AstNode,
+  visible: ReadonlySet<string>,
+  onFromEntry: (entry: AstNode, visibleCtes: ReadonlySet<string>) => void,
+  seen: WeakSet<object>,
+  includeNext: boolean,
+): void {
+  const from = Array.isArray(select.from) ? (select.from as AstNode[]) : [];
+  for (const entry of from) {
+    if (!entry || typeof entry !== "object") continue;
+    if (entry.expr && typeof entry.expr === "object") {
+      const inner = (entry.expr as AstNode).ast;
+      if (inner) walkWithCtes(inner, visible, onFromEntry, seen);
+    } else {
+      onFromEntry(entry, visible);
+    }
+    if (entry.on) walkWithCtes(entry.on, visible, onFromEntry, seen);
+  }
+  for (const [key, value] of Object.entries(select)) {
+    if (key === "from" || key === "with" || key === "_next") continue;
+    walkWithCtes(value, visible, onFromEntry, seen);
+  }
+  if (includeNext && select._next) {
+    const nexts = Array.isArray(select._next) ? select._next : [select._next];
+    for (const next of nexts) walkWithCtes(next, visible, onFromEntry, seen);
+  }
+}
+
+function isScopableRoot(ast: Record<string, unknown>): boolean {
+  const type = String(ast.type ?? "").toLowerCase();
+  if (type === "select") return true;
+  if (type === "explain") {
+    const hasSelect = (node: unknown, seen = new WeakSet<object>()): boolean => {
+      if (Array.isArray(node)) return node.some((item) => hasSelect(item, seen));
+      if (typeof node !== "object" || node === null || seen.has(node)) return false;
+      seen.add(node);
+      if (isSelectNode(node)) return true;
+      return Object.values(node as AstNode).some((value) => hasSelect(value, seen));
+    };
+    return hasSelect(ast);
+  }
+  return false;
+}
+
+/** Rejects metadata statements like SHOW / DESC that cannot be row-scoped. */
+export function assertScopableSql(sql: string, dialect: SqlDialect): void {
+  const ast = parseSql(sql, dialect);
+  if (!isScopableRoot(ast)) {
+    throw new ScopeRewriteError(
+      "SCOPE_REWRITE_FAILED",
+      "受控数据源不允许执行 SHOW / DESC 等元数据语句，请使用表结构工具或 SELECT 查询",
+    );
+  }
 }
 
 /** Physical table references in a statement, excluding CTE names and derived-table aliases. */
 export function collectTableNames(sql: string, dialect: SqlDialect): string[] {
   const ast = parseSql(sql, dialect);
   const found = new Set<string>();
-  walkSelects(ast, (select) => {
-    const ctes = withNames(select, new Set());
-    const from = select.from as AstNode[];
-    for (const entry of from) {
-      if (!entry || typeof entry !== "object") continue;
-      const table = entry.table;
-      if (typeof table !== "string") continue;
-      const name = normalizeTableName(table);
-      if (ctes.has(name)) continue;
-      found.add(name);
-    }
+  walkWithCtes(ast, new Set(), (entry, ctes) => {
+    const table = entry.table;
+    if (typeof table !== "string") return;
+    const name = normalizeTableName(table);
+    if (ctes.has(name)) return;
+    found.add(name);
   });
   return [...found];
 }
@@ -144,19 +215,6 @@ interface RewriteContext {
   params: string[];
   applied: Set<string>;
   paramIndex: number;
-}
-
-function rewriteNested(value: unknown, ctx: RewriteContext, ctes: Set<string>): void {
-  if (Array.isArray(value)) {
-    for (const item of value) rewriteNested(item, ctx, ctes);
-    return;
-  }
-  if (typeof value !== "object" || value === null) return;
-  if (isSelectNode(value)) {
-    rewriteSelect(value, ctx, ctes);
-    return;
-  }
-  for (const child of Object.values(value as AstNode)) rewriteNested(child, ctx, ctes);
 }
 
 function placeholders(values: string[], ctx: RewriteContext): AstNode[] {
@@ -202,13 +260,19 @@ function buildCondition(condition: ScopeCondition, ctx: RewriteContext): AstNode
   const comparison = COMPARISON_SQL[condition.operator];
   let expr: AstNode;
   if (comparison) {
+    if (condition.values.length === 0) return noRowsNode();
+    if (condition.values.length > 1) {
+      throw new ScopeRewriteError(
+        "SCOPE_REWRITE_FAILED",
+        `字段 ${condition.column} 使用了单值操作符（${comparison}），但解析出多个过滤值，请改为 IN`,
+      );
+    }
     const [value] = condition.values;
-    if (value === undefined) return noRowsNode();
     expr = {
       type: "binary_expr",
       operator: comparison,
       left: columnRef,
-      right: placeholders([value], ctx)[0],
+      right: placeholders([value!], ctx)[0],
     };
   } else if (condition.operator === "in" || condition.operator === "not_in") {
     if (condition.values.length === 0) {
@@ -270,12 +334,7 @@ function wrapScopedTable(
   ctx.applied.add(tableName);
 }
 
-function rewriteEntry(entry: AstNode, ctx: RewriteContext, ctes: Set<string>): void {
-  if (entry.expr && typeof entry.expr === "object") {
-    const inner = (entry.expr as AstNode).ast;
-    if (inner) rewriteNested(inner, ctx, ctes);
-  }
-  if (entry.on) rewriteNested(entry.on, ctx, ctes);
+function rewriteFromEntry(entry: AstNode, ctx: RewriteContext, ctes: ReadonlySet<string>): void {
   if (typeof entry.table !== "string") return;
 
   const name = normalizeTableName(entry.table);
@@ -292,28 +351,6 @@ function rewriteEntry(entry: AstNode, ctx: RewriteContext, ctes: Set<string>): v
   }
   if (policy.kind === "public") return;
   wrapScopedTable(entry, name, policy, ctx);
-}
-
-function rewriteSelect(select: AstNode, ctx: RewriteContext, inherited: Set<string>): void {
-  const ctes = withNames(select, inherited);
-  const withClause = select.with;
-  if (Array.isArray(withClause)) {
-    for (const cte of withClause) {
-      if (cte && typeof cte === "object") rewriteNested(cteStatement(cte as AstNode), ctx, ctes);
-    }
-  }
-  const from = select.from as AstNode[];
-  for (const entry of from) {
-    if (entry && typeof entry === "object") rewriteEntry(entry, ctx, ctes);
-  }
-  for (const [key, value] of Object.entries(select)) {
-    if (key === "from" || key === "with" || key === "_next") continue;
-    rewriteNested(value, ctx, ctes);
-  }
-  if (select._next) {
-    const nexts = Array.isArray(select._next) ? select._next : [select._next];
-    for (const next of nexts) rewriteNested(next, ctx, ctes);
-  }
 }
 
 /**
@@ -333,7 +370,9 @@ export function rewriteSqlForScope(
     applied: new Set(),
     paramIndex: 0,
   };
-  rewriteNested(ast, ctx, new Set());
+  walkWithCtes(ast, new Set(), (entry, ctes) => {
+    rewriteFromEntry(entry, ctx, ctes);
+  });
   let rewritten: string;
   try {
     rewritten = new Parser().sqlify(ast as unknown as AST, { database: databaseFor(dialect) });

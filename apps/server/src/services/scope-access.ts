@@ -27,7 +27,12 @@ export interface ScopeAccessInput {
  * Runs recorded before the datasource was enabled carry no snapshot and are
  * treated as legacy: invisible to everyone but admins.
  */
-export function runScopeVisible(db: Db, run: RunRow, isAdmin: boolean): boolean {
+export function runScopeVisible(
+  db: Db,
+  run: RunRow,
+  isAdmin: boolean,
+  viewerUserId: string = run.userId,
+): boolean {
   if (isAdmin) return true;
   const conversation = findConversation(db, run.conversationId);
   if (!conversation) return false;
@@ -35,7 +40,7 @@ export function runScopeVisible(db: Db, run: RunRow, isAdmin: boolean): boolean 
   if (datasource?.dataScopeMode !== "enabled") return true;
   const snapshot = parseScopeSnapshot(run.scopeSnapshot);
   if (!snapshot) return false;
-  return isSnapshotVisible(snapshot, userDepartmentScope(db, run.userId));
+  return isSnapshotVisible(snapshot, userDepartmentScope(db, viewerUserId));
 }
 
 /** Throws when the run belongs to a datasource that now excludes the viewer. */
@@ -44,7 +49,7 @@ export function assertRunScopeVisible(db: Db, input: ScopeAccessInput): RunRow {
   if (!run) {
     throw new ScopeAccessError("DATA_SCOPE_NOT_VISIBLE", "结果不存在");
   }
-  if (!runScopeVisible(db, run, input.isAdmin)) {
+  if (!runScopeVisible(db, run, input.isAdmin, input.userId)) {
     throw new ScopeAccessError(
       "DATA_SCOPE_NOT_VISIBLE",
       "该结果超出了你当前部门的数据范围，无法查看",

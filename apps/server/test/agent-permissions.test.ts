@@ -169,7 +169,6 @@ describe("ConversationRuntime permission resolution", () => {
       const role = createRole(handle.db, {
         name: `role-${id}`,
         permissions: rolePermissions,
-        datasourceIds: [],
       });
       setUserRoles(handle.db, id, [role.id]);
     }

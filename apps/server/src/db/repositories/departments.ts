@@ -428,3 +428,95 @@ export function listAllDepartmentGrants(db: Db): Map<string, string[]> {
   }
   return result;
 }
+
+/** Departments directly granted access to a datasource. */
+export function listDepartmentIdsForDatasource(db: Db, datasourceId: string): string[] {
+  return db
+    .select({ departmentId: departmentDatasourceGrants.departmentId })
+    .from(departmentDatasourceGrants)
+    .where(eq(departmentDatasourceGrants.datasourceId, datasourceId))
+    .all()
+    .map((row) => row.departmentId);
+}
+
+/** Replaces the set of departments directly granted access to a datasource. */
+export function replaceDatasourceDepartmentGrants(
+  db: Db,
+  datasourceId: string,
+  departmentIds: string[],
+): void {
+  const unique = [...new Set(departmentIds)];
+  for (const departmentId of unique) requireDepartment(db, departmentId);
+  const now = Date.now();
+  db.delete(departmentDatasourceGrants)
+    .where(eq(departmentDatasourceGrants.datasourceId, datasourceId))
+    .run();
+  if (unique.length > 0) {
+    db.insert(departmentDatasourceGrants)
+      .values(
+        unique.map((departmentId) => ({
+          departmentId,
+          datasourceId,
+          createdAt: now,
+        })),
+      )
+      .run();
+  }
+}
+
+/**
+ * Users who inherit access to `datasourceId` via department grants (direct or ancestor),
+ * mapped to the granting department names so the grant dialog can surface the source.
+ */
+export function listInheritedDatasourceUsers(
+  db: Db,
+  datasourceId: string,
+): Record<string, string[]> {
+  const grantedDeptIds = listDepartmentIdsForDatasource(db, datasourceId);
+  if (grantedDeptIds.length === 0) return {};
+
+  const deptNames = departmentNameMap(db, grantedDeptIds);
+  const closureRows = db
+    .select({
+      ancestorId: departmentClosure.ancestorId,
+      descendantId: departmentClosure.descendantId,
+    })
+    .from(departmentClosure)
+    .where(inArray(departmentClosure.ancestorId, grantedDeptIds))
+    .all();
+
+  const descendantToGrantNames = new Map<string, Set<string>>();
+  for (const row of closureRows) {
+    const name = deptNames.get(row.ancestorId);
+    if (!name) continue;
+    const set = descendantToGrantNames.get(row.descendantId) ?? new Set<string>();
+    set.add(name);
+    descendantToGrantNames.set(row.descendantId, set);
+  }
+  const descendantIds = [...descendantToGrantNames.keys()];
+  if (descendantIds.length === 0) return {};
+
+  const memberRows = db
+    .select({
+      userId: userDepartments.userId,
+      departmentId: userDepartments.departmentId,
+    })
+    .from(userDepartments)
+    .where(inArray(userDepartments.departmentId, descendantIds))
+    .all();
+
+  const userToNames = new Map<string, Set<string>>();
+  for (const row of memberRows) {
+    const names = descendantToGrantNames.get(row.departmentId);
+    if (!names) continue;
+    const target = userToNames.get(row.userId) ?? new Set<string>();
+    for (const name of names) target.add(name);
+    userToNames.set(row.userId, target);
+  }
+
+  const out: Record<string, string[]> = {};
+  for (const [userId, names] of userToNames) {
+    out[userId] = [...names].sort();
+  }
+  return out;
+}

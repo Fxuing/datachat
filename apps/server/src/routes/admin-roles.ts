@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { isPermission, isSystemPermission } from "@datachat/shared";
 import type { Db } from "../db/client.js";
-import { findDatasource } from "../db/repositories/datasources.js";
 import { isUniqueViolation } from "../db/repositories/users.js";
 import {
   createRole,
@@ -10,7 +9,6 @@ import {
   findRole,
   findRoleByName,
   listRoles,
-  replaceRoleDatasources,
   replaceRolePermissions,
   roleDetail,
   updateRole,
@@ -23,7 +21,6 @@ const roleInputSchema = z.object({
   name: z.string().trim().min(1).max(40),
   description: z.string().trim().max(200).nullable().optional(),
   permissions: permissionsSchema,
-  datasourceIds: z.array(z.string().uuid()).max(200),
 });
 const rolePatchSchema = roleInputSchema.partial();
 const idParamsSchema = z.object({ id: z.string().min(1).max(64) });
@@ -44,13 +41,6 @@ function permissionError(permissions: string[]): ApiError | null {
     }
   }
   return null;
-}
-
-function missingDatasource(datasourceIds: string[], db: Db): ApiError | null {
-  const missing = datasourceIds.find((id) => !findDatasource(db, id));
-  return missing
-    ? { code: "DATASOURCE_NOT_FOUND", message: `数据源不存在：${missing}` }
-    : null;
 }
 
 export async function adminRoleRoutes(app: FastifyInstance, opts: { db: Db }): Promise<void> {
@@ -82,10 +72,6 @@ export async function adminRoleRoutes(app: FastifyInstance, opts: { db: Db }): P
     if (invalidPermission) {
       return reply.code(400).send({ error: invalidPermission });
     }
-    const missing = missingDatasource(parsed.data.datasourceIds, db);
-    if (missing) {
-      return reply.code(400).send({ error: missing });
-    }
     if (findRoleByName(db, parsed.data.name)) {
       return reply.code(409).send({ error: { code: "CONFLICT", message: "角色名称已存在" } });
     }
@@ -110,7 +96,6 @@ export async function adminRoleRoutes(app: FastifyInstance, opts: { db: Db }): P
         roleId: role.id,
         action: "create",
         permissions: detail.permissions,
-        datasourceIds: detail.datasourceIds,
       },
     });
     return reply.code(201).send({ role: detail });
@@ -136,12 +121,6 @@ export async function adminRoleRoutes(app: FastifyInstance, opts: { db: Db }): P
         return reply.code(400).send({ error: invalidPermission });
       }
     }
-    if (body.data.datasourceIds) {
-      const missing = missingDatasource(body.data.datasourceIds, db);
-      if (missing) {
-        return reply.code(400).send({ error: missing });
-      }
-    }
     if (body.data.name !== undefined && body.data.name !== role.name) {
       if (findRoleByName(db, body.data.name)) {
         return reply.code(409).send({ error: { code: "CONFLICT", message: "角色名称已存在" } });
@@ -158,9 +137,6 @@ export async function adminRoleRoutes(app: FastifyInstance, opts: { db: Db }): P
         }
         if (body.data.permissions) {
           replaceRolePermissions(tx, role.id, body.data.permissions);
-        }
-        if (body.data.datasourceIds) {
-          replaceRoleDatasources(tx, role.id, body.data.datasourceIds);
         }
       });
     } catch (error) {
@@ -180,7 +156,6 @@ export async function adminRoleRoutes(app: FastifyInstance, opts: { db: Db }): P
         roleId: detail.id,
         action: "update",
         permissions: detail.permissions,
-        datasourceIds: detail.datasourceIds,
       },
     });
     return { role: detail };
@@ -217,7 +192,6 @@ export async function adminRoleRoutes(app: FastifyInstance, opts: { db: Db }): P
         roleId: role.id,
         action: "delete",
         permissions: detail.permissions,
-        datasourceIds: detail.datasourceIds,
       },
     });
     return { ok: true };

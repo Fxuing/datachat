@@ -25,10 +25,8 @@ import {
   deleteRole,
   fetchMe,
   getRole,
-  listDatasources,
   listRoles,
   updateRole,
-  type DatasourceSummary,
   type RoleDetail,
   type RoleInput,
   type RoleSummary,
@@ -56,8 +54,6 @@ function toggleValue<T>(current: ReadonlySet<T>, value: T): ReadonlySet<T> {
 interface RoleEditorProps {
   /** null creates a new role. */
   role: RoleDetail | null;
-  datasources: DatasourceSummary[];
-  datasourceError: string | null;
   saving: boolean;
   error: string | null;
   onSave: (input: RoleInput) => void;
@@ -66,8 +62,6 @@ interface RoleEditorProps {
 
 function RoleEditor({
   role,
-  datasources,
-  datasourceError,
   saving,
   error,
   onSave,
@@ -79,9 +73,6 @@ function RoleEditor({
   const [permissions, setPermissions] = useState<ReadonlySet<Permission>>(
     () => new Set(role?.permissions ?? []),
   );
-  const [datasourceIds, setDatasourceIds] = useState<ReadonlySet<string>>(
-    () => new Set(role?.datasourceIds ?? []),
-  );
 
   const submit = () => {
     if (saving || name.trim() === "") return;
@@ -89,7 +80,6 @@ function RoleEditor({
       name: name.trim(),
       description: description.trim() === "" ? null : description.trim(),
       permissions: FUNCTIONAL_PERMISSIONS.filter((permission) => permissions.has(permission)),
-      datasourceIds: [...datasourceIds],
     });
   };
 
@@ -169,44 +159,9 @@ function RoleEditor({
             </fieldset>
           ))}
           <p className="text-[11px] text-muted">
-            系统权限仅内置管理员拥有，自定义角色只能配置功能权限。
+            角色只控制功能权限，系统权限仅内置管理员拥有；数据源访问请在「数据源 → 授权」中配置。
           </p>
         </div>
-
-        <fieldset className="space-y-1.5">
-          <legend className="text-xs font-medium text-muted">可访问数据源</legend>
-          {datasourceError ? (
-            <p role="alert" className="rounded-md bg-dangersoft px-3 py-2 text-xs text-danger">
-              {datasourceError}
-            </p>
-          ) : null}
-          {datasources.length === 0 ? (
-            <p className="px-2 text-xs text-muted">暂无数据源。</p>
-          ) : (
-            <div className="max-h-56 overflow-y-auto rounded-md border border-line">
-              {datasources.map((datasource) => (
-                <label
-                  key={datasource.id}
-                  className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-inksoft hover:bg-subtle"
-                >
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5 accent-brand"
-                    checked={datasourceIds.has(datasource.id)}
-                    disabled={saving}
-                    onChange={() =>
-                      setDatasourceIds((current) => toggleValue(current, datasource.id))
-                    }
-                  />
-                  <span className="truncate">{datasource.name}</span>
-                  <span className="ml-auto shrink-0 text-[11px] text-muted">
-                    {datasource.type}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
-        </fieldset>
       </div>
 
       <DialogFooter>
@@ -231,10 +186,6 @@ export default function RolesPage() {
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const rolesQuery = useQuery({ queryKey: queryKeys.roles, queryFn: listRoles });
-  const datasourcesQuery = useQuery({
-    queryKey: queryKeys.datasources,
-    queryFn: listDatasources,
-  });
   const detailQuery = useQuery({
     queryKey: queryKeys.role(editingId ?? "new"),
     queryFn: () => getRole(editingId as string),
@@ -282,17 +233,12 @@ export default function RolesPage() {
   if (!user) return <PageSpinner />;
 
   const roles = rolesQuery.data?.roles ?? [];
-  const datasources = datasourcesQuery.data?.datasources ?? [];
-  const datasourcesError = datasourcesQuery.isError
-    ? describeApiError(datasourcesQuery.error, "数据源列表加载失败，请稍后重试。")
-    : null;
   const saveError = saveMutation.error
     ? describeApiError(saveMutation.error, "保存角色失败，请稍后重试。")
     : null;
   const deleteError = deleteMutation.error
     ? describeApiError(deleteMutation.error, "删除角色失败，请稍后重试。")
     : null;
-
 
   return (
     <AdminShell user={user}>
@@ -302,7 +248,7 @@ export default function RolesPage() {
             <div>
               <h1 className="text-xl font-semibold tracking-tight text-ink">角色管理</h1>
               <p className="mt-1 text-sm text-muted">
-                管理员不受角色限制；用户拥有多个角色时，权限和数据源取并集。
+                角色只控制功能权限；管理员不受角色限制，用户拥有多个角色时功能权限取并集。数据源访问权请在「数据源 → 授权」中按部门或个人配置。
               </p>
             </div>
             <Button size="sm" className="gap-1.5" onClick={openCreate}>
@@ -332,8 +278,7 @@ export default function RolesPage() {
                     <tr>
                       <th className="px-4 py-2 font-medium">名称</th>
                       <th className="px-4 py-2 font-medium">描述</th>
-                      <th className="px-4 py-2 font-medium">权限</th>
-                      <th className="px-4 py-2 font-medium">数据源</th>
+                      <th className="px-4 py-2 font-medium">功能权限</th>
                       <th className="px-4 py-2 font-medium">用户</th>
                       <th className="px-4 py-2 text-right font-medium">操作</th>
                     </tr>
@@ -356,7 +301,6 @@ export default function RolesPage() {
                           {role.description ?? "—"}
                         </td>
                         <td className="px-4 py-2.5 text-xs text-inksoft">{role.permissionCount}</td>
-                        <td className="px-4 py-2.5 text-xs text-inksoft">{role.datasourceCount}</td>
                         <td className="px-4 py-2.5 text-xs text-inksoft">{role.userCount}</td>
                         <td className="px-4 py-2.5">
                           <div className="flex justify-end gap-1">
@@ -406,8 +350,8 @@ export default function RolesPage() {
               <DialogTitle>{editingId ? "编辑角色" : "新建角色"}</DialogTitle>
               <DialogDescription>
                 {editingId
-                  ? "内置角色可调整权限和数据源，但不能改名或删除。"
-                  : "选择该角色拥有的功能权限和可访问数据源。"}
+                  ? "内置角色可调整功能权限，但不能改名或删除。"
+                  : "选择该角色拥有的功能权限。"}
               </DialogDescription>
             </DialogHeader>
             {editingId !== null && detailQuery.isPending ? (
@@ -425,8 +369,6 @@ export default function RolesPage() {
               <RoleEditor
                 key={editingId ?? "new"}
                 role={editingId !== null ? detailQuery.data!.role : null}
-                datasources={datasources}
-                datasourceError={datasourcesError}
                 saving={saveMutation.isPending}
                 error={saveError}
                 onSave={(input) => saveMutation.mutate({ id: editingId, input })}
@@ -442,7 +384,7 @@ export default function RolesPage() {
           title="删除角色"
           description={
             <>
-              确定删除角色“{deleteTarget.name}”？已分配该角色的用户会失去对应权限和数据源。
+              确定删除角色“{deleteTarget.name}”？已分配该角色的用户会失去对应功能权限。
             </>
           }
           confirmLabel="确认删除"

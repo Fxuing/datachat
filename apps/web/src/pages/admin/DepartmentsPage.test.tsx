@@ -149,15 +149,17 @@ describe("DepartmentsPage", () => {
     });
   });
 
-  it("shows members and inherited grants for a department", async () => {
+  it("shows members and read-only inherited datasource grants for a department", async () => {
     stubApi();
     const browser = userEvent.setup();
     renderPage();
     await browser.click(await screen.findByRole("button", { name: /^销售部/ }));
     expect(await screen.findByText("Bob")).toBeInTheDocument();
-    expect(screen.getByText(/子部门成员自动获得上级部门勾选的数据源/)).toBeInTheDocument();
-    const checkbox = screen.getByRole("checkbox", { name: /analytics/ });
-    expect(checkbox).toBeChecked();
+    expect(screen.getByText("analytics")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /前往数据源管理配置授权/ })).toHaveAttribute(
+      "href",
+      "/admin/datasources",
+    );
   });
 
   it("moves a department through the parent select", async () => {

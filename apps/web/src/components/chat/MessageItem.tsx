@@ -267,7 +267,9 @@ export function MessageItem({
             <span>
               数据范围：
               <span className="font-medium text-ink">
-                {message.scope.departments.join(" / ")}
+                {message.scope.departments.length > 3
+                  ? `${message.scope.departments.slice(0, 3).join("、")} 等 ${message.scope.departments.length} 个部门`
+                  : message.scope.departments.join("、")}
               </span>
               （含下级部门）。本次结果已按当前数据权限过滤，范围外的数据不会显示。
             </span>

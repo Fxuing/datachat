@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ShieldCheck, ShieldOff } from "lucide-react";
+import { AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
 import { AdminShell } from "../../components/admin/AdminShell";
+import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { Button } from "../../components/ui/button";
 import {
   Select,
@@ -15,7 +16,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { PageSpinner } from "../../components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import {
+  deleteScopeMapping,
   disableScope,
   enableScope,
   fetchMe,
@@ -28,6 +31,7 @@ import {
   listDatasources,
   previewScope,
   putScopePolicies,
+  refreshDatasourceSchema,
   type ScopePolicyInput,
   type ScopePolicyMode,
   type ScopeRuleInput,
@@ -99,27 +103,56 @@ interface ScopeRulesDialogProps {
 }
 
 const COMPARISON_OPERATORS = new Set<ScopeRuleOperator>(["gt", "gte", "lt", "lte"]);
+const MULTI_VALUE_MODES = new Set<ScopeValueMode>([
+  "department_id",
+  "department_code",
+  "external_id",
+  "external_code",
+  "external_org_code",
+]);
+
+interface EditableRule extends ScopeRuleInput {
+  /** Raw text keeps trailing commas/spaces intact while typing multiple literals. */
+  rawLiteral: string;
+}
+
+function toEditableRule(rule: ScopeRuleInput): EditableRule {
+  return {
+    ...rule,
+    rawLiteral: (rule.literalValues ?? []).join(", "),
+  };
+}
 
 function ScopeRulesDialog({ tableName, columns, initialRules, onClose, onSave }: ScopeRulesDialogProps) {
-  const [rules, setRules] = useState<ScopeRuleInput[]>(
+  const [rules, setRules] = useState<EditableRule[]>(
     initialRules.length > 0
-      ? initialRules
+      ? initialRules.map(toEditableRule)
       : [
           {
             columnName: columns[0]?.name ?? "",
             operator: "in",
             valueMode: "department_id",
             nullVisible: false,
+            rawLiteral: "",
           },
         ],
   );
-  const patchRule = (index: number, patch: Partial<ScopeRuleInput>) =>
+  const patchRule = (index: number, patch: Partial<EditableRule>) =>
     setRules((current) => current.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)));
   const invalid = rules.some((rule) => {
     if (!rule.columnName) return true;
-    if ((rule.valueMode ?? "literal") !== "literal") return false;
+    const operator = rule.operator ?? "eq";
+    const valueMode = rule.valueMode ?? "literal";
     const count = (rule.literalValues ?? []).length;
-    return count === 0 || (COMPARISON_OPERATORS.has(rule.operator ?? "eq") && count !== 1);
+    if (COMPARISON_OPERATORS.has(operator)) {
+      return valueMode !== "literal" || count !== 1;
+    }
+    if (operator === "eq") {
+      if (MULTI_VALUE_MODES.has(valueMode)) return true;
+      if (valueMode === "literal") return count !== 1;
+      return false;
+    }
+    return valueMode === "literal" && count === 0;
   });
 
   return (
@@ -214,10 +247,11 @@ function ScopeRulesDialog({ tableName, columns, initialRules, onClose, onSave }:
                         className="mt-0.5 h-7 text-xs"
                         aria-label={`固定值 ${index + 1}`}
                         placeholder="多个值用逗号分隔"
-                        value={(rule.literalValues ?? []).join(", ")}
-                        onChange={(event) =>
-                          patchRule(index, { literalValues: splitValues(event.target.value) })
-                        }
+                        value={rule.rawLiteral}
+                        onChange={(event) => {
+                          const rawLiteral = event.target.value;
+                          patchRule(index, { rawLiteral, literalValues: splitValues(rawLiteral) });
+                        }}
                       />
                     </label>
                   ) : (
@@ -253,6 +287,7 @@ function ScopeRulesDialog({ tableName, columns, initialRules, onClose, onSave }:
                   operator: "in",
                   valueMode: "department_id",
                   nullVisible: false,
+                  rawLiteral: "",
                 },
               ])
             }
@@ -263,13 +298,21 @@ function ScopeRulesDialog({ tableName, columns, initialRules, onClose, onSave }:
         <DialogFooter>
           {invalid ? (
             <span className="mr-auto text-[11px] text-warning">
-              固定值条件必须填写值；比较操作只能填一个值
+              比较操作仅支持单个固定值；部门/组织类取值或多个固定值请使用 IN / NOT IN
             </span>
           ) : null}
           <Button variant="ghost" size="sm" onClick={onClose}>
             取消
           </Button>
-          <Button size="sm" disabled={invalid || rules.length === 0} onClick={() => onSave(rules)}>
+          <Button
+            size="sm"
+            disabled={invalid || rules.length === 0}
+            onClick={() =>
+              onSave(
+                rules.map(({ rawLiteral: _raw, ...rest }) => rest),
+              )
+            }
+          >
             保存条件
           </Button>
         </DialogFooter>
@@ -288,6 +331,7 @@ export default function DatasourceScopePage() {
   const [previewSql, setPreviewSql] = useState("select * from ");
   const [banner, setBanner] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [editing, setEditing] = useState<{ table: string; rules: ScopeRuleInput[] } | null>(null);
+  const [confirmMode, setConfirmMode] = useState<"enable" | "disable" | null>(null);
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const datasourcesQuery = useQuery({ queryKey: queryKeys.datasources, queryFn: listDatasources });
@@ -297,7 +341,7 @@ export default function DatasourceScopePage() {
     enabled: Boolean(datasourceId),
   });
   const columnsQuery = useQuery({
-    queryKey: ["scope-columns", datasourceId],
+    queryKey: queryKeys.scopeColumns(datasourceId ?? ""),
     queryFn: () => getScopeColumns(datasourceId as string),
     enabled: Boolean(datasourceId),
     retry: false,
@@ -444,6 +488,25 @@ export default function DatasourceScopePage() {
     onError: (error) => setBanner({ tone: "error", text: describeApiError(error, "导入映射失败") }),
   });
 
+  const deleteMapping = useMutation({
+    mutationFn: (departmentId: string) => deleteScopeMapping(datasourceId as string, departmentId),
+    onSuccess: () => {
+      setBanner({ tone: "ok", text: "已删除组织映射" });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dataScope(datasourceId ?? "") });
+    },
+    onError: (error) => setBanner({ tone: "error", text: describeApiError(error, "删除映射失败") }),
+  });
+
+  const refreshSchema = useMutation({
+    mutationFn: () => refreshDatasourceSchema(datasourceId as string),
+    onSuccess: (result) => {
+      setBanner({ tone: "ok", text: `表结构已刷新，共 ${result.tableCount} 张表` });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.scopeColumns(datasourceId ?? "") });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dataScope(datasourceId ?? "") });
+    },
+    onError: (error) => setBanner({ tone: "error", text: describeApiError(error, "刷新表结构失败") }),
+  });
+
   const preview = useMutation({
     mutationFn: () => previewScope(datasourceId as string, selectedUserId, previewSql),
     onError: (error) => setBanner({ tone: "error", text: describeApiError(error, "预览失败") }),
@@ -452,21 +515,29 @@ export default function DatasourceScopePage() {
   const enable = useMutation({
     mutationFn: () => enableScope(datasourceId as string),
     onSuccess: (result) => {
+      setConfirmMode(null);
       setBanner({ tone: "ok", text: `已启用受控模式，撤销分享 ${result.revokedShares} 个` });
       void queryClient.invalidateQueries({ queryKey: queryKeys.dataScope(datasourceId ?? "") });
       void queryClient.invalidateQueries({ queryKey: queryKeys.datasources });
     },
-    onError: (error) => setBanner({ tone: "error", text: describeApiError(error, "启用失败") }),
+    onError: (error) => {
+      setConfirmMode(null);
+      setBanner({ tone: "error", text: describeApiError(error, "启用失败") });
+    },
   });
 
   const disable = useMutation({
     mutationFn: () => disableScope(datasourceId as string),
     onSuccess: () => {
+      setConfirmMode(null);
       setBanner({ tone: "ok", text: "已关闭受控模式，行级过滤不再生效" });
       void queryClient.invalidateQueries({ queryKey: queryKeys.dataScope(datasourceId ?? "") });
       void queryClient.invalidateQueries({ queryKey: queryKeys.datasources });
     },
-    onError: (error) => setBanner({ tone: "error", text: describeApiError(error, "关闭失败") }),
+    onError: (error) => {
+      setConfirmMode(null);
+      setBanner({ tone: "error", text: describeApiError(error, "关闭失败") });
+    },
   });
 
   const user = meQuery.data?.user;
@@ -533,12 +604,23 @@ export default function DatasourceScopePage() {
                 {scope?.mode === "enabled" ? "已启用" : "未启用"}
               </span>
               {scope?.mode === "enabled" ? (
-                <Button variant="outline" size="sm" className="gap-1" disabled={disable.isPending} onClick={() => disable.mutate()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  disabled={disable.isPending}
+                  onClick={() => setConfirmMode("disable")}
+                >
                   <ShieldOff className="h-3.5 w-3.5" />
                   关闭
                 </Button>
               ) : (
-                <Button size="sm" className="gap-1" disabled={enable.isPending} onClick={() => enable.mutate()}>
+                <Button
+                  size="sm"
+                  className="gap-1"
+                  disabled={enable.isPending}
+                  onClick={() => setConfirmMode("enable")}
+                >
                   <ShieldCheck className="h-3.5 w-3.5" />
                   启用
                 </Button>
@@ -587,7 +669,23 @@ export default function DatasourceScopePage() {
                 </Button>
               </div>
             </div>
-            {unclassified.length > 0 ? (
+            {columnsQuery.isError ? (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/30 bg-warningsoft px-3 py-2 text-xs text-warning">
+                <span>
+                  {describeApiError(columnsQuery.error, "数据源表结构尚未缓存，请先刷新表结构后再分类")}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1"
+                  disabled={refreshSchema.isPending}
+                  onClick={() => refreshSchema.mutate()}
+                >
+                  <RefreshCw className={cn("h-3 w-3", refreshSchema.isPending && "animate-spin")} />
+                  {refreshSchema.isPending ? "刷新中…" : "刷新表结构"}
+                </Button>
+              </div>
+            ) : unclassified.length > 0 ? (
               <p className="mt-2 flex items-center gap-1 text-[11px] text-warning">
                 <AlertTriangle className="h-3 w-3" />
                 未分类 {unclassified.length} 张：{[...unclassified].slice(0, 5).join("、")}
@@ -722,23 +820,34 @@ export default function DatasourceScopePage() {
             <h2 className="text-sm font-semibold text-ink">2. 部门组织映射</h2>
             <p className="mt-1 text-[11px] text-muted">
               使用「外部组织」取值时必须为每个部门配置映射；未映射的部门查询会整条失败。
-              已映射 {scope?.coverage.departments?.mapped ?? 0} 个，未映射 {unmapped.length} 个。
+              已映射 {scope?.coverage.departments?.mapped ?? 0} 个，未映射 {unmapped.length} 个
+              {(scope?.coverage.departments?.unmappedDepartments ?? []).length > 0
+                ? `（${(scope?.coverage.departments?.unmappedDepartments ?? [])
+                    .slice(0, 5)
+                    .map((row) => row.name)
+                    .join("、")}${
+                    (scope?.coverage.departments?.unmappedDepartments ?? []).length > 5 ? " 等" : ""
+                  }）`
+                : ""}
+              。
             </p>
             <div className="mt-2 grid gap-3 md:grid-cols-2">
-              <div className="rounded-md border border-line">
+              <div className="overflow-x-auto rounded-md border border-line">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-subtle text-muted">
                     <tr>
                       <th className="px-2 py-1.5 font-medium">部门</th>
                       <th className="px-2 py-1.5 font-medium">外部 ID</th>
                       <th className="px-2 py-1.5 font-medium">外部编码</th>
+                      <th className="px-2 py-1.5 font-medium">外部组织 code</th>
                       <th className="px-2 py-1.5 font-medium">来源</th>
+                      <th className="px-2 py-1.5 font-medium">操作</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(scope?.mappings ?? []).length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-2 py-4 text-center text-muted">
+                        <td colSpan={6} className="px-2 py-4 text-center text-muted">
                           还没有映射
                         </td>
                       </tr>
@@ -748,8 +857,26 @@ export default function DatasourceScopePage() {
                           <td className="px-2 py-1.5">{mapping.departmentName}</td>
                           <td className="px-2 py-1.5">{mapping.externalId ?? "—"}</td>
                           <td className="px-2 py-1.5">{mapping.externalCode ?? "—"}</td>
+                          <td className="px-2 py-1.5">{mapping.externalOrgCode ?? "—"}</td>
                           <td className="px-2 py-1.5 text-muted">
                             {mapping.source === "import" ? "导入" : "手工"}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 text-danger hover:bg-dangersoft hover:text-danger"
+                                  aria-label={`删除 ${mapping.departmentName} 的映射`}
+                                  disabled={deleteMapping.isPending}
+                                  onClick={() => deleteMapping.mutate(mapping.departmentId)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">删除映射</TooltipContent>
+                            </Tooltip>
                           </td>
                         </tr>
                       ))
@@ -848,7 +975,9 @@ export default function DatasourceScopePage() {
                               ? "所有人可见"
                               : row.decision === "denied"
                                 ? "拒绝"
-                                : "未加入部门"}
+                                : row.decision === "unconfigured"
+                                  ? "未分类（将拒绝）"
+                                  : "未加入部门"}
                       </span>
                     </li>
                   ))}
@@ -883,6 +1012,26 @@ export default function DatasourceScopePage() {
               onSave={(rules) => {
                 update(editing.table, { rules });
                 setEditing(null);
+              }}
+            />
+          ) : null}
+          {confirmMode ? (
+            <ConfirmDialog
+              title={confirmMode === "enable" ? "启用行级数据权限" : "关闭行级数据权限"}
+              description={
+                confirmMode === "enable"
+                  ? `启用后，未分类的表一律拒绝访问，并会立即撤销该数据源下所有公开分享链接。${
+                      dirty ? "注意：当前有未保存的表分类修改，启用将按已保存的策略生效，建议先保存分类。" : ""
+                    }`
+                  : "关闭后，该数据源的行级过滤将不再生效，有访问权的用户可查询全表数据。确定关闭？"
+              }
+              confirmLabel={confirmMode === "enable" ? "确认启用" : "确认关闭"}
+              variant={confirmMode === "disable" ? "danger" : "primary"}
+              pending={enable.isPending || disable.isPending}
+              onCancel={() => setConfirmMode(null)}
+              onConfirm={() => {
+                if (confirmMode === "enable") enable.mutate();
+                else disable.mutate();
               }}
             />
           ) : null}

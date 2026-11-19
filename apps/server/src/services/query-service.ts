@@ -152,10 +152,14 @@ export async function runGuardedQuery(
     executableSql = scoped.sql;
     params = scoped.params.length > 0 ? scoped.params : undefined;
     appliedTables = scoped.appliedTables;
-    scopeSnapshotJson = JSON.stringify({
-      ...scoped.snapshot,
-      scopedTables: appliedTables,
-    });
+    // Only record a scope snapshot while enforcing; pre-scope runs must stay
+    // snapshot-less so enabling scope later hides them from non-admins.
+    if (input.datasource.dataScopeMode === "enabled") {
+      scopeSnapshotJson = JSON.stringify({
+        ...scoped.snapshot,
+        scopedTables: appliedTables,
+      });
+    }
   } catch (error) {
     if (error instanceof ScopeResolveError || error instanceof ScopeRewriteError) {
       const auditId = recordAudit(db, {

@@ -83,7 +83,7 @@ describe("scheduled task routes", () => {
   });
 
   it("requires report.create to create or update", async () => {
-    const role = createRole(db, { name: "only-chat", description: null, permissions: [], datasourceIds: [] });
+    const role = createRole(db, { name: "only-chat", description: null, permissions: [] });
     replaceRolePermissions(db, role.id, ["chat.use"]);
     setUserRoles(db, userId, [role.id]);
     const app = await appFor(fakeService());

@@ -184,7 +184,12 @@ export interface DepartmentMapping {
 
 export interface ScopeCoverage {
   policies?: { total: number; classified: number; unclassified: string[] };
-  departments?: { mapped: number; unmapped: number; unmappedIds: string[] };
+  departments?: {
+    mapped: number;
+    unmapped: number;
+    unmappedIds: string[];
+    unmappedDepartments?: { id: string; name: string; code: string }[];
+  };
   schemaLoaded?: boolean;
 }
 
@@ -637,17 +642,30 @@ export function getDatasourceSchema(
   return apiRequest(`/api/datasources/${id}/schema${query ? `?${query}` : ""}`);
 }
 
-export function listDatasourceGrants(id: string): Promise<{ userIds: string[] }> {
-  return apiRequest(`/api/admin/datasources/${id}/grants`);
+export interface DatasourceGrantsResponse {
+  userIds: string[];
+  departmentIds: string[];
+  inheritedUsers: Record<string, string[]>;
+}
+
+export async function listDatasourceGrants(id: string): Promise<DatasourceGrantsResponse> {
+  const raw = await apiRequest<Partial<DatasourceGrantsResponse>>(
+    `/api/admin/datasources/${id}/grants`,
+  );
+  return {
+    userIds: raw.userIds ?? [],
+    departmentIds: raw.departmentIds ?? [],
+    inheritedUsers: raw.inheritedUsers ?? {},
+  };
 }
 
 export function replaceDatasourceGrants(
   id: string,
-  userIds: string[],
+  input: { userIds?: string[]; departmentIds?: string[] },
 ): Promise<{ ok: boolean }> {
   return apiRequest(`/api/admin/datasources/${id}/grants`, {
     method: "PUT",
-    body: JSON.stringify({ userIds }),
+    body: JSON.stringify(input),
   });
 }
 
@@ -672,27 +690,24 @@ export function updateAdminUser(
   });
 }
 
-/** Role list row; the API returns counts instead of the permission/id arrays. */
+/** Role list row; roles govern functional permissions only. */
 export interface RoleSummary {
   id: string;
   name: string;
   description: string | null;
   builtin: boolean;
   permissionCount: number;
-  datasourceCount: number;
   userCount: number;
 }
 
 export interface RoleDetail extends RoleSummary {
   permissions: Permission[];
-  datasourceIds: string[];
 }
 
 export interface RoleInput {
   name: string;
   description?: string | null;
   permissions: Permission[];
-  datasourceIds: string[];
 }
 
 /** The API exposes `isBuiltin` alongside numeric `builtin`; normalize both. */
@@ -704,9 +719,7 @@ interface RawRole {
   isBuiltin?: boolean;
   userCount?: number;
   permissionCount?: number;
-  datasourceCount?: number;
   permissions?: string[];
-  datasourceIds?: string[];
 }
 
 function toRoleSummary(raw: RawRole): RoleSummary {
@@ -716,7 +729,6 @@ function toRoleSummary(raw: RawRole): RoleSummary {
     description: raw.description,
     builtin: raw.isBuiltin ?? (raw.builtin === true || raw.builtin === 1),
     permissionCount: raw.permissionCount ?? 0,
-    datasourceCount: raw.datasourceCount ?? 0,
     userCount: raw.userCount ?? 0,
   };
 }
@@ -725,7 +737,6 @@ function toRoleDetail(raw: RawRole): RoleDetail {
   return {
     ...toRoleSummary(raw),
     permissions: (raw.permissions ?? []).filter(isPermission),
-    datasourceIds: raw.datasourceIds ?? [],
   };
 }
 
@@ -1525,6 +1536,12 @@ export function importScopeMappings(
   return apiRequest(`/api/admin/datasources/${id}/scope/mappings`, {
     method: "PUT",
     body: JSON.stringify(input),
+  });
+}
+
+export function deleteScopeMapping(id: string, departmentId: string): Promise<void> {
+  return apiRequest(`/api/admin/datasources/${id}/scope/mappings/${departmentId}`, {
+    method: "DELETE",
   });
 }
 

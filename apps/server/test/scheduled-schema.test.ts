@@ -62,7 +62,7 @@ describe("scheduled task storage", () => {
     const migrations = handle.sqlite
       .prepare("select count(*) as count from __drizzle_migrations")
       .get() as { count: number };
-    expect(migrations.count).toBe(16);
+    expect(migrations.count).toBe(17);
 
     handle.sqlite
       .prepare(

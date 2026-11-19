@@ -5,7 +5,6 @@ import { buildApp } from "../src/app.js";
 import { createDb, type Db } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { queryAudit } from "../src/db/schema.js";
-import { insertDatasource } from "../src/db/repositories/datasources.js";
 import { insertUser } from "../src/db/repositories/users.js";
 import {
   listRoleIdsForUser,
@@ -22,25 +21,8 @@ const config = testConfig;
 let db: Db;
 let adminId: string;
 let userId: string;
-let datasourceId: string;
 let adminCookie: string;
 let userCookie: string;
-
-function insertDatasourceRow(id: string, name: string): void {
-  insertDatasource(db, {
-    id,
-    name,
-    type: "mysql",
-    host: "127.0.0.1",
-    port: 3306,
-    database: "demo",
-    username: "demo",
-    passwordCipher: "cipher",
-    createdBy: adminId,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  });
-}
 
 beforeEach(async () => {
   const handle = createDb(":memory:");
@@ -62,8 +44,6 @@ beforeEach(async () => {
     role: "user",
     createdAt: Date.now(),
   });
-  datasourceId = randomUUID();
-  insertDatasourceRow(datasourceId, "demo");
   const signer = createSessionSigner(config.appSecret);
   adminCookie = await signer.sign({ sub: adminId, username: "root", role: "admin" });
   userCookie = await signer.sign({ sub: userId, username: "bob", role: "user" });
@@ -83,9 +63,8 @@ async function createRoleViaApi(
     cookies: { dc_session: adminCookie },
     payload: {
       name: "财务",
-      description: "财务库",
+      description: "财务分析角色",
       permissions: ["chat.use", "export.data"],
-      datasourceIds: [datasourceId],
       ...payload,
     },
   });
@@ -100,13 +79,11 @@ describe("admin roles", () => {
     const role = created.json().role;
     expect(role).toMatchObject({
       name: "财务",
-      description: "财务库",
+      description: "财务分析角色",
       isBuiltin: false,
       userCount: 0,
       permissionCount: 2,
-      datasourceCount: 1,
       permissions: ["chat.use", "export.data"],
-      datasourceIds: [datasourceId],
     });
 
     const a = await app();
@@ -152,11 +129,10 @@ describe("admin roles", () => {
       roleId: role.id,
       action: "create",
       permissions: ["chat.use", "export.data"],
-      datasourceIds: [datasourceId],
     });
   });
 
-  it("rejects system permissions, unknown permissions, missing datasources, and duplicate names", async () => {
+  it("rejects system permissions, unknown permissions, and duplicate names", async () => {
     const system = await createRoleViaApi({ name: "系统", permissions: ["admin.users"] });
     expect(system.statusCode).toBe(400);
     expect(system.json().error.code).toBe("SYSTEM_PERMISSION_NOT_ALLOWED");
@@ -165,21 +141,15 @@ describe("admin roles", () => {
     expect(unknown.statusCode).toBe(400);
     expect(unknown.json().error.code).toBe("VALIDATION");
 
-    const missing = await createRoleViaApi({ name: "无库", datasourceIds: [randomUUID()] });
-    expect(missing.statusCode).toBe(400);
-    expect(missing.json().error.code).toBe("DATASOURCE_NOT_FOUND");
-
     expect((await createRoleViaApi()).statusCode).toBe(201);
     const duplicate = await createRoleViaApi();
     expect(duplicate.statusCode).toBe(409);
     expect(duplicate.json().error.code).toBe("CONFLICT");
   });
 
-  it("updates a role and replaces its permissions and datasources", async () => {
+  it("updates a role and replaces its permissions", async () => {
     const created = await createRoleViaApi();
     const id = created.json().role.id;
-    const secondDatasourceId = randomUUID();
-    insertDatasourceRow(secondDatasourceId, "ops");
 
     const a = await app();
     const patched = await a.inject({
@@ -189,14 +159,12 @@ describe("admin roles", () => {
       payload: {
         name: "财务组",
         permissions: ["chat.use"],
-        datasourceIds: [secondDatasourceId],
       },
     });
     expect(patched.statusCode).toBe(200);
     expect(patched.json().role).toMatchObject({
       name: "财务组",
       permissions: ["chat.use"],
-      datasourceIds: [secondDatasourceId],
     });
 
     const duplicate = await a.inject({
@@ -206,15 +174,6 @@ describe("admin roles", () => {
       payload: { name: "成员" },
     });
     expect(duplicate.statusCode).toBe(409);
-
-    const missing = await a.inject({
-      method: "PATCH",
-      url: `/api/admin/roles/${id}`,
-      cookies: { dc_session: adminCookie },
-      payload: { datasourceIds: [randomUUID()] },
-    });
-    expect(missing.statusCode).toBe(400);
-    expect(missing.json().error.code).toBe("DATASOURCE_NOT_FOUND");
 
     const notFound = await a.inject({
       method: "PATCH",
@@ -249,11 +208,10 @@ describe("admin roles", () => {
       method: "PATCH",
       url: "/api/admin/roles/role_member",
       cookies: { dc_session: adminCookie },
-      payload: { permissions: ["chat.use"], datasourceIds: [datasourceId] },
+      payload: { permissions: ["chat.use"] },
     });
     expect(edit.statusCode).toBe(200);
     expect(edit.json().role.permissions).toEqual(["chat.use"]);
-    expect(edit.json().role.datasourceIds).toEqual([datasourceId]);
     expect(listRolePermissions(db, "role_member")).toEqual(["chat.use"]);
     await a.close();
   });
@@ -271,7 +229,7 @@ describe("admin roles", () => {
       method: "POST",
       url: "/api/admin/roles",
       cookies: { dc_session: userCookie },
-      payload: { name: "x", permissions: [], datasourceIds: [] },
+      payload: { name: "x", permissions: [] },
     });
     expect(create.statusCode).toBe(403);
     await a.close();
@@ -320,7 +278,6 @@ describe("admin roles", () => {
     expect(JSON.parse(deleteAudit!.detailJson!)).toMatchObject({
       roleId: id,
       permissions: ["chat.use", "export.data"],
-      datasourceIds: [datasourceId],
     });
     await a.close();
   });

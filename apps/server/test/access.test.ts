@@ -14,7 +14,6 @@ import { canAccessDatasource, resolveUserAccess } from "../src/auth/access.js";
 import { encryptSecret, deriveSecretKey } from "../src/agent/datasource/crypto.js";
 import {
   datasourceGrants,
-  roleDatasourceGrants,
   rolePermissions,
   roles,
   userRoles,
@@ -50,7 +49,7 @@ function datasource(db: Db, owner: string, name: string): string {
 }
 
 describe("resolveUserAccess", () => {
-  it("unions multiple roles, direct grants, and role grants", () => {
+  it("unions functional permissions from roles and datasource access from departments and direct grants", () => {
     const handle = migrate();
     const userId = randomUUID();
     insertUser(handle.db, {
@@ -84,15 +83,10 @@ describe("resolveUserAccess", () => {
         { userId, roleId: auditor },
       ])
       .run();
+    const dept = createDepartment(handle.db, { name: "财务部" });
+    setUserDepartments(handle.db, userId, [dept.id]);
     const ds1 = datasource(handle.db, userId, "finance");
-    const ds2 = datasource(handle.db, userId, "ops");
-    handle.db
-      .insert(roleDatasourceGrants)
-      .values([
-        { roleId: analyst, datasourceId: ds1 },
-        { roleId: auditor, datasourceId: ds2 },
-      ])
-      .run();
+    replaceDepartmentGrants(handle.db, dept.id, [ds1]);
     const direct = datasource(handle.db, userId, "direct");
     handle.db
       .insert(datasourceGrants)
@@ -102,7 +96,7 @@ describe("resolveUserAccess", () => {
     const access = resolveUserAccess(handle.db, { id: userId, role: "user" });
     expect([...access.permissions].sort()).toEqual(["chat.use", "export.data", "report.create"]);
     expect(access.datasourceIds && [...access.datasourceIds].sort()).toEqual(
-      [ds1, ds2, direct].sort(),
+      [ds1, direct].sort(),
     );
     expect(canAccessDatasource(access, direct)).toBe(true);
     expect(canAccessDatasource(access, randomUUID())).toBe(false);

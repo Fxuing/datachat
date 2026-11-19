@@ -14,7 +14,6 @@ import {
 } from "../db/repositories/departments.js";
 import { datasourceGrants } from "../db/schema.js";
 import {
-  datasourceIdsForUserRoles,
   listRoleIdsForUser,
   permissionsForUserRoles,
 } from "../db/repositories/roles.js";
@@ -45,7 +44,7 @@ export function resolveUserAccess(db: Db, user: Pick<UserRow, "id" | "role">): U
     for (const permission of FUNCTIONAL_PERMISSIONS) permissions.add(permission);
   }
   const memberships = listUserDepartments(db, user.id);
-  const ids = new Set<string>(datasourceIdsForUserRoles(db, user.id));
+  const ids = new Set<string>();
   const direct = db
     .select({ id: datasourceGrants.datasourceId })
     .from(datasourceGrants)

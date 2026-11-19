@@ -11,6 +11,7 @@ import { migrateDb } from "../src/db/migrate.js";
 import { skills } from "../src/db/schema.js";
 import { createConversation } from "../src/db/repositories/conversations.js";
 import { insertDatasource } from "../src/db/repositories/datasources.js";
+import { replaceGrants } from "../src/db/repositories/grants.js";
 import { createRole, setUserRoles } from "../src/db/repositories/roles.js";
 import { insertUser } from "../src/db/repositories/users.js";
 import { RunEventBus } from "../src/agent/event-bus.js";
@@ -100,26 +101,24 @@ beforeEach(async () => {
     updatedAt: Date.now(),
   });
 
-  // Roles carry both the permission set and the datasource scope; nothing is
-  // granted directly, so every allowed action below comes from the role.
+  // Roles carry functional permissions only; datasource access comes from
+  // department or direct grants.
   const skillRole = createRole(db, {
     name: "skill-user",
     permissions: ["chat.use", "skill.use"],
-    datasourceIds: [datasourceId],
   });
   const chatOnlyRole = createRole(db, {
     name: "chat-only",
     permissions: ["chat.use"],
-    datasourceIds: [datasourceId],
   });
   const noChatRole = createRole(db, {
     name: "no-chat",
     permissions: [],
-    datasourceIds: [datasourceId],
   });
   setUserRoles(db, skillUserId, [skillRole.id]);
   setUserRoles(db, chatOnlyUserId, [chatOnlyRole.id]);
   setUserRoles(db, noChatUserId, [noChatRole.id]);
+  replaceGrants(db, datasourceId, [skillUserId, chatOnlyUserId, noChatUserId]);
 
   const now = Date.now();
   db.insert(skills)
@@ -294,7 +293,7 @@ describe("rbac http gates", () => {
     ).toBe(200);
   });
 
-  it("filters the datasource list by role grants", async () => {
+  it("filters the datasource list by datasource grants", async () => {
     const chatOnly = await inject(chatOnlyCookie, "GET", "/api/datasources");
     expect(chatOnly.statusCode).toBe(200);
     expect(chatOnly.json().datasources.map((row: { id: string }) => row.id)).toEqual([datasourceId]);
@@ -302,12 +301,7 @@ describe("rbac http gates", () => {
     const admin = await inject(adminCookie, "GET", "/api/datasources");
     expect(admin.json().datasources.map((row: { id: string }) => row.id)).toEqual([datasourceId]);
 
-    const noGrantsRole = createRole(db, {
-      name: "no-datasource",
-      permissions: ["chat.use"],
-      datasourceIds: [],
-    });
-    setUserRoles(db, chatOnlyUserId, [noGrantsRole.id]);
+    replaceGrants(db, datasourceId, [skillUserId, noChatUserId]);
     const empty = await inject(chatOnlyCookie, "GET", "/api/datasources");
     expect(empty.statusCode).toBe(200);
     expect(empty.json().datasources).toEqual([]);

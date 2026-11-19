@@ -39,7 +39,6 @@ const APP_TABLES = [
   "notifications",
   "query_audit",
   "reports",
-  "role_datasource_grants",
   "role_permissions",
   "roles",
   "run_feedback",
@@ -81,7 +80,6 @@ const INTEGRITY_INDEXES: Record<string, string[]> = {
     "query_audit_datasource_created_idx",
     "query_audit_created_idx",
   ],
-  role_datasource_grants: ["role_datasource_grants_datasource_idx"],
   roles: ["roles_name_unique"],
   user_departments: ["user_departments_department_idx"],
   user_roles: ["user_roles_role_idx"],
@@ -272,8 +270,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(16);
-    expect(migrateDb(handle.db)).toBe(16);
+    expect(migrateDb(handle.db)).toBe(17);
+    expect(migrateDb(handle.db)).toBe(17);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

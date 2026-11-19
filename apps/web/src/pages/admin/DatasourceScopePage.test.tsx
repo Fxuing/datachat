@@ -199,7 +199,8 @@ describe("DatasourceScopePage", () => {
 
     await browser.click(screen.getByRole("button", { name: "编辑条件" }));
     await pickSelectOption(browser, screen.getByRole("combobox", { name: "取值 1" }), "固定值");
-    await browser.type(screen.getByLabelText("固定值 1"), "0");
+    await browser.type(screen.getByLabelText("固定值 1"), "0, 1");
+    expect(screen.getByLabelText("固定值 1")).toHaveValue("0, 1");
     await browser.click(screen.getByRole("checkbox", { name: "允许空值 1" }));
     await browser.click(screen.getByRole("button", { name: "保存条件" }));
     await browser.click(screen.getByRole("button", { name: "保存分类" }));
@@ -231,7 +232,7 @@ describe("DatasourceScopePage", () => {
               columnName: "dept_id",
               operator: "in",
               valueMode: "literal",
-              literalValues: ["0"],
+              literalValues: ["0", "1"],
               nullVisible: true,
             },
           ],
@@ -240,7 +241,83 @@ describe("DatasourceScopePage", () => {
     });
 
     await browser.click(screen.getByRole("button", { name: "启用" }));
+    expect(await screen.findByText(/启用行级数据权限/)).toBeInTheDocument();
+    await browser.click(screen.getByRole("button", { name: "确认启用" }));
     expect(await screen.findByText(/仍有未分类的表/)).toBeInTheDocument();
+  });
+
+  it("blocks invalid eq/comparison rule combinations in the dialog", async () => {
+    stubApi();
+    const browser = userEvent.setup();
+    renderPage();
+    await screen.findByText(/行级数据权限 · analytics/);
+
+    await browser.click(screen.getByRole("button", { name: "编辑条件" }));
+    await pickSelectOption(browser, screen.getByRole("combobox", { name: "操作 1" }), "等于");
+    expect(screen.getByRole("button", { name: "保存条件" })).toBeDisabled();
+
+    await pickSelectOption(browser, screen.getByRole("combobox", { name: "操作 1" }), "大于");
+    expect(screen.getByRole("button", { name: "保存条件" })).toBeDisabled();
+  });
+
+  it("displays externalOrgCode, deletes mappings, and prompts when schema is uncached", async () => {
+    const fetchMock = stubApi((url, method) => {
+      if (url === "/api/admin/datasources/ds-1/scope") {
+        return jsonResponse({
+          ...scope,
+          mappings: [
+            {
+              id: "m-1",
+              datasourceId: "ds-1",
+              departmentId: "dept-1",
+              departmentName: "销售部",
+              departmentCode: "sales",
+              externalId: "E-1",
+              externalCode: "EC-1",
+              externalOrgCode: "ORG-1",
+              source: "import",
+            },
+          ],
+          coverage: {
+            ...scope.coverage,
+            departments: {
+              mapped: 1,
+              unmapped: 1,
+              unmappedIds: ["dept-2"],
+              unmappedDepartments: [{ id: "dept-2", name: "市场部", code: "mkt" }],
+            },
+          },
+        });
+      }
+      if (url === "/api/admin/datasources/ds-1/scope/columns") {
+        return jsonResponse(
+          { error: { code: "SCHEMA_NOT_CACHED", message: "数据源表结构尚未缓存，请先刷新" } },
+          409,
+        );
+      }
+      if (url === "/api/admin/datasources/ds-1/scope/mappings/dept-1" && method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      return undefined;
+    });
+    const browser = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText(/数据源表结构尚未缓存/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新表结构" })).toBeInTheDocument();
+    expect(screen.getByText("ORG-1")).toBeInTheDocument();
+    expect(screen.getByText(/市场部/)).toBeInTheDocument();
+
+    await browser.click(screen.getByRole("button", { name: "删除 销售部 的映射" }));
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === "/api/admin/datasources/ds-1/scope/mappings/dept-1" &&
+            init?.method === "DELETE",
+        ),
+      ).toBe(true);
+    });
   });
 
   it("bulk-classifies remaining tables and filters the table list", async () => {

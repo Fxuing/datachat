@@ -40,8 +40,21 @@ describe("MessageItem", () => {
         })}
       />,
     );
-    expect(screen.getByText("销售部 / 华东区")).toBeInTheDocument();
+    expect(screen.getByText("销售部、华东区")).toBeInTheDocument();
     expect(screen.getByText(/本次结果已按当前数据权限过滤/)).toBeInTheDocument();
+  });
+
+  it("summarizes long department lists in the scope banner", () => {
+    render(
+      <MessageItem
+        message={message({
+          status: "ok",
+          assistant: { content: "统计完成。" },
+          scope: { departments: ["销售部", "市场部", "研发部", "财务部"] },
+        })}
+      />,
+    );
+    expect(screen.getByText("销售部、市场部、研发部 等 4 个部门")).toBeInTheDocument();
   });
 
 

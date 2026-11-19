@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ScopeRewriteError,
+  assertScopableSql,
   collectTableNames,
   normalizeTableName,
   rewriteSqlForScope,
@@ -35,6 +36,33 @@ describe("collectTableNames", () => {
   it("normalizes quoted and qualified names", () => {
     expect(collectTableNames('select * from "Sales"."Orders"', "postgres")).toEqual(["orders"]);
     expect(normalizeTableName("`Orders`")).toBe("orders");
+  });
+
+  it("propagates outer CTE names into derived tables and subqueries", () => {
+    const sql =
+      "with recent as (select id from orders) " +
+      "select * from (select * from recent) sub where sub.id in (select id from recent)";
+    expect(collectTableNames(sql, "mysql")).toEqual(["orders"]);
+  });
+
+  it("treats a physical table inside a same-named non-recursive CTE as physical", () => {
+    const sql = "with orders as (select * from orders) select * from orders";
+    expect(collectTableNames(sql, "mysql")).toEqual(["orders"]);
+  });
+
+  it("allows recursive CTE self-references without treating the CTE as a physical table", () => {
+    const sql =
+      "with recursive nums as (select 1 as n union all select n + 1 from nums where n < 3) select * from nums";
+    expect(collectTableNames(sql, "mysql")).toEqual([]);
+  });
+});
+
+describe("assertScopableSql", () => {
+  it("rejects SHOW and DESC metadata statements while allowing SELECT and EXPLAIN", () => {
+    expect(() => assertScopableSql("SHOW TABLES", "mysql")).toThrow(ScopeRewriteError);
+    expect(() => assertScopableSql("DESC orders", "mysql")).toThrow(ScopeRewriteError);
+    expect(() => assertScopableSql("SELECT * FROM orders", "mysql")).not.toThrow();
+    expect(() => assertScopableSql("EXPLAIN SELECT * FROM orders", "mysql")).not.toThrow();
   });
 });
 
@@ -136,5 +164,42 @@ describe("rewriteSqlForScope", () => {
 
   it("reports unparsable sql as a rewrite failure", () => {
     expect(() => rewriteSqlForScope("select from", "mysql", plan({}))).toThrow(/无法解析 SQL/);
+  });
+
+  it("rewrites a physical table even when shadowed by a non-recursive CTE of the same name", () => {
+    const result = rewriteSqlForScope(
+      "with orders as (select id from orders) select * from orders",
+      "mysql",
+      plan({ orders: scoped("dept_id", ["d1"], false) }),
+    );
+    expect(result.params).toEqual(["d1"]);
+    expect(result.appliedTables).toEqual(["orders"]);
+    expect(result.sql).toContain("(SELECT * FROM `orders` WHERE `dept_id` IN (?))");
+    expect(result.sql).toMatch(/SELECT \* FROM `orders`$/);
+  });
+
+  it("rewrites subqueries referencing outer CTEs without treating the CTE as physical", () => {
+    const result = rewriteSqlForScope(
+      "with recent as (select id from orders) select * from (select * from recent) sub",
+      "mysql",
+      plan({ orders: scoped("dept_id", ["d1"], false) }),
+    );
+    expect(result.params).toEqual(["d1"]);
+    expect(result.appliedTables).toEqual(["orders"]);
+  });
+
+  it("refuses single-value comparison operators when multiple values are provided", () => {
+    expect(() =>
+      rewriteSqlForScope(
+        "select * from orders",
+        "mysql",
+        plan({
+          orders: {
+            kind: "scoped",
+            conditions: [{ column: "dept_id", operator: "eq", values: ["d1", "d2"], nullVisible: false }],
+          },
+        }),
+      ),
+    ).toThrow(/单值操作符/);
   });
 });

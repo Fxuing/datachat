@@ -190,6 +190,7 @@ describe("resolveScope", () => {
 
     const result = resolve(db, { datasourceId, userId, mode: "enabled", tables: ["orders"] });
     expect(result.snapshot.departments).toEqual([sales.id, east.id, south.id].sort());
+    expect(result.snapshot.departmentNames).toEqual(["销售"]);
     expect(result.plan?.tables.get("orders")).toEqual({
       kind: "scoped",
       conditions: [
@@ -247,7 +248,7 @@ describe("resolveScope", () => {
     importDepartmentMappings(db, datasourceId, [{ departmentId: sales.id, externalOrgCode: "ORG-S" }]);
 
     expect(() => resolve(db, { datasourceId, userId, mode: "enabled", tables: ["invoices"] })).toThrow(
-      /未配置外部编码/,
+      /部门 华东 未配置外部编码/,
     );
 
     importDepartmentMappings(db, datasourceId, [{ departmentId: east.id, externalOrgCode: "ORG-E" }]);
@@ -299,6 +300,7 @@ describe("scope snapshots", () => {
     expect(isSnapshotVisible(null, new Set(["a"]))).toBe(false);
     expect(
       isSnapshotVisible({ ...snapshot, departments: [] }, new Set(["a"])),
-    ).toBe(true);
+    ).toBe(false);
+    expect(isSnapshotVisible({ ...snapshot, departments: [] }, null)).toBe(true);
   });
 });

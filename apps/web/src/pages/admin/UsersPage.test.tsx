@@ -39,7 +39,6 @@ const member = {
   description: "默认成员角色",
   builtin: true,
   permissionCount: 6,
-  datasourceCount: 0,
   userCount: 2,
 };
 
@@ -49,7 +48,6 @@ const analyst = {
   description: "查看报表",
   builtin: false,
   permissionCount: 1,
-  datasourceCount: 0,
   userCount: 1,
 };
 
@@ -394,6 +392,44 @@ describe("UsersPage", () => {
         role: "admin",
       }),
     );
+  });
+
+  it("skips department requests when the viewer lacks admin.departments permission", async () => {
+    const browser = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+      if (url === "/api/auth/me") {
+        return jsonResponse({
+          user: { ...self, role: "user" },
+          permissions: ["admin.users"],
+          roles: [{ id: "role_member", name: "成员" }],
+        });
+      }
+      if (url === "/api/admin/users" && method === "GET") return jsonResponse({ users: [self, bob] });
+      if (url === "/api/admin/roles" && method === "GET") return jsonResponse({ roles: [member, analyst] });
+      if (url === "/api/admin/users/u-bob" && method === "PATCH") return jsonResponse({ user: bob });
+      throw new Error(`unexpected request: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await screen.findByText("Bob");
+    await browser.click(within(rowOf("Bob")).getByRole("button", { name: "编辑" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByText("部门")).not.toBeInTheDocument();
+    await browser.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) => String(input) === "/api/admin/users/u-bob" && init?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes("departments")),
+    ).toBe(false);
   });
 });
 

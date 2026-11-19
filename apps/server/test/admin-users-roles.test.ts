@@ -82,12 +82,10 @@ describe("admin user roles", () => {
     const analyst = createRole(db, {
       name: "analyst",
       permissions: ["chat.use", "export.data"],
-      datasourceIds: [],
     });
     const auditor = createRole(db, {
       name: "auditor",
       permissions: ["report.create"],
-      datasourceIds: [],
     });
 
     const created = await createUser({

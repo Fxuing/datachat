@@ -137,7 +137,7 @@ describe("datasource helpers", () => {
       allowWriteAccount: false,
     });
     await updateDatasource("ds-1", { name: "events-renamed" });
-    await replaceDatasourceGrants("ds-1", ["u-1", "u-2"]);
+    await replaceDatasourceGrants("ds-1", { userIds: ["u-1", "u-2"], departmentIds: ["d-1"] });
 
     const [postPath, postInit] = fetchMock.mock.calls[0]!;
     expect(String(postPath)).toBe("/api/datasources");
@@ -155,6 +155,9 @@ describe("datasource helpers", () => {
     const [putPath, putInit] = fetchMock.mock.calls[2]!;
     expect(String(putPath)).toBe("/api/admin/datasources/ds-1/grants");
     expect(putInit?.method).toBe("PUT");
-    expect(JSON.parse(String(putInit?.body))).toEqual({ userIds: ["u-1", "u-2"] });
+    expect(JSON.parse(String(putInit?.body))).toEqual({
+      userIds: ["u-1", "u-2"],
+      departmentIds: ["d-1"],
+    });
   });
 });

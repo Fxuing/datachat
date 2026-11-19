@@ -334,7 +334,7 @@ export default function ChatPage() {
             className="hidden shrink-0 rounded bg-brandsoft px-1.5 py-0.5 text-[11px] text-brandtext sm:inline"
             title="查询结果按这些部门的子树过滤"
           >
-            范围：{(meQuery.data?.departmentNames ?? []).join(" / ")}
+            范围：{(meQuery.data?.departmentNames ?? []).join("、")}
           </span>
         ) : null}
       </div>

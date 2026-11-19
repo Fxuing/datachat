@@ -73,7 +73,7 @@ export function createDbExplainTool(
       const audit = (
         status: "ok" | "error" | "timeout" | "rejected",
         durationMs: number,
-        options: { rowCount?: number; errorMessage?: string } = {},
+        options: { rowCount?: number; errorMessage?: string; scopeReason?: string } = {},
       ): void => {
         try {
           recordAudit(ctx.db, {
@@ -87,6 +87,7 @@ export function createDbExplainTool(
             durationMs,
             rowCount: options.rowCount,
             errorMessage: options.errorMessage,
+            scopeReason: options.scopeReason,
           });
         } catch {
           // Losing an audit row must not fail the tool result.
@@ -122,6 +123,28 @@ export function createDbExplainTool(
           return failed(guarded.code, guarded.reason);
         }
 
+        // EXPLAIN must resolve department scope before opening a connection pool.
+        let scoped;
+        try {
+          scoped = applyScopeToSql({
+            db: ctx.db,
+            datasourceId: datasource.id,
+            mode: datasource.dataScopeMode,
+            userId: ctx.userId,
+            sql: guarded.sql,
+            dialect: datasource.type,
+          });
+        } catch (error) {
+          if (error instanceof ScopeResolveError || error instanceof ScopeRewriteError) {
+            audit("rejected", Date.now() - started, {
+              errorMessage: error.message,
+              scopeReason: error.code,
+            });
+            return failed(error.code, error.message);
+          }
+          throw error;
+        }
+
         const handle = ctx.pools.get({
           id: datasource.id,
           type: datasource.type,
@@ -135,25 +158,6 @@ export function createDbExplainTool(
           ),
           sslMode: datasource.sslMode,
         });
-
-        // EXPLAIN must see the same filtered rows as a real query.
-        let scoped;
-        try {
-          scoped = applyScopeToSql({
-            db: ctx.db,
-            datasourceId: datasource.id,
-            mode: datasource.dataScopeMode,
-            userId: ctx.userId,
-            sql: guarded.sql,
-            dialect: datasource.type,
-          });
-        } catch (error) {
-          if (error instanceof ScopeResolveError || error instanceof ScopeRewriteError) {
-            audit("rejected", Date.now() - started, { errorMessage: error.message });
-            return failed(error.code, error.message);
-          }
-          throw error;
-        }
 
         const result = await executeReadOnly(
           {

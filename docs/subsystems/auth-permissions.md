@@ -9,12 +9,12 @@
 | 会话 cookie | 签名/校验 `dc_session`；过期/续期 | [`jwt.ts`](../../apps/server/src/auth/jwt.ts) |
 | 登录 | 校验密码、签发 cookie、限流 | [`routes/auth.ts`](../../apps/server/src/routes/auth.ts)、[`password.ts`](../../apps/server/src/auth/password.ts) |
 | 守卫 | `authenticate`、`requirePermission`、`requireAdmin` | [`guard.ts`](../../apps/server/src/auth/guard.ts) |
-| 访问解析 | 角色 + 直授 + 部门数据源授权取并集；admin 绕过 | [`access.ts`](../../apps/server/src/auth/access.ts) |
+| 访问解析 | 部门授权（向下继承）+ 个人特例直授取并集；admin 绕过 | [`access.ts`](../../apps/server/src/auth/access.ts) |
 | 权限清单 | 共享权限字符串/标签 | [`permissions.ts`](../../packages/shared/src/permissions.ts) |
-| 角色/用户管理 | 角色、分配、数据源授权、用户部门 | [`routes/admin-roles.ts`](../../apps/server/src/routes/admin-roles.ts)、[`admin-users.ts`](../../apps/server/src/routes/admin-users.ts)、[`admin-departments.ts`](../../apps/server/src/routes/admin-departments.ts) |
+| 角色/用户/部门管理 | 角色（纯功能权限）、分配、数据源统一授权、用户部门 | [`routes/admin-roles.ts`](../../apps/server/src/routes/admin-roles.ts)、[`admin-users.ts`](../../apps/server/src/routes/admin-users.ts)、[`admin-departments.ts`](../../apps/server/src/routes/admin-departments.ts) |
 | 公开分享 | 匿名 token + 只读投影 | [`shares.ts`](../../apps/server/src/services/shares.ts) |
 
-`users.role = "admin"` 是系统管理员标志。自定义角色是叠加的；没有自定义角色的用户回退到内置成员预设。数据源访问权是角色授权、直接 `datasource_grants` 和部门授权（沿部门树向下继承）的并集。`resolveUserAccess` 同时返回 `departmentIds`（所属部门子树并集，admin 为 null），供行级数据权限使用；数据边界见 [部门与行级数据权限](data-scope.md)。
+`users.role = "admin"` 是系统管理员标志。权限与数据正交：自定义角色只授予**功能权限**（多角色叠加，无角色用户回退到内置成员预设），不再授予数据源访问权（`role_datasource_grants` 已在迁移 0016 移除）。数据源访问权是**部门授权（沿部门树向下继承）与个人特例直授（`datasource_grants`）的并集**，在数据源管理页的「授权」弹窗中统一配置（`GET/PUT /api/admin/datasources/:id/grants`）；部门页只读展示可访问数据源。`resolveUserAccess` 同时返回 `departmentIds`（所属部门子树并集，admin 为 null），供行级数据权限使用；数据边界见 [部门与行级数据权限](data-scope.md)。
 
 ## 请求路径
 

@@ -505,18 +505,6 @@ export const userRoles = sqliteTable(
   ],
 );
 
-export const roleDatasourceGrants = sqliteTable(
-  "role_datasource_grants",
-  {
-    roleId: text("role_id").notNull(),
-    datasourceId: text("datasource_id").notNull(),
-  },
-  (t) => [
-    primaryKey({ columns: [t.roleId, t.datasourceId] }),
-    index("role_datasource_grants_datasource_idx").on(t.datasourceId),
-  ],
-);
-
 export const scheduledTasks = sqliteTable(
   "scheduled_tasks",
   {

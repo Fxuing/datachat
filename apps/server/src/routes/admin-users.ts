@@ -15,6 +15,7 @@ import {
 } from "../db/repositories/users.js";
 import { hashPassword } from "../auth/password.js";
 import { listGrantedUserIds, replaceGrants } from "../db/repositories/grants.js";
+import { findDatasource } from "../db/repositories/datasources.js";
 import {
   findRole,
   listRoleIdsForUser,
@@ -23,7 +24,13 @@ import {
   UnknownRoleError,
 } from "../db/repositories/roles.js";
 import { safeRecordAuditEvent } from "../services/audit.js";
-import { listUserDepartmentRows } from "../db/repositories/departments.js";
+import {
+  DepartmentError,
+  listDepartmentIdsForDatasource,
+  listInheritedDatasourceUsers,
+  listUserDepartmentRows,
+  replaceDatasourceDepartmentGrants,
+} from "../db/repositories/departments.js";
 
 class LastAdminError extends Error {}
 
@@ -243,7 +250,11 @@ export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): P
       if (!params.success) {
         return reply.code(400).send({ error: { code: "VALIDATION", message: "参数不合法" } });
       }
-      return { userIds: listGrantedUserIds(db, params.data.id) };
+      return {
+        userIds: listGrantedUserIds(db, params.data.id),
+        departmentIds: listDepartmentIdsForDatasource(db, params.data.id),
+        inheritedUsers: listInheritedDatasourceUsers(db, params.data.id),
+      };
     },
   );
 
@@ -252,17 +263,46 @@ export async function adminUserRoutes(app: FastifyInstance, opts: { db: Db }): P
     { preHandler: datasourcesAdmin },
     async (request, reply) => {
       const params = idParamsSchema.safeParse(request.params);
-      const body = z.object({ userIds: z.array(z.string().uuid()) }).safeParse(request.body);
+      const body = z
+        .object({
+          userIds: z.array(z.string().uuid()).optional(),
+          departmentIds: z.array(z.string().uuid()).optional(),
+        })
+        .refine((data) => data.userIds !== undefined || data.departmentIds !== undefined)
+        .safeParse(request.body);
       if (!params.success || !body.success) {
         return reply.code(400).send({ error: { code: "VALIDATION", message: "参数不合法" } });
       }
-      replaceGrants(db, params.data.id, body.data.userIds);
+      if (body.data.departmentIds !== undefined && !findDatasource(db, params.data.id)) {
+        return reply.code(404).send({ error: { code: "NOT_FOUND", message: "数据源不存在" } });
+      }
+      try {
+        db.transaction((tx) => {
+          const t = tx as unknown as Db;
+          if (body.data.userIds !== undefined) {
+            replaceGrants(t, params.data.id, body.data.userIds);
+          }
+          if (body.data.departmentIds !== undefined) {
+            replaceDatasourceDepartmentGrants(t, params.data.id, body.data.departmentIds);
+          }
+        });
+      } catch (error) {
+        if (error instanceof DepartmentError) {
+          return reply.code(400).send({ error: { code: error.code, message: error.message } });
+        }
+        throw error;
+      }
       safeRecordAuditEvent(db, {
         actorUserId: request.authUser?.id ?? null,
         action: "grant_update",
         datasourceId: params.data.id,
         ip: request.ip,
-        detail: { userIds: body.data.userIds },
+        detail: {
+          ...(body.data.userIds !== undefined ? { userIds: body.data.userIds } : {}),
+          ...(body.data.departmentIds !== undefined
+            ? { departmentIds: body.data.departmentIds }
+            : {}),
+        },
       });
       return { ok: true };
     },

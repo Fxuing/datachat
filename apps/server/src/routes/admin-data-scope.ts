@@ -5,6 +5,7 @@ import type { Db } from "../db/client.js";
 import { datasources, queryAudit, users } from "../db/schema.js";
 import {
   coverageForDatasource,
+  DataScopeError,
   deleteDepartmentMapping,
   importDepartmentMappings,
   listDepartmentMappings,
@@ -12,6 +13,8 @@ import {
   policyCoverageForDatasource,
   replaceScopePolicies,
   type DepartmentMappingInput,
+  type ExternalMappingField,
+  type ScopePolicy,
 } from "../db/repositories/data-scope.js";
 import { loadSchema } from "../db/repositories/schema-cache.js";
 import { listDepartments, listUserDepartmentRows } from "../db/repositories/departments.js";
@@ -77,6 +80,19 @@ const previewSchema = z.object({
 
 const departmentCandidatePattern = /(dept|department|org|organization|app)[_A-Za-z]*(id|code)$/i;
 
+function requiredExternalFields(policies: ScopePolicy[]): Set<ExternalMappingField> {
+  const fields = new Set<ExternalMappingField>();
+  for (const policy of policies) {
+    if (!policy.enabled || policy.mode !== "scoped") continue;
+    for (const rule of policy.rules) {
+      if (rule.valueMode === "external_id") fields.add("externalId");
+      else if (rule.valueMode === "external_code") fields.add("externalCode");
+      else if (rule.valueMode === "external_org_code") fields.add("externalOrgCode");
+    }
+  }
+  return fields;
+}
+
 function sendScopeError(
   reply: { code: (status: number) => { send: (payload: unknown) => unknown } },
   code: string,
@@ -125,9 +141,16 @@ export async function adminDataScopeRoutes(
     if (!datasource) return;
     const policies = listScopePolicies(db, datasource.id);
     const tables = loadSchema(db, datasource.id)?.tables.map((table) => table.name) ?? [];
-    const departmentIds = listDepartments(db)
-      .filter((row) => row.status === "active")
-      .map((row) => row.id);
+    const activeDepartments = listDepartments(db).filter((row) => row.status === "active");
+    const departmentIds = activeDepartments.map((row) => row.id);
+    const departmentById = new Map(activeDepartments.map((row) => [row.id, row]));
+    const requiredFields = requiredExternalFields(policies);
+    const departmentCoverage = coverageForDatasource(
+      db,
+      datasource.id,
+      departmentIds,
+      requiredFields,
+    );
     return {
       datasourceId: datasource.id,
       mode: datasource.dataScopeMode,
@@ -135,7 +158,13 @@ export async function adminDataScopeRoutes(
       mappings: listDepartmentMappings(db, datasource.id),
       coverage: {
         policies: policyCoverageForDatasource(db, datasource.id, tables),
-        departments: coverageForDatasource(db, datasource.id, departmentIds),
+        departments: {
+          ...departmentCoverage,
+          unmappedDepartments: departmentCoverage.unmappedIds
+            .map((id) => departmentById.get(id))
+            .filter((row): row is NonNullable<typeof row> => Boolean(row))
+            .map((row) => ({ id: row.id, name: row.name, code: row.code })),
+        },
         schemaLoaded: tables.length > 0,
       },
     };
@@ -159,10 +188,36 @@ export async function adminDataScopeRoutes(
       })),
     }));
     const candidates: { table: string; column: string }[] = [];
+    const autoMatched: {
+      tableName: string;
+      mode: "scoped";
+      rules: {
+        columnName: string;
+        operator: "in";
+        valueMode: "department_code" | "department_id";
+        nullVisible: false;
+      }[];
+    }[] = [];
+    const matchedTables = new Set<string>();
     for (const table of tables) {
       for (const column of table.columns) {
         if (departmentCandidatePattern.test(column.name)) {
           candidates.push({ table: table.name, column: column.name });
+          if (!matchedTables.has(table.name)) {
+            matchedTables.add(table.name);
+            autoMatched.push({
+              tableName: table.name,
+              mode: "scoped",
+              rules: [
+                {
+                  columnName: column.name,
+                  operator: "in",
+                  valueMode: /code/i.test(column.name) ? "department_code" : "department_id",
+                  nullVisible: false,
+                },
+              ],
+            });
+          }
         }
       }
     }
@@ -170,18 +225,7 @@ export async function adminDataScopeRoutes(
       refreshedAt: snapshot.refreshedAt,
       tables,
       candidates,
-      autoMatched: candidates.map((candidate) => ({
-        tableName: candidate.table,
-        mode: "scoped",
-        rules: [
-          {
-            columnName: candidate.column,
-            operator: "in",
-            valueMode: /code/i.test(candidate.column) ? "department_code" : "department_id",
-            nullVisible: false,
-          },
-        ],
-      })),
+      autoMatched,
     };
   });
 
@@ -191,17 +235,24 @@ export async function adminDataScopeRoutes(
     if (!params.success || !body.success) return sendScopeError(reply, "VALIDATION", "参数不合法");
     const datasource = requireDatasource(reply, params.data.id);
     if (!datasource) return;
-    replaceScopePolicies(
-      db,
-      datasource.id,
-      body.data.policies.map((policy) => ({
-        datasourceId: datasource.id,
-        tableName: policy.tableName,
-        mode: policy.mode,
-        enabled: policy.enabled ?? true,
-        rules: policy.rules ?? [],
-      })),
-    );
+    try {
+      replaceScopePolicies(
+        db,
+        datasource.id,
+        body.data.policies.map((policy) => ({
+          datasourceId: datasource.id,
+          tableName: policy.tableName,
+          mode: policy.mode,
+          enabled: policy.enabled ?? true,
+          rules: policy.rules ?? [],
+        })),
+      );
+    } catch (error) {
+      if (error instanceof DataScopeError) {
+        return sendScopeError(reply, error.code, error.message, 400);
+      }
+      throw error;
+    }
     audit(request, "data_scope_change", {
       operation: "policies",
       datasourceId: datasource.id,
@@ -215,12 +266,14 @@ export async function adminDataScopeRoutes(
     if (!params.success) return sendScopeError(reply, "VALIDATION", "参数不合法");
     const datasource = requireDatasource(reply, params.data.id);
     if (!datasource) return;
+    const requiredFields = requiredExternalFields(listScopePolicies(db, datasource.id));
     return {
       mappings: listDepartmentMappings(db, datasource.id),
       coverage: coverageForDatasource(
         db,
         datasource.id,
         listDepartments(db).filter((row) => row.status === "active").map((row) => row.id),
+        requiredFields,
       ),
     };
   });
@@ -304,28 +357,52 @@ export async function adminDataScopeRoutes(
     const memberships = listUserDepartmentRows(db, user.id);
     const effective = access.departmentIds;
     const policies = listScopePolicies(db, datasource.id).filter((policy) => policy.enabled);
+    const policyNames = new Set(policies.map((policy) => policy.tableName.toLowerCase()));
+    const schemaTables = loadSchema(db, datasource.id)?.tables.map((table) => table.name) ?? [];
+    const formatRule = (rule: ScopePolicy["rules"][number]) => ({
+      column: rule.columnName,
+      operator: rule.operator,
+      valueMode: rule.valueMode,
+      literalValues: rule.literalValues,
+      nullVisible: rule.nullVisible,
+    });
     // Table decisions describe the row boundary even when datasource access is missing;
     // the caller sees canAccessDatasource separately so both reasons stay visible.
-    const tables = policies.map((policy) => {
-      if (access.isAdmin) return { table: policy.tableName, decision: "admin_all" };
-      if (!effective || effective.size === 0) {
-        return { table: policy.tableName, decision: "no_department" };
-      }
-      if (policy.mode === "denied") return { table: policy.tableName, decision: "denied" };
-      if (policy.mode === "public") return { table: policy.tableName, decision: "public" };
-      return {
-        table: policy.tableName,
-        decision: "scoped",
-        rules: policy.rules.map((rule) => ({
-          column: rule.columnName,
-          operator: rule.operator,
-          valueMode: rule.valueMode,
-          literalValues: rule.literalValues,
-          nullVisible: rule.nullVisible,
+    const tables = [
+      ...policies.map((policy) => {
+        if (access.isAdmin) {
+          const literalRules =
+            policy.mode === "scoped"
+              ? policy.rules.filter((rule) => rule.valueMode === "literal")
+              : [];
+          if (literalRules.length > 0) {
+            return {
+              table: policy.tableName,
+              decision: "scoped",
+              rules: literalRules.map(formatRule),
+            };
+          }
+          return { table: policy.tableName, decision: "admin_all" };
+        }
+        if (!effective || effective.size === 0) {
+          return { table: policy.tableName, decision: "no_department" };
+        }
+        if (policy.mode === "denied") return { table: policy.tableName, decision: "denied" };
+        if (policy.mode === "public") return { table: policy.tableName, decision: "public" };
+        return {
+          table: policy.tableName,
+          decision: "scoped",
+          rules: policy.rules.map(formatRule),
+          departments: [...effective].sort(),
+        };
+      }),
+      ...schemaTables
+        .filter((name) => !policyNames.has(name.toLowerCase()))
+        .map((table) => ({
+          table,
+          decision: access.isAdmin ? "admin_all" : "unconfigured",
         })),
-        departments: [...effective].sort(),
-      };
-    });
+    ];
     return {
       datasourceId: datasource.id,
       mode: datasource.dataScopeMode,
@@ -387,13 +464,12 @@ export async function adminDataScopeRoutes(
         },
       });
     }
-    const externalModes = new Set(["external_id", "external_code", "external_org_code"]);
-    const needsMappings = listScopePolicies(db, datasource.id).some(
-      (policy) => policy.enabled && policy.rules.some((rule) => externalModes.has(rule.valueMode)),
-    );
-    if (needsMappings) {
-      const departmentIds = listDepartments(db).map((row) => row.id);
-      const mapping = coverageForDatasource(db, datasource.id, departmentIds);
+    const requiredFields = requiredExternalFields(listScopePolicies(db, datasource.id));
+    if (requiredFields.size > 0) {
+      const departmentIds = listDepartments(db)
+        .filter((row) => row.status === "active")
+        .map((row) => row.id);
+      const mapping = coverageForDatasource(db, datasource.id, departmentIds, requiredFields);
       if (mapping.unmapped > 0) {
         return reply.code(409).send({
           error: {

@@ -11,10 +11,13 @@ import {
 import {
   listDepartmentMappings,
   listScopePolicies,
+  type DepartmentMapping,
   type ScopePolicy,
   type ScopeRule,
 } from "../db/repositories/data-scope.js";
+import type { SchemaSnapshot } from "../agent/datasource/introspect.js";
 import {
+  assertScopableSql,
   collectTableNames,
   normalizeTableName,
   rewriteSqlForScope,
@@ -104,12 +107,10 @@ function departmentCodes(db: Db, ids: string[]): Map<string, string> {
 }
 
 function assertPolicyTarget(
-  db: Db,
-  datasourceId: string,
+  snapshot: SchemaSnapshot | null,
   tableName: string,
   columnName: string | null,
 ): void {
-  const snapshot = loadSchema(db, datasourceId);
   if (!snapshot) return;
   const table = snapshot.tables.find(
     (candidate) => normalizeTableName(candidate.name) === normalizeTableName(tableName),
@@ -134,8 +135,9 @@ function assertPolicyTarget(
 
 function ruleValues(
   db: Db,
-  datasourceId: string,
   departmentIds: string[],
+  departmentNamesById: ReadonlyMap<string, string>,
+  mappingsByDepartment: ReadonlyMap<string, DepartmentMapping>,
   rule: ScopeRule,
   user: { id: string; username: string; role: string } | undefined,
 ): string[] {
@@ -166,15 +168,12 @@ function ruleValues(
           : rule.valueMode === "external_code"
             ? "externalCode"
             : "externalOrgCode";
-      const mappings = new Map(
-        listDepartmentMappings(db, datasourceId).map((row) => [row.departmentId, row]),
-      );
       const values: string[] = [];
       const missing: string[] = [];
       for (const id of departmentIds) {
-        const value = mappings.get(id)?.[field];
+        const value = mappingsByDepartment.get(id)?.[field];
         if (value) values.push(value);
-        else missing.push(id);
+        else missing.push(departmentNamesById.get(id) ?? id);
       }
       if (missing.length > 0) {
         throw new ScopeResolveError(
@@ -216,6 +215,9 @@ export function resolveScope(input: ResolveScopeInput): ResolvedScope {
   if (mode !== "enabled") {
     return { plan: null, snapshot: { v: 1, datasourceId, departments: [], policyHash } };
   }
+
+  const schemaSnapshot = loadSchema(db, datasourceId);
+
   if (isAdmin) {
     // Admins are exempt from department scoping, but literal rules are global
     // row constraints (for example is_deleted = 0) and still apply.
@@ -234,7 +236,7 @@ export function resolveScope(input: ResolveScopeInput): ResolvedScope {
         continue;
       }
       const conditions = literalRules.map((rule) => {
-        assertPolicyTarget(db, datasourceId, tableName, rule.columnName);
+        assertPolicyTarget(schemaSnapshot, tableName, rule.columnName);
         return {
           column: rule.columnName,
           operator: rule.operator,
@@ -259,13 +261,29 @@ export function resolveScope(input: ResolveScopeInput): ResolvedScope {
     );
   }
   const departmentIds = [...effective].sort();
-  const names = departmentNameMap(db, departmentIds);
-  const departmentNames = departmentIds
-    .map((id) => names.get(id))
+  const namesById = departmentNameMap(db, departmentIds);
+  const rootNames = roots
+    .map((id) => namesById.get(id))
     .filter((name): name is string => Boolean(name));
+  const departmentNames =
+    rootNames.length > 0
+      ? rootNames
+      : departmentIds
+          .map((id) => namesById.get(id))
+          .filter((name): name is string => Boolean(name));
   const rangeLabel = departmentNames.join("、") || "未命名部门";
 
   const user = findUserById(db, userId);
+  let mappingsByDepartment: Map<string, DepartmentMapping> | null = null;
+  const getMappings = () => {
+    if (!mappingsByDepartment) {
+      mappingsByDepartment = new Map(
+        listDepartmentMappings(db, datasourceId).map((row) => [row.departmentId, row]),
+      );
+    }
+    return mappingsByDepartment;
+  };
+
   const tables = new Map<string, ScopeTable>();
   for (const tableName of input.tableNames) {
     const key = normalizeTableName(tableName);
@@ -284,16 +302,22 @@ export function resolveScope(input: ResolveScopeInput): ResolvedScope {
       );
     }
     if (policy.mode === "public") {
-      assertPolicyTarget(db, datasourceId, tableName, null);
+      assertPolicyTarget(schemaSnapshot, tableName, null);
       tables.set(key, { kind: "public" });
       continue;
     }
+    if (policy.rules.length === 0) {
+      throw new ScopeResolveError(
+        "DATA_SCOPE_POLICY_STALE",
+        `表 ${tableName} 未配置有效过滤规则，请重新配置数据范围`,
+      );
+    }
     const conditions = policy.rules.map((rule) => {
-      assertPolicyTarget(db, datasourceId, tableName, rule.columnName);
+      assertPolicyTarget(schemaSnapshot, tableName, rule.columnName);
       return {
         column: rule.columnName,
         operator: rule.operator,
-        values: ruleValues(db, datasourceId, departmentIds, rule, user).sort(),
+        values: ruleValues(db, departmentIds, namesById, getMappings(), rule, user).sort(),
         nullVisible: rule.nullVisible,
       };
     });
@@ -331,13 +355,26 @@ export function applyScopeToSql(input: {
   sql: string;
   dialect: SqlDialect;
 }): AppliedScope {
+  if (input.mode !== "enabled") {
+    const policyHash = datasourcePolicyHashFrom(input.db, input.datasourceId);
+    return {
+      sql: input.sql,
+      params: [],
+      appliedTables: [],
+      snapshot: { v: 1, datasourceId: input.datasourceId, departments: [], policyHash },
+    };
+  }
   const user = findUserById(input.db, input.userId);
+  const isAdmin = user?.role === "admin";
+  if (!isAdmin) {
+    assertScopableSql(input.sql, input.dialect);
+  }
   const scope = resolveScope({
     db: input.db,
     datasourceId: input.datasourceId,
     mode: input.mode,
     userId: input.userId,
-    isAdmin: user?.role === "admin",
+    isAdmin,
     tableNames: collectTableNames(input.sql, input.dialect),
   });
   if (!scope.plan) {
@@ -354,7 +391,9 @@ export function isSnapshotVisible(
 ): boolean {
   if (currentDepartments === null) return true;
   if (!snapshot || snapshot.v !== 1) return false;
-  if (snapshot.departments.length === 0) return true;
+  // Empty departments belong to unrestricted runs (admin or pre-scope);
+  // never expose them to non-admin viewers on a scoped datasource.
+  if (snapshot.departments.length === 0) return false;
   return snapshot.departments.every((id) => currentDepartments.has(id));
 }
 

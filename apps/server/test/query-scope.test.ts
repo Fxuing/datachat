@@ -19,6 +19,7 @@ import { saveSchema } from "../src/db/repositories/schema-cache.js";
 import { ArtifactStore } from "../src/services/artifacts.js";
 import { runGuardedQuery } from "../src/services/query-service.js";
 import { parseScopeSnapshot } from "../src/services/data-scope.js";
+import { createDbExplainTool } from "../src/agent/tools/db-explain.js";
 import type { PoolRegistry } from "../src/agent/datasource/pool.js";
 import { deriveSecretKey, encryptSecret } from "../src/agent/datasource/crypto.js";
 import { testConfig as config } from "./helpers/config.js";
@@ -277,5 +278,68 @@ describe("runGuardedQuery with department scope", () => {
     expect(adminRun.captured.sql).toContain("`is_deleted` = ?");
     expect(adminRun.captured.sql).not.toContain("`dept_id` IN");
     expect(adminRun.captured.values).toEqual(["0"]);
+  });
+
+  it("rejects SHOW / DESC metadata statements on enabled datasources for non-admins", async () => {
+    const userId = member();
+    const sales = createDepartment(handle.db, { name: "销售", code: "sales" });
+    setUserDepartments(handle.db, userId, [sales.id]);
+
+    for (const sql of ["SHOW TABLES", "DESC orders"]) {
+      const { promise, captured } = runAs(userId, sql);
+      const result = await promise;
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("SCOPE_REWRITE_FAILED");
+      expect(captured.connections).toBe(0);
+    }
+  });
+
+  it("leaves run.scopeSnapshot null while the datasource is off or configuring", async () => {
+    const userId = member();
+    createConversation(handle.db, { userId, datasourceId: "d1", title: "t" });
+    const run = createRun(handle.db, { conversationId: "c1", userId });
+
+    const { promise } = runAs(userId, "SELECT * FROM orders", {
+      runId: run.id,
+      datasource: datasourceRow({ dataScopeMode: "configuring" }),
+    });
+    expect((await promise).ok).toBe(true);
+    expect(findRun(handle.db, run.id)?.scopeSnapshot).toBeNull();
+  });
+
+  it("rejects db_explain scope violations before acquiring a pool and records scopeReason", async () => {
+    const userId = member();
+    const sales = createDepartment(handle.db, { name: "销售", code: "sales" });
+    setUserDepartments(handle.db, userId, [sales.id]);
+    handle.sqlite.prepare("UPDATE datasources SET data_scope_mode = 'enabled' WHERE id = 'd1'").run();
+    upsertScopePolicy(handle.db, { datasourceId: "d1", tableName: "salaries", mode: "denied" });
+
+    let poolGets = 0;
+    const registry = {
+      get() {
+        poolGets += 1;
+        return {};
+      },
+      async closeAll() {},
+    } as unknown as PoolRegistry;
+
+    const tool = createDbExplainTool({
+      db: handle.db,
+      config,
+      pools: registry,
+      artifacts,
+      userId,
+      conversationId: "c1",
+      datasourceId: "d1",
+      runId: "",
+      skillsDir: root,
+    });
+    const result = await tool.execute("tc-1", { sql: "SELECT * FROM salaries" }, undefined, undefined, undefined as never);
+    expect(result.details?.code).toBe("DATA_SCOPE_DENIED_TABLE");
+    expect(poolGets).toBe(0);
+    const audit = handle.db.select().from(queryAudit).all();
+    expect(audit[0]?.action).toBe("explain");
+    expect(audit[0]?.status).toBe("rejected");
+    expect(audit[0]?.scopeReason).toBe("DATA_SCOPE_DENIED_TABLE");
   });
 });

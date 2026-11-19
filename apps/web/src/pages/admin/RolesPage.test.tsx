@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import RolesPage from "./RolesPage";
-import type { DatasourceSummary, SessionUser } from "../../lib/api";
+import type { SessionUser } from "../../lib/api";
 
 const admin: SessionUser = {
   id: "u-admin",
@@ -14,29 +14,6 @@ const admin: SessionUser = {
   status: "active",
 };
 
-const analytics: DatasourceSummary = {
-  id: "ds-1",
-  name: "analytics",
-  type: "mysql",
-  host: "127.0.0.1",
-  port: 3306,
-  database: "analytics",
-  username: "reader",
-  sslMode: "disable",
-  status: "ok",
-  readOnlyVerified: true,
-  allowWriteAccount: false,
-  lastCheckedAt: 1_760_000_000_000,
-};
-
-const warehouse: DatasourceSummary = {
-  ...analytics,
-  id: "ds-2",
-  name: "warehouse",
-  type: "postgres",
-  port: 5432,
-};
-
 const member = {
   id: "role-member",
   name: "成员",
@@ -44,7 +21,6 @@ const member = {
   builtin: 1,
   isBuiltin: true,
   permissionCount: 2,
-  datasourceCount: 1,
   userCount: 3,
   createdAt: 1,
   updatedAt: 2,
@@ -57,7 +33,6 @@ const analyst = {
   builtin: 0,
   isBuiltin: false,
   permissionCount: 1,
-  datasourceCount: 0,
   userCount: 0,
   createdAt: 1,
   updatedAt: 2,
@@ -94,22 +69,18 @@ function stubApi() {
         role: {
           ...member,
           permissions: ["chat.use", "report.create"],
-          datasourceIds: ["ds-1"],
         },
       });
     }
     if (url === "/api/admin/roles/role-analyst" && method === "GET") {
       return jsonResponse({
-        role: { ...analyst, permissions: ["report.create"], datasourceIds: [] },
+        role: { ...analyst, permissions: ["report.create"] },
       });
     }
     if (url === "/api/admin/roles/role-analyst" && method === "DELETE") {
       const index = roles.findIndex((role) => role.id === "role-analyst");
       if (index >= 0) roles.splice(index, 1);
       return jsonResponse({ ok: true });
-    }
-    if (url === "/api/datasources" && method === "GET") {
-      return jsonResponse({ datasources: [analytics, warehouse] });
     }
     throw new Error(`unexpected request: ${method} ${url}`);
   });
@@ -171,7 +142,7 @@ describe("RolesPage", () => {
     expect(within(analystRow).getByText("查看报表")).toBeInTheDocument();
   });
 
-  it("creates a role with the selected permission and datasource", async () => {
+  it("creates a role with functional permissions only", async () => {
     const browser = userEvent.setup();
     const fetchMock = stubApi();
     renderPage();
@@ -182,7 +153,7 @@ describe("RolesPage", () => {
     await browser.type(await screen.findByLabelText("名称"), "只读访客");
     await browser.type(screen.getByLabelText("描述"), "仅能生成报告");
     await browser.click(screen.getByLabelText("生成报告"));
-    await browser.click(await screen.findByRole("checkbox", { name: /warehouse/ }));
+    expect(screen.queryByText("可访问数据源")).not.toBeInTheDocument();
     await browser.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
@@ -190,7 +161,6 @@ describe("RolesPage", () => {
         name: "只读访客",
         description: "仅能生成报告",
         permissions: ["report.create"],
-        datasourceIds: ["ds-2"],
       }),
     );
   });
@@ -227,7 +197,6 @@ describe("RolesPage", () => {
   });
 
   it("disables deleting a role that still has users", async () => {
-    const browser = userEvent.setup();
     stubApi();
     renderPage();
 

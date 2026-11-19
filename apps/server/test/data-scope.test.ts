@@ -136,6 +136,28 @@ describe("scope policies", () => {
     expect(() => upsertScopePolicy(db, { datasourceId, tableName: "x", mode: "bogus" as never })).toThrow(
       /invalid policy mode/,
     );
+    expect(() =>
+      upsertScopePolicy(db, {
+        datasourceId,
+        tableName: "orders",
+        mode: "scoped",
+        rules: [{ columnName: "dept_id", operator: "eq", valueMode: "department_id" }],
+      }),
+    ).toThrow(/IN/);
+    expect(() =>
+      upsertScopePolicy(db, {
+        datasourceId,
+        tableName: "orders",
+        mode: "scoped",
+        rules: [{ columnName: "status", operator: "eq", valueMode: "literal", literalValues: ["a", "b"] }],
+      }),
+    ).toThrow(/只能填写一个固定值/);
+    expect(() =>
+      replaceScopePolicies(db, datasourceId, [
+        { tableName: "orders", mode: "public" },
+        { tableName: "Orders", mode: "denied" },
+      ]),
+    ).toThrow(/重复配置/);
   });
 
   it("requires an existing datasource and replaces the whole set", () => {
@@ -236,6 +258,13 @@ describe("department mappings", () => {
       mapped: 1,
       unmapped: 1,
       unmappedIds: [b.id],
+    });
+    expect(
+      coverageForDatasource(db, datasourceId, [a.id], new Set(["externalOrgCode"])),
+    ).toEqual({
+      mapped: 0,
+      unmapped: 1,
+      unmappedIds: [a.id],
     });
   });
 });
