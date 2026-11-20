@@ -1,312 +1,130 @@
 # DataChat
 
-自然语言对话式数据查询：用中文提问，Agent 通过只读 SQL 工具查询 MySQL / PostgreSQL，或直接上传 Excel（`.xlsx`）/ CSV 文件在会话隔离的临时只读 SQLite 中完成分析，返回结论、SQL 与结果表格。
+面向团队的对话式数据分析平台：用自然语言向 **MySQL / PostgreSQL** 提问，或直接上传 **Excel / CSV** 文件进行即席分析，自动生成只读 SQL、交互式图表、完整明细表与可分享的分析报告。
 
-## 目录
+---
 
-| 路径 | 说明 |
-| --- | --- |
-| `apps/server` | Fastify + better-sqlite3（会话/审计/结果存储）+ Pi Agent 运行时 |
-| `apps/web` | React 19 + Vite + Tailwind 前端 |
-| `packages/shared` | 前后端共享类型与校验 |
-| `agent/models.json` | 模型目录模板；运行时由“设置 → 模型服务”生成到 `DATA_DIR/agent/models.json` |
-| `evals/nl2sql` | NL2SQL 金标集：fixture、15 条用例、本地评分报告 |
-| `AGENTS.md` | 编码 agent 入口：高风险约束、子系统路由、验证门禁 |
-| `CLAUDE.md` | Claude 兼容入口，导入 `AGENTS.md` 与 `LESSONS.md` |
-| `LESSONS.md` | 真实事故与“本可提前发现”的规则 |
-| `docs/code-standards.md` | 可执行的评审标准 |
-| `docs/subsystems/` | 按子系统组织的设计参考（只读相关页） |
-| `.github/workflows/ci.yml` | CI：lint/typecheck/测试/构建、真库集成测试、手动/夜间金标集 |
-| `scripts/smoke-*.mjs` | 手动冒烟脚本，测试不依赖网络 |
+## 界面预览
 
-开发前先读 `AGENTS.md`；再按任务打开 `docs/subsystems/` 中对应的一页，不需要一次读完全部。
+![DataChat 对话式分析与图表](docs/images/chat-analysis.png)
 
-## 前置条件
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/images/login.png" alt="登录页" />
+      <br />
+      <sub><b>登录页</b></sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/file-analysis.png" alt="Excel / CSV 文件分析" />
+      <br />
+      <sub><b>Excel / CSV 即席分析</b></sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/datasources.png" alt="数据源管理" />
+      <br />
+      <sub><b>数据源与只读管理</b></sub>
+    </td>
+  </tr>
+</table>
 
-- Node.js ≥ 22.9，pnpm 10（`corepack enable` 即可）
-- 可选：可达的 MySQL / PostgreSQL 测试库（创建数据库数据源时会真实连接探测；未配置数据源时仍可直接上传 Excel / CSV 文件进行临时分析）
-- 可选：SiliconFlow API Key（没有 Key 时服务可启动，聊天页显示“未配置模型”）
+---
 
-## 环境变量
+## 核心特性
 
-```bash
-cp .env.example .env
+- **只读 NL2SQL 对话**：基于 Pi Agent 运行时，通过 `db_schema` / `db_query` / `db_explain` 探索表结构并生成查询；AST + 执行器双层只读守卫，拒绝任何写操作与危险语句。
+- **Excel / CSV 即席分析**：无需预先配置数据库，新建对话即可拖拽上传 `.xlsx` / `.csv`（支持编码识别、表头行调整与多表追加 `JOIN`），在会话隔离的只读 SQLite 子进程中执行分析。
+- **可视化与报告分享**：内置 ECharts 图表生成（柱/线/面积/饼/散点 + PNG 导出）、Mermaid 结构图、大结果集弹窗分页与 CSV/Excel 导出、Markdown 分析报告及可撤销/设限的匿名分享链接。
+- **对话体验增强**：SSE 实时流式输出与断线按序号回放、折叠式执行过程（思考链 + SQL + 工具记录）、末轮建议追问、右侧会话导航 Minimap。
+- **企业级权限与治理**：RBAC 功能权限与数据源授权、部门树与行级数据过滤（支持历史结果快照鉴权）、完整查询与管理审计、运行指标与数据保留清理。
+- **可扩展生态**：支持动态模型服务管理（OpenAI-compatible / Anthropic Messages）、全局与数据源级 Skills、MCP 工具接入（`stdio` / `http`）、跨会话用户记忆与 Cron 定时任务。
+
+---
+
+## 技术栈与目录结构
+
+- **后端**：Node.js ≥ 22.9、Fastify、SQLite（Drizzle ORM）、Pi Coding Agent SDK
+- **前端**：React 19、TypeScript、Vite、Tailwind CSS、TanStack Query、ECharts、Mermaid
+- **包管理**：pnpm Monorepo
+
+```text
+├── apps/
+│   ├── server/          # Fastify API、Agent 运行时、SQL 守卫/执行器、Drizzle 迁移
+│   └── web/             # React 19 + Vite 前端应用
+├── packages/
+│   └── shared/          # 前后端共享类型与 Zod 校验契约
+├── agent/               # 系统提示词与内置分析/方言技能模板
+├── evals/nl2sql/        # NL2SQL 金标评测集与评分器
+├── deploy/              # Nginx 配置与部署环境变量模板
+└── docs/                # 运维指南、编码规范与子系统架构参考
 ```
 
-`APP_SECRET` 必须至少 32 个字符，可用 `openssl rand -hex 32` 生成。
+---
 
-| 变量 | 必填 | 说明 |
-| --- | --- | --- |
-| `APP_SECRET` | 是 | 会话签名密钥，≥ 32 字符 |
-| `PORT` | 否 | 后端服务端口，默认 `8080` |
-| `WEB_PORT` | 否 | 前端端口，默认 `5173`；Docker 下同时作为对外映射端口 |
-| `DATA_DIR` | 否 | 数据目录，默认 `./data`（SQLite、结果文件、agent 认证缓存） |
-| `LOG_LEVEL` | 否 | 日志级别，默认 `info` |
-| `SILICONFLOW_API_KEY` | 否 | 模型密钥；缺失时 `/api/models` 返回 `configured:false` |
-| `SILICONFLOW_BASE_URL` | 否 | 默认 `https://api.siliconflow.cn/v1` |
-| `ADMIN_USERNAME` | 否 | 首个管理员用户名，默认 `admin` |
-| `ADMIN_PASSWORD` | 首次启动必填 | ≥ 8 位真实密码；仅当数据库中没有管理员时用于创建，之后修改无效 |
-| `APP_ORIGIN` | 否 | 浏览器访问的完整 origin（含端口，多个用逗号分隔）；不匹配会被 CSRF 拒绝 |
-| `COOKIE_SECURE` | 否 | 会话 Cookie 是否带 `Secure`；留空时按 `APP_ORIGIN` 自动判断（http→false，https→true） |
-| `TRUST_PROXY` | 否 | 位于 nginx 后设为 `true`，用于读取 `X-Forwarded-*` |
+## 快速开始
 
-> 空数据库且未设置 `ADMIN_PASSWORD` 时服务会拒绝启动。该密码只用于 bootstrap，后续管理请使用管理接口。
+### 1. 本地开发
 
-## 安装、构建、启动
+**环境要求**：Node.js ≥ 22.9、pnpm 10（`corepack enable`）。
 
 ```bash
+# 1. 安装依赖并构建共享包
 pnpm install
 pnpm -r build
 
-# 两个终端分别启动
-pnpm --filter @datachat/server dev   # http://localhost:${PORT:-8080}
-pnpm --filter @datachat/web dev      # http://localhost:${WEB_PORT:-5173}，/api 代理到 PORT
-```
-
-或 `pnpm dev` 同时启动。端口在根目录 `.env` 中通过 `PORT` / `WEB_PORT` 指定，默认 8080 / 5173；修改 `WEB_PORT` 时记得同步 `APP_ORIGIN`。
-
-## 验证
-
-```bash
-pnpm verify                        # lint + typecheck + 服务端/共享包测试 + web 测试 + 全量构建
-pnpm lint                          # ESLint 9 + typescript-eslint（0 error；少量 warning）
-pnpm test                          # 服务端与共享包测试（vitest）
-pnpm --filter @datachat/web test   # 前端组件测试（jsdom）
-pnpm typecheck
-```
-
-测试使用内存 SQLite 与假模型，**不访问真实数据库或模型 API**，可离线运行。
-
-### 持续集成
-
-`.github/workflows/ci.yml` 在 push / PR 到 `main` 时执行：
-
-- `quality`：`pnpm lint`、`pnpm typecheck`、服务端/共享包测试、web 测试、全量构建。
-- `integration`：`RUN_DB_TESTS=1`，通过 Testcontainers 启动 MySQL 8 / PostgreSQL 16，跑真库集成测试。
-- `eval`：手动触发或每天 18:00 UTC 跑 NL2SQL 金标集；仓库需配置 Secret `EVAL_API_KEY`（未配置时自动跳过），报告作为 artifact 上传。
-
-## 失败恢复与新手引导
-
-- `/chat` 空态可直接选择数据源，点击示例会立即创建会话并发送；已有会话的空态只显示标题与示例，数据源以顶栏为准，不再重复渲染数据源区块。
-- 运行失败、被停止的轮次会显示“重试 / 换模型重试”。重试会原地替换失败轮次（`runs.retry_of_run_id`），历史、分享和报告里不会出现重复问题；换模型会先更新会话模型再重试。
-- 模型或数据源加载失败时，空态与 Composer 会区分“加载中 / 加载失败 / 未配置”，并提供重试，而不是误报“未配置”。
-- 数据源没有 schema 缓存时，`db_schema` 会自动刷新；超过 24 小时刷新失败则回退旧快照并标记 `stale`。
-
-## 临时文件分析（Excel / CSV）
-
-- **双模式建聊**：在 `/chat` 新建对话空态可选择「数据库分析」或「Excel / CSV 文件」；文件模式无需预先配置数据库数据源即可开始分析。
-- **解析与预览**：支持拖拽/多选 `.xlsx` / `.csv`（单文件 ≤ 20 MB、单次 ≤ 5 个文件、单会话 ≤ 10 张表、总行数 ≤ 20 万行；`.xls` 需先另存为 `.xlsx` 或 `.csv`）。自动处理 UTF-8 BOM / GB18030 中文 CSV、合并单元格、公式计算值与跨列标题行，推断 `INTEGER` / `REAL` / `TEXT` / `DATE` / `DATETIME`（保留前导零与长编号，自动清洗千分位/货币/百分比），支持预解析预览前三行样例及手动调整表头行。
-- **隔离执行与多表分析**：每个文件会话独享一份 `DATA_DIR/files/<conversationId>/data.sqlite`，不污染业务库与主元数据 SQLite；查询经 SQLite 只读守卫后在独立子进程中以 `readonly: true` 执行（超时/中止即 `SIGKILL` 释放句柄）。会话内支持随时追加上传新文件实现多表 `JOIN`；删除会话与运维保留清理会同步清除对应 SQLite 文件与工作目录。
-
-## NL2SQL 金标集
-
-`evals/nl2sql/` 内置一套固定的电商 fixture（MySQL / PostgreSQL 各一份）和 15 条单轮问题，用真实 Agent 链路跑完后执行生成的 SQL，与金标 SQL 的结果集逐值比较（列数、行数、值；默认无序）。
-
-```bash
-# 默认启动两个 Testcontainers，需要 Docker
-pnpm eval:nl2sql
-
-# 复用已有数据库（会自动重置 fixture 的 4 张表，不要指向生产库）
-EVAL_MYSQL_URL='mysql://root:pass@127.0.0.1:3306/nl2sql_eval' EVAL_PG_URL='postgresql://user:pass@127.0.0.1:5432/nl2sql_eval' pnpm eval:nl2sql -- --dialect both --threshold 0.8
-```
-
-模型通过 `EVAL_API_KEY` 临时注册为 `eval` provider；也可以用 `EVAL_BASE_URL` 指向本地网关（例如 Magpie），此时不消耗外部额度：
-
-```bash
-EVAL_BASE_URL='http://127.0.0.1:3425/v1' EVAL_API_KEY='local' pnpm eval:nl2sql -- --model 'workbuddy-ai/deepseek-v4.1-flash-sg'
-```
-
-参数：`--dialect mysql|postgres|both`、`--case <id>`（可重复）、`--model <id>`、`--repeat <n>`（默认 1）、`--threshold 0.8`、`--timeout 120`（秒）、`--output <dir>`。报告写入 `evals/nl2sql/reports/`（已 gitignore），低于阈值时退出码为 1。
-
-基线（2026-11-11，`workbuddy-ai/deepseek-v4.1-flash-sg`，严格整表结果集比较）：MySQL 13/15（86.7%）、PostgreSQL 12/15（80.0%）。失败主要是模型多返回了未被问到的辅助列或 Top-N 行数，属于模型行为而非 harness 问题。
-
-## 角色与权限
-
-管理员在“管理 → 角色”和“管理 → 用户”中维护 RBAC：
-
-- **权限**：6 个功能权限（`chat.use`、`skill.use`、`mcp.use`、`report.create`、`share.create`、`export.data`）和 9 个系统权限（`admin.users`、`admin.roles`、`admin.departments`、`admin.datasources`、`admin.skills`、`admin.mcp`、`admin.settings`、`admin.audit`、`admin.ops`）。
-- **管理员**：`admin` 账号拥有全部功能权限与全部数据源，不受角色限制；系统管理权限只对管理员开放。
-- **内置成员**：现有非管理员迁移后自动获得“成员”角色（全部功能权限、无数据源），可改权限与数据源，不可改名或删除；新用户默认分配成员角色。
-- **自定义角色**：功能权限 + 数据源授权；可多角色，权限与数据源取并集，并与原有的按用户直授 `datasource_grants` 取并集。
-- **即时性**：角色/权限修改对 HTTP 接口和界面立即生效；已打开的 Agent 会话在**下一次新建会话**时应用新的 Skills / MCP 权限。
-- **撤销语义**：撤销 `report.create` / `share.create` / `export.data` 只阻止新建；已有报告仍可查看/删除，已有分享仍可撤销。
-- **删除角色**：角色仍分配给用户时不可删除，需先在用户页解除分配；内置角色不可删除或改名。
-- **部门与行级权限**：管理员在“管理 → 部门”建部门树、分配成员与部门数据源授权（沿树向下继承）；在数据源行点“行级权限”配置表策略与过滤条件。用户的有效范围是所属部门子树的并集，查询在守卫后、执行前改写成派生表过滤；无部门、缺映射、未分类表都会被拒绝。启用后历史结果按生成时的部门快照判断可见性，并禁止该数据源的公开分享。详见 [部门与行级数据权限](docs/subsystems/data-scope.md)。
-
-迁移会用 `role_member` 回填现有 `role=user` 用户；升级前建议先执行 `pnpm ops:backup`。
-
-## 用户记忆
-
-登录用户可在左侧“我的记忆”（`/memory`）管理长期记忆；对话中明确表达“记住……”时，`memory_save` 会写入并去重，运行成功后也会异步提取少量稳定信息：
-
-- **范围**：全局或绑定单个数据源；数据源记忆只在该数据源会话中召回；Excel/CSV 文件分析会话只使用全局记忆。
-- **注入**：核心记忆（“画像/固定指令/偏好”可设）及高置信度（≥80）活跃偏好每轮常驻，其余按 2/3-gram 相关度召回；每次最多 2000 字核心 + 1500 字相关。
-- **控制**：用户可随时停用单条、关闭注入或清空；关闭后停止注入和自动提取，历史记忆保留。
-- **隐私**：记忆按用户隔离，管理员只能全局开关、不能查看用户正文；不进报告/分享；密钥、手机号、身份证号等敏感内容会被拒绝。
-- **管理**：管理员在“管理设置 → 通用”关闭“启用用户记忆”后，全站停止注入与提取，已有数据保留。
-- **限制**：自动提取会额外调用一次模型；低置信度记忆保存但不注入。
-
-## 定时任务与站内信
-
-有 `chat.use` + `report.create` 权限的用户可在左侧“定时任务”（`/scheduled`）创建任务：
-
-- **配置**：名称、数据源、自然语言问题、5 段 cron（每天/每周一/每月 1 日预设或自定义）、IANA 时区、可选模型；最小间隔 5 分钟，单用户最多 20 个任务。
-- **执行**：服务每 60 秒检查到期任务（全局并发 2、单用户 1、单次超时 10 分钟），在隐藏会话（`conversations.kind = scheduled`）中复用完整 Agent 链路，结果自动生成报告。
-- **通知**：成功/失败/自动停用写入站内信，左下角铃铛显示未读数（30 秒轮询）；连续失败 3 次自动停用。
-- **权限**：创建和执行都要求 `chat.use` + `report.create`，并在执行时重新检查数据源访问；权限或数据源失效会跳过本次执行并停用任务。
-- **运维**：调度为单进程内存实现，不做分布式锁；暂不支持 IM 推送或任务共享；任务每次执行都按当前部门/行级范围重新解析。
-
-## 运维与数据保留
-
-管理员左下角“管理”→“运维”（`/admin/ops`）：
-
-- **运行指标**：7/30/90 天成功率、P50/P95 耗时、token、每日运行数、Top 数据源与查询审计汇总（不含费用估算）。
-- **数据保留**：分别设置会话与审计日志保留天数（`0` 关闭，最大 3650）。先“预览影响”，确认后再执行；仍有未过期分享的会话、正在运行的会话会跳过。清理同时删除对应 reports/shares，并写入 `ops` 审计。
-- **定时清理**：设置 `RETENTION_SWEEP_HOURS`（默认 `0` 关闭）后，服务按间隔自动执行一次保留策略；也可只靠页面手动执行。
-- **备份**：`pnpm ops:backup` 生成 `DATA_DIR/backups/backup-*`，包含 SQLite、artifact、Pi 会话、技能与 agent 配置，不包含 `.env`；`pnpm ops:restore --from <dir> --yes` 恢复前会校验 DB 完整性，并保留同级 rollback 目录。恢复需使用相同 `APP_SECRET`，否则数据源密码与密钥无法解密。
-
-## 模型服务与冒烟
-
-模型不再写死在 `agent/models.json`：管理员在“设置 → 模型服务”中维护多个 provider（OpenAI-compatible 或 Anthropic Messages），可测试 `/models`、启停、编辑上下文窗口和默认模型。运行时会把启用的 provider 同步到 `DATA_DIR/agent/models.json`，模型键为 `providerId::modelId`，旧裸模型 ID 仍兼容。
-
-新增模型前建议先通过工具调用冒烟：
-
-```bash
-node scripts/smoke-agent.mjs
-```
-
-脚本对白名单中的每个模型发起一次带 `db_query` 工具的请求，断言 `finish_reason === "tool_calls"` 且工具名/参数合法；任一模型失败即退出非零。**只有通过工具调用冒烟、确认支持 function calling 的模型才应加入 provider。**
-
-两个冒烟脚本都是手动的，会从 `.env` 读取密钥，**不会打印密钥**：
-
-```bash
-node scripts/smoke-agent.mjs    # 无 Key 时打印跳过信息并退出 0
-node scripts/smoke-server.mjs   # 需先 pnpm -r build；临时端口启动服务，校验 /api/health 与 /api/models
-```
-
-`smoke-server` 使用临时数据目录和随机 bootstrap 密码，只做进程内校验，不打印密码。
-
-## Docker Compose 部署
-
-单机部署：一个 `server` 容器（Node + Pi SDK + SQLite）加一个 `web` 容器（nginx 托管 SPA 并反代 `/api`）。
-
-```bash
+# 2. 配置环境变量（APP_SECRET 至少 32 位，ADMIN_PASSWORD 至少 8 位）
 cp .env.example .env
-# 必填：APP_SECRET（>=32 字符）、ADMIN_PASSWORD（>=8 字符）、SILICONFLOW_API_KEY
-# 可选：ADMIN_USERNAME、APP_ORIGIN（浏览器访问的公开地址）
-docker compose up -d --build
-# 打开 http://localhost:5173
 
-# 5173 被占用时，同时改端口和 APP_ORIGIN（两者必须一致）
-WEB_PORT=8088 APP_ORIGIN=http://localhost:8088 docker compose up -d --build
+# 3. 启动前后端开发服务
+pnpm dev
 ```
 
-### 使用已构建镜像
+默认访问地址：
+- 前端页面：`http://localhost:5173`
+- 后端 API：`http://localhost:8080`
 
-服务器上没有源码时，用 `docker load` + `docker compose`：
+登录后可在后台「设置 → 模型服务」与「管理 → 数据源」中配置模型与数据库连接，或直接在「新建对话」选择「Excel / CSV 文件」开始分析。
+
+### 2. Docker Compose 部署
 
 ```bash
-# 在构建机导出（镜像打成一个 tar）
-docker save datachat-server:0.1.0-8e19468 datachat-web:0.1.0-8e19468   | gzip -1 > datachat-images-0.1.0-8e19468.tar.gz
-
-# 在服务器
-docker load -i datachat-images-0.1.0-8e19468.tar.gz
-mkdir -p /opt/datachat && cd /opt/datachat
-cp /path/to/docker-compose.yml .
-cp /path/to/deploy/env.example .env
-# 编辑 .env：APP_SECRET、ADMIN_PASSWORD、APP_ORIGIN、WEB_PORT、DATACHAT_VERSION
-docker compose up -d
+cp deploy/env.example .env
+# 编辑 .env，填写 APP_SECRET、ADMIN_PASSWORD 及实际访问的 APP_ORIGIN
+docker compose up -d --build
 ```
 
-`docker-compose.yml` 同时声明了 `image` 和 `build`：本地 `docker compose up -d --build` 会构建并打上 `${DATACHAT_VERSION:-latest}` 标签；服务器上只要该标签的镜像已 `docker load`，`docker compose up -d` 就不会重新构建。`.env` 中的 `DATACHAT_VERSION` 必须和导入的镜像标签一致。
+默认通过 `http://localhost:5173` 访问。完整环境变量、离线镜像打包与生产注意事项请参考 [部署、配置与运维指南](docs/operations.md)。
 
-`deploy/env.example` 是部署模板；本地开发仍用根目录 `.env.example`。
+---
 
-要点：
+## 常用命令
 
-- 数据（SQLite、artifact、skills、会话）保存在命名卷 `datachat-data`，挂载到容器 `/data`。
-- `web` 对外暴露 80，默认映射到主机 `5173`（`WEB_PORT` 可改）；`server` 不直接暴露，由 nginx 反代。
-- SSE 已在 `deploy/nginx.conf` 关闭缓冲并把读超时调到 3600s，长查询不会被 nginx 截断；`client_max_body_size` 已调至 `25m` 以支持 20 MB Excel / CSV 上传。
-- 生产环境务必把 `APP_ORIGIN` 设为实际访问地址（**包含端口**，如 `http://65.176.4.70:8080`，多个用逗号分隔），否则登录会被 CSRF 校验拒绝。
-- 直接用 IP + HTTP 访问时，`APP_ORIGIN` 用 `http://...`，会话 Cookie 会自动不带 `Secure`；如果前面有 TLS，改成 `https://...`（或显式设置 `COOKIE_SECURE=true`）。
-- 镜像内保留完整 `node_modules`（含 devDependencies），优先保证 better-sqlite3 / argon2 原生模块可用；后续可用 `pnpm deploy` 裁剪体积。
-- 首次启动会自动执行数据库迁移并创建管理员；`ADMIN_PASSWORD` 只在初始化空卷时生效，已有卷改密码请用用户管理。
-- 已在 Docker 29 + Compose v5 实跑：镜像构建、健康检查、nginx 反代、登录、重启与命名卷持久化均通过。
+```bash
+pnpm dev                          # 同时启动 server 与 web 开发服务
+pnpm verify                       # 全量门禁：lint + typecheck + 服务端/共享测试 + Web 测试 + 构建
+pnpm test                         # 运行服务端与共享包单元测试（内存 SQLite，无需外部库）
+pnpm --filter @datachat/web test  # 运行前端组件测试
+pnpm eval:nl2sql                  # 运行 NL2SQL 金标评测集（需 Docker 或测试库）
+pnpm ops:backup                   # 备份本地 SQLite、artifact 与会话数据
+```
 
-## 手动浏览器验收路径
+---
 
-1. 配置 `.env`（`APP_SECRET`、`ADMIN_PASSWORD`、可选 `SILICONFLOW_API_KEY`）并启动 server + web。
-2. 用 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录。
-3. “新建对话”并选择一个数据源。数据源需先在管理接口创建且**可连通**；本仓库默认不附带数据库，请指向自己的测试库。若使用 root 等有写权限的账号，在数据源编辑面板勾选“允许使用有写权限的账号”即可，查询仍被强制只读。
-4. 提问（例如“users 表有多少行”），预期：SSE 流式输出中文结论，思考、工具调用与 SQL 收在可折叠的“执行过程”中，结果表格单独展示；可继续追问（如“按角色分组”），也可点击停止中断。
-5. 刷新页面，历史消息、SQL 与结果元数据应从服务端恢复。
+## 文档导航
 
-结果预览行数默认为 200（`QUERY_PREVIEW_ROWS`），完整结果写入 `DATA_DIR/artifacts`；查询上限为 `QUERY_MAX_ROWS`（默认 100000），超时 `QUERY_TIMEOUT_MS`（默认 30000）。
+- [部署、配置与运维指南](docs/operations.md)：环境变量全表、Docker 部署、权限与数据范围、记忆/定时任务、备份恢复、NL2SQL 评测
+- [子系统设计参考](docs/subsystems/README.md)：运行时、SQL 与 Artifact、认证权限、行级数据范围、聊天界面等模块契约
+- [编码规范](docs/code-standards.md) · [开发入口](AGENTS.md) · [事故教训记录](LESSONS.md)
 
-## 图表、导出、技能与 MCP
+---
 
-### 图表
+## 安全与适用边界
 
-提问时直接描述图形，例如“按月统计订单金额并画柱状图”。Agent 调用 `make_chart` 读取结果 artifact，生成 ECharts option（柱/线/面积/饼/散点，可指定 `x`、`y`、`series` 与 `sum/avg/count/min/max` 聚合），图表显示在对应回答下方；图表卡片右上角“下载 PNG”导出图片。图表只基于已生成的查询结果，不改写 SQL。
+- **只读保证**：数据库查询仅允许 `SELECT` / `SHOW` / `DESCRIBE` / `EXPLAIN`，并经过 SQL 守卫与只读执行保护；数据源密码与外部密钥在存储时加密，绝不注入提示词或前端响应。
+- **架构定位**：元数据与会话采用单机 SQLite 存储，面向中小团队内网部署与分析场景，暂不提供多租户水平扩展与自助注册。
 
-### CSV / Excel 导出
+---
 
-结果表格底部有“下载 CSV”和“下载 Excel”，对应 `GET /api/artifacts/:id/download?format=csv|xlsx`。CSV 带 UTF-8 BOM、按 RFC4180 转义；Excel 首行加粗并冻结，数值列保持 number。导出上限 100000 行（超出返回 413 `EXPORT_TOO_LARGE`），仅属主或管理员可下载，并写入 `action=export` 审计；图表 artifact 不支持导出。
+## 开源协议
 
-### Skills 管理
-
-1. 以管理员登录，左下角“管理”→“技能管理”（`/admin/skills`）。
-2. “新建技能”填写 name（`^[a-z0-9][a-z0-9-]{1,63}$`）、description、Markdown 正文与范围；范围选“数据源”时需选择数据源，同名数据源技能会覆盖全局技能。也可用“恢复内置技能”重新导入内置 3 个技能。
-3. 保存或启停后无需重启服务，**下一次会话创建时生效**（技能物化到 `DATA_DIR/skills/<conversationId>/`）；已打开的会话继续使用旧技能。
-
-### MCP 管理
-
-1. 以管理员登录，左下角“管理”→“MCP 服务器”（`/admin/mcp`），点击“新建”。
-2. 选择传输方式：`stdio` 填 command 与 args（每行一个），可选 env；`http` 填 `http(s)://` URL，可选 headers。可限定到某个数据源（默认全局），并设置启用状态。
-3. env / headers 加密存储，列表与编辑页只显示键名和“已设置”标记；值留空表示保持不变。
-4. “测试连接”会在 15s 内启动连接并调用 `tools/list`，成功显示工具数与前 5 个工具名，失败只显示脱敏错误。
-5. 保存后同样在**下一次会话创建时生效**，Agent 可调用其中启用的工具。
-
-管理员入口仅对 `admin` 角色显示；非管理员访问 `/admin/*` 会跳回 `/chat`。
-
-## 交付验收清单
-
-- [x] 管理员可完全通过 UI 建/改/测/授权/删数据源，无需 curl。
-- [x] 任意查询结果可生成图表并导出 CSV / Excel。
-- [x] 查询结果可生成 Markdown 报告，报告页可打印为 PDF。
-- [x] 报告可分享为匿名链接，撤销后返回 410，公开页最多展示 100 行。
-- [x] 审计页可查询登录、用户、数据源、授权、技能、MCP、查询、导出动作。
-- [x] 设置修改默认模型与查询上限后，新会话生效。
-- [x] `docker compose up -d --build` 实跑：server healthy、SPA/SPA fallback、登录与卷重启持久化均通过。
-- [x] 空会话可选数据源、点示例直接开聊；失败/停止的轮次可原地重试或换模型。
-- [x] 数据源 schema 缺失/过期时，`db_schema` 自动刷新并在失败时回退旧快照。
-- [x] NL2SQL 金标集可一键跑 MySQL/PostgreSQL 基线，低于阈值退出非零。
-- [x] GitHub Actions 覆盖 lint、typecheck、单测、构建与真库集成测试；金标集支持手动/夜间运行。
-- [x] 运维页可查看 7/30/90 天运行指标；保留策略可预览后清理，活跃分享/运行中会话自动跳过。
-- [x] 角色/用户管理可配置功能权限、数据源授权与系统管理员；HTTP、Skills/MCP 与聊天 UI 均按权限门禁。
-- [x] 部门树 + 行级数据权限：部门数据源授权向下继承，查询按部门子树改写过滤，受控数据源禁止公开分享，历史结果按快照鉴权。
-- [x] `pnpm ops:backup` / `ops:restore` 可备份并恢复 SQLite 与 artifact，恢复前校验完整性并保留 rollback。
-- [x] 定时任务可按 cron 自动执行、生成报告并发送站内信；连续失败 3 次自动停用，权限失效时跳过。
-- [x] 用户记忆支持自动沉淀、去重、相关召回、手动管理、关闭与管理员全局停用；按用户隔离且不进入报告/分享。
-- [x] Excel / CSV 临时文件分析支持拖拽预解析、表头行调整、会话内追加多表 JOIN、独立子进程只读执行及会话删除/保留清理。
-
-## 已知限制
-
-- 数据库会话每次只绑定一个数据源，跨数据库不能直接 JOIN；临时跨表 JOIN 分析可上传 Excel / CSV 到同一文件分析会话。
-- 仅支持只读查询（SELECT / SHOW / DESCRIBE / EXPLAIN），不提供写操作；即使数据源使用 root 等写权限账号并勾选“允许使用有写权限的账号”，也不会放开写操作。
-- 元数据与会话存单机 SQLite，面向内网小团队，未做多租户与水平扩展。
-- 不开放自助注册，账号由管理员创建；分享链接匿名可读，但可撤销、可设过期。
-- MCP 的 `stdio` 服务器等同于在本机执行命令，仅应添加可信服务器。
-- 报告导出 PDF 依赖浏览器打印，不生成服务端 PDF 文件。
-- 数据库集成测试默认跳过；设置 `RUN_DB_TESTS=1` 并准备 Docker 后运行。
-- 尚无 Playwright E2E；运行指标、保留策略与备份恢复已实现。
-- 备份为本地目录，不含 `.env`；异地/对象存储备份与恢复演练尚未实现。
-- 部门与行级数据权限已实现；列级/动态脱敏权限尚未实现。
-- 定时任务为单机内存调度，不支持分布式执行、IM 推送或任务共享；执行结果只保存在报告与站内信中。
-- 用户记忆为单用户文本偏好，不做向量检索与跨用户共享；自动提取会增加一次模型调用。
-
-## 上下文压缩与使用率
-
-- 对话默认加载 [billion-context](https://github.com/ranxianglei/billion-context)（MIT）的 Pi 原生插件，长对话会在模型调用前自动压缩历史，并注册 `compress` / `decompress` / `search_context` / `acp_status` 等工具。
-- 输入框左下角的圆环显示当前会话的上下文占用（`tokens / contextWindow`）；达到 70% 变琥珀色、90% 变红色。
-- 如需关闭，设置环境变量 `BILI_NATIVE_PI=0` 后重启服务。
+本项目基于 [MIT License](LICENSE) 开源。
