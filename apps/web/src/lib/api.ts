@@ -845,10 +845,73 @@ export interface SemanticSchemaTableOption {
   columns: string[];
 }
 
+export type SqlExampleSource = "manual" | "feedback_up" | "feedback_fix";
+export type FeedbackReviewStatus = "pending" | "promoted" | "dismissed";
+
+export interface SqlExample {
+  id: string;
+  datasourceId: string;
+  question: string;
+  sqlText: string;
+  notes: string | null;
+  tables: string[];
+  source: SqlExampleSource;
+  sourceRunId: string | null;
+  enabled: boolean;
+  useCount: number;
+  lastUsedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SqlExampleInput {
+  question: string;
+  sqlText: string;
+  notes?: string | null;
+  source?: SqlExampleSource;
+  sourceRunId?: string | null;
+  enabled?: boolean;
+}
+
+export interface FeedbackSqlEntry {
+  sql: string;
+  status: string;
+  rowCount: number | null;
+  errorMessage: string | null;
+}
+
+export interface DatasourceFeedbackItem {
+  id: string;
+  runId: string;
+  conversationId: string;
+  conversationTitle: string | null;
+  username: string;
+  displayName: string | null;
+  rating: 1 | -1;
+  comment: string | null;
+  reviewStatus: FeedbackReviewStatus;
+  reviewedAt: number | null;
+  prompt: string;
+  runStatus: string;
+  sqlQueries: FeedbackSqlEntry[];
+  promotedExampleId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DatasourceFeedbackSummary {
+  pendingNegative: number;
+  pendingPositive: number;
+  totalExamples: number;
+  enabledExamples: number;
+}
+
 export interface SemanticLayerResponse {
   datasource: { id: string; name: string; type: string };
   metrics: SemanticMetric[];
   relations: SemanticRelation[];
+  examples?: SqlExample[];
+  feedbackSummary?: DatasourceFeedbackSummary;
   tables: SemanticSchemaTableOption[];
 }
 
@@ -862,6 +925,7 @@ export interface SemanticMetricInput {
   timeColumn?: string | null;
   unit?: string | null;
   enabled?: boolean;
+  sourceRunId?: string | null;
 }
 
 export interface SemanticRelationInput {
@@ -935,10 +999,61 @@ export function deleteSemanticRelation(datasourceId: string, id: string): Promis
 export function previewSemanticRecall(
   datasourceId: string,
   query: string,
-): Promise<{ text: string; metricIds: string[]; relationIds: string[] }> {
+): Promise<{ text: string; metricIds: string[]; relationIds: string[]; exampleIds?: string[] }> {
   return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/preview`, {
     method: "POST",
     body: JSON.stringify({ query }),
+  });
+}
+
+export function createSqlExample(
+  datasourceId: string,
+  input: SqlExampleInput,
+): Promise<{ example: SqlExample }> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/examples`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateSqlExample(
+  datasourceId: string,
+  id: string,
+  input: Partial<SqlExampleInput>,
+): Promise<{ example: SqlExample }> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/examples/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteSqlExample(datasourceId: string, id: string): Promise<void> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/examples/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function listDatasourceFeedback(
+  datasourceId: string,
+  params?: { rating?: "all" | "1" | "-1"; status?: "all" | FeedbackReviewStatus },
+): Promise<{ items: DatasourceFeedbackItem[]; summary: DatasourceFeedbackSummary }> {
+  const qs = new URLSearchParams();
+  if (params?.rating) qs.set("rating", params.rating);
+  if (params?.status) qs.set("status", params.status);
+  const query = qs.toString();
+  return apiRequest(
+    `/api/admin/datasources/${datasourceId}/semantic/feedback${query ? `?${query}` : ""}`,
+  );
+}
+
+export function updateDatasourceFeedbackStatus(
+  datasourceId: string,
+  id: string,
+  reviewStatus: FeedbackReviewStatus,
+): Promise<{ ok: boolean; reviewStatus: FeedbackReviewStatus }> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/feedback/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ reviewStatus }),
   });
 }
 

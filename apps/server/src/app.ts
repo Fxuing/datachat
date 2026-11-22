@@ -180,7 +180,7 @@ export async function buildApp({
   }
 
   await app.register(adminDataScopeRoutes, { db, drivers });
-  await app.register(adminSemanticRoutes, { db });
+  await app.register(adminSemanticRoutes, { db, drivers });
   await app.register(adminRoleRoutes, { db });
   await app.register(adminSkillRoutes, { db, agentDir: config.agentDir });
   await app.register(adminMcpRoutes, { db, config, mcpTestTimeoutMs });

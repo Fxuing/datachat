@@ -4,6 +4,7 @@ import type { Db } from "../client.js";
 import { runFeedback } from "../schema.js";
 
 export type FeedbackRating = 1 | -1;
+export type FeedbackReviewStatus = "pending" | "promoted" | "dismissed";
 
 export interface RunFeedbackRow {
   id: string;
@@ -11,6 +12,8 @@ export interface RunFeedbackRow {
   userId: string;
   rating: number;
   comment: string | null;
+  reviewStatus: FeedbackReviewStatus;
+  reviewedAt: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -36,6 +39,8 @@ export function upsertRunFeedback(
       set: {
         rating: input.rating,
         comment: input.comment ?? null,
+        reviewStatus: "pending",
+        reviewedAt: null,
         updatedAt: now,
       },
     })

@@ -58,6 +58,7 @@ const APP_TABLES = [
   "settings",
   "shares",
   "skills",
+  "sql_examples",
   "user_departments",
   "user_memories",
   "user_memory_settings",
@@ -111,6 +112,7 @@ const INTEGRITY_INDEXES: Record<string, string[]> = {
     "semantic_relations_ds_edge_unique",
     "semantic_relations_ds_enabled_idx",
   ],
+  sql_examples: ["sql_examples_datasource_idx", "sql_examples_source_run_idx"],
   user_departments: ["user_departments_department_idx"],
   user_roles: ["user_roles_role_idx"],
   run_events: ["run_events_conversation_seq_idx", "run_events_run_seq_unique"],
@@ -308,8 +310,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(23);
-    expect(migrateDb(handle.db)).toBe(23);
+    expect(migrateDb(handle.db)).toBe(24);
+    expect(migrateDb(handle.db)).toBe(24);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

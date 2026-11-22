@@ -27,6 +27,7 @@ import {
   listSemanticMetrics,
   listSemanticRelations,
 } from "../db/repositories/semantic-layer.js";
+import { insertSqlExample, listSqlExamples } from "../db/repositories/sql-examples.js";
 import { users } from "../db/schema.js";
 
 const DEMO_DS_NAME = "电商示例库（Demo）";
@@ -176,6 +177,39 @@ function main(): void {
       addedRels += 1;
     }
     console.log(`✓ 语义层已就绪（本次新增指标 ${addedMetrics} 条，关联 ${addedRels} 条）`);
+
+    // Seed verified Few-shot SQL examples (idempotent by question).
+    const existingQuestions = new Set(listSqlExamples(handle.db, dsId).map((e) => e.question));
+    const demoExamples = [
+      {
+        question: "按城市统计有效 GMV 和下单客户数排行",
+        sqlText:
+          "SELECT c.city, SUM(o.total_amount) AS gmv, COUNT(DISTINCT o.customer_id) AS buyer_count FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.status = 'paid' GROUP BY c.city ORDER BY gmv DESC LIMIT 20",
+        notes: "有效 GMV 需过滤 status = 'paid'，按客户去重统计下单客户数。",
+        tables: ["orders", "customers"],
+      },
+      {
+        question: "统计各商品品类的销量和销售额占比",
+        sqlText:
+          "SELECT p.category, SUM(oi.quantity) AS total_qty, SUM(oi.quantity * oi.unit_price) AS revenue FROM order_items oi JOIN orders o ON oi.order_id = o.id JOIN products p ON oi.product_id = p.id WHERE o.status = 'paid' GROUP BY p.category ORDER BY revenue DESC LIMIT 20",
+        notes: "订单明细需关联 orders 过滤已支付订单，并关联 products 获取品类。",
+        tables: ["order_items", "orders", "products"],
+      },
+    ];
+    let addedExamples = 0;
+    for (const ex of demoExamples) {
+      if (existingQuestions.has(ex.question)) continue;
+      insertSqlExample(handle.db, {
+        datasourceId: dsId,
+        ...ex,
+        source: "manual",
+        createdBy: admin.id,
+      });
+      addedExamples += 1;
+    }
+    if (addedExamples > 0) {
+      console.log(`✓ 示例 SQL 知识库已就绪（本次新增 ${addedExamples} 条 Few-shot 示例）`);
+    }
 
     // Seed sample refreshable dashboard (idempotent by name).
     const existingDash = listDashboardsByUser(handle.db, admin.id).find(

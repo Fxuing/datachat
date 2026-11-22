@@ -487,6 +487,11 @@ export const runFeedback = sqliteTable(
     /** 1 = helpful, -1 = not helpful. */
     rating: integer("rating").notNull(),
     comment: text("comment"),
+    /** Admin triage state for promoting feedback into verified SQL examples. */
+    reviewStatus: text("review_status", { enum: ["pending", "promoted", "dismissed"] })
+      .notNull()
+      .default("pending"),
+    reviewedAt: integer("reviewed_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -822,3 +827,33 @@ export const datasourcePlugins = sqliteTable("datasource_plugins", {
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+/** Verified Few-shot NL2SQL examples per datasource, curated manually or from user feedback. */
+export const sqlExamples = sqliteTable(
+  "sql_examples",
+  {
+    id: text("id").primaryKey(),
+    datasourceId: text("datasource_id")
+      .notNull()
+      .references(() => datasources.id, { onDelete: "cascade" }),
+    question: text("question").notNull(),
+    sqlText: text("sql_text").notNull(),
+    notes: text("notes"),
+    /** JSON array of normalized physical table names extracted from SQL AST for scope filtering. */
+    tablesJson: text("tables_json").notNull().default("[]"),
+    source: text("source", { enum: ["manual", "feedback_up", "feedback_fix"] })
+      .notNull()
+      .default("manual"),
+    sourceRunId: text("source_run_id"),
+    enabled: integer("enabled").notNull().default(1),
+    useCount: integer("use_count").notNull().default(0),
+    lastUsedAt: integer("last_used_at"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    index("sql_examples_datasource_idx").on(t.datasourceId, t.enabled),
+    index("sql_examples_source_run_idx").on(t.sourceRunId),
+  ],
+);

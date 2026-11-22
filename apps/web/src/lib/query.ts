@@ -37,6 +37,9 @@ export const queryKeys = {
   departmentGrants: (id: string) => ["department-grants", id] as const,
   dataScope: (id: string) => ["data-scope", id] as const,
   semanticLayer: (id: string) => ["semantic-layer", id] as const,
+  semanticFeedback: (id: string, rating: string, status: string) =>
+    ["semantic-feedback", id, rating, status] as const,
+  semanticFeedbackAll: (id: string) => ["semantic-feedback", id] as const,
   scopeColumns: (id: string) => ["scope-columns", id] as const,
   scopeDiagnostics: (id: string, userId: string) => ["scope-diagnostics", id, userId] as const,
   scopeDenials: (id: string) => ["scope-denials", id] as const,
