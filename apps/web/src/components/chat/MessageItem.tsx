@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
-import { Bot, ShieldCheck, Sparkles } from "lucide-react";
+import { Bot, Pencil, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import { Button } from "../ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import {
   getArtifact,
   type ChatArtifact,
@@ -83,13 +85,111 @@ export function UserBubble({
   content,
   skill,
   pending = false,
+  onEditResend,
+  editDisabled = false,
 }: {
   content: string;
   skill?: string | null;
   pending?: boolean;
+  onEditResend?: (nextContent: string, skill?: string | null) => void;
+  editDisabled?: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(content);
+
+  useEffect(() => {
+    setDraft(content);
+    setEditing(false);
+  }, [content]);
+
+  const submitEdit = () => {
+    const trimmed = draft.trim();
+    if (!trimmed || !onEditResend) return;
+    setEditing(false);
+    onEditResend(trimmed, skill);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex justify-end">
+        <div className="w-full max-w-[85%] rounded-2xl border border-line bg-surface p-3 shadow-sm">
+          {skill ? (
+            <span className="mb-1.5 flex w-fit items-center gap-1 rounded bg-brandsoft px-1.5 py-0.5 text-[10px] font-medium text-brandtext">
+              <Sparkles className="h-2.5 w-2.5" />
+              技能 · {skill}
+            </span>
+          ) : null}
+          <textarea
+            aria-label="编辑提问内容"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setDraft(content);
+                setEditing(false);
+              } else if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                event.preventDefault();
+                submitEdit();
+              }
+            }}
+            rows={Math.min(Math.max(draft.split("\n").length, 2), 8)}
+            autoFocus
+            className="w-full resize-y rounded-md border border-line bg-canvas px-2.5 py-2 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          />
+          <div className="mt-2 flex items-center justify-end gap-1.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setDraft(content);
+                setEditing(false);
+              }}
+            >
+              <X className="h-3.5 w-3.5" />
+              取消
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!draft.trim() || editDisabled}
+              onClick={submitEdit}
+            >
+              <Send className="h-3.5 w-3.5" />
+              重新发送
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex justify-end">
+    <div className="group/bubble flex items-start justify-end gap-1.5">
+      {onEditResend && !pending ? (
+        <div className="mt-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/bubble:opacity-100 group-hover/turn:opacity-100">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted hover:text-ink"
+                aria-label="编辑并重新提问"
+                disabled={editDisabled}
+                onClick={() => {
+                  setDraft(content);
+                  setEditing(true);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">编辑并重新提问</TooltipContent>
+          </Tooltip>
+        </div>
+      ) : null}
       <div className="max-w-[85%] rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-sm text-canvas shadow-sm">
         {skill ? (
           <span className="mb-1 flex w-fit items-center gap-1 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/75">
@@ -217,6 +317,8 @@ export function MessageItem({
   onCreateReport,
   canExport = true,
   onRetry,
+  onEditResend,
+  editDisabled = false,
 }: {
   message: ChatMessage;
   artifacts?: ChatArtifact[];
@@ -226,6 +328,8 @@ export function MessageItem({
   onCreateReport?: (artifactId: string) => void;
   canExport?: boolean;
   onRetry?: (message: ChatMessage, modelId?: string) => void;
+  onEditResend?: (content: string, skill?: string | null) => void;
+  editDisabled?: boolean;
 }) {
   const assistantText = message.assistant?.content ?? "";
   const allCharts = artifacts.filter((artifact) => artifact.kind === "chart");
@@ -261,7 +365,12 @@ export function MessageItem({
 
   return (
     <div className="group/turn flex flex-col gap-3">
-      <UserBubble content={message.user.content} skill={message.user.skill} />
+      <UserBubble
+        content={message.user.content}
+        skill={message.user.skill}
+        onEditResend={onEditResend}
+        editDisabled={editDisabled}
+      />
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-[11px] font-medium text-muted">
           <span className="flex h-5 w-5 items-center justify-center rounded bg-line text-muted">

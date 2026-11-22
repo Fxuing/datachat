@@ -354,6 +354,72 @@ describe("reports api", () => {
     });
     expect(missing.statusCode).toBe(404);
   });
+
+  it("updates title and markdown for the owner, rejects foreign users and invalid payloads", async () => {
+    const artifactId = await seedResult();
+    const created = await postReport({
+      conversationId,
+      title: "初版报告",
+      markdown: `## 初版\n\n[[artifact:${artifactId}]]`,
+      artifactIds: [artifactId],
+    });
+    const report = created.body.report as { id: string; updatedAt: number };
+
+    const denied = await app.inject({
+      method: "PATCH",
+      url: `/api/reports/${report.id}`,
+      cookies: { dc_session: otherCookie },
+      payload: { title: "篡改标题" },
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const invalidEmpty = await app.inject({
+      method: "PATCH",
+      url: `/api/reports/${report.id}`,
+      cookies: { dc_session: cookie },
+      payload: {},
+    });
+    expect(invalidEmpty.statusCode).toBe(400);
+
+    const invalidBlankMarkdown = await app.inject({
+      method: "PATCH",
+      url: `/api/reports/${report.id}`,
+      cookies: { dc_session: cookie },
+      payload: { markdown: "   " },
+    });
+    expect(invalidBlankMarkdown.statusCode).toBe(400);
+
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/api/reports/${report.id}`,
+      cookies: { dc_session: cookie },
+      payload: {
+        title: "终版经营报告",
+        markdown: `## 终版结论\n\n[[artifact:${artifactId}]]`,
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+    const body = updated.json() as {
+      report: { id: string; title: string; markdown: string; artifactIds: string[]; updatedAt: number };
+    };
+    expect(body.report.title).toBe("终版经营报告");
+    expect(body.report.markdown).toBe(`## 终版结论\n\n[[artifact:${artifactId}]]`);
+    expect(body.report.artifactIds).toEqual([artifactId]);
+    expect(body.report.updatedAt).toBeGreaterThanOrEqual(report.updatedAt);
+
+    const fetched = await app.inject({
+      method: "GET",
+      url: `/api/reports/${report.id}`,
+      cookies: { dc_session: cookie },
+    });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.json()).toMatchObject({
+      report: {
+        title: "终版经营报告",
+        markdown: `## 终版结论\n\n[[artifact:${artifactId}]]`,
+      },
+    });
+  });
 });
 
 describe("create_report tool", () => {

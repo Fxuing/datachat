@@ -423,6 +423,7 @@ describe("ChatPage permission gates", () => {
         });
       }
       if (url === "/api/skills/global") return jsonResponse({ skills: [] });
+      if (url === "/api/file-datasets") return jsonResponse({ datasets: [] });
       if (url === "/api/files/preview" && init?.method === "POST") {
         return jsonResponse({
           files: [

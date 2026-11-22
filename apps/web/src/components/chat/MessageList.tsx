@@ -55,6 +55,10 @@ export interface MessageListProps {
   /** Run id currently being retried, used to disable its actions. */
   retryingRunId?: string | null;
   onRetry?: (message: ChatMessage, modelId?: string) => void;
+  /** Re-submits an edited historical prompt in the active conversation. */
+  onEditResend?: (content: string, skill?: string | null) => void;
+  /** Disables prompt editing while a run is streaming or mutating. */
+  editDisabled?: boolean;
   /** Datasources offered on the empty state so a new chat can start in place. */
   datasources?: DatasourceSummary[];
   datasourcesLoading?: boolean;
@@ -410,6 +414,8 @@ export function MessageList({
   models = [],
   retryingRunId = null,
   onRetry,
+  onEditResend,
+  editDisabled = false,
   datasources = [],
   datasourcesLoading = false,
   datasourcesError = null,
@@ -672,6 +678,8 @@ export function MessageList({
               onCreateReport={onCreateReport}
               canExport={canExport}
               onRetry={onRetry}
+              onEditResend={onEditResend}
+              editDisabled={editDisabled}
             />
           </div>
         ))}

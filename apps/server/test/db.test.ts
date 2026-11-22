@@ -36,6 +36,8 @@ const APP_TABLES = [
   "department_datasource_grants",
   "department_org_map",
   "departments",
+  "file_dataset_tables",
+  "file_datasets",
   "llm_providers",
   "mcp_servers",
   "notifications",
@@ -87,6 +89,11 @@ const INTEGRITY_INDEXES: Record<string, string[]> = {
     "department_org_map_datasource_idx",
   ],
   departments: ["departments_code_unique", "departments_parent_idx"],
+  file_dataset_tables: [
+    "file_dataset_tables_dataset_name_unique",
+    "file_dataset_tables_dataset_idx",
+  ],
+  file_datasets: ["file_datasets_user_updated_idx"],
   query_audit: [
     "query_audit_datasource_created_idx",
     "query_audit_created_idx",
@@ -289,8 +296,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(19);
-    expect(migrateDb(handle.db)).toBe(19);
+    expect(migrateDb(handle.db)).toBe(20);
+    expect(migrateDb(handle.db)).toBe(20);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

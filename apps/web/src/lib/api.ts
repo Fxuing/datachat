@@ -661,6 +661,77 @@ export function createFileConversation(input: {
   });
 }
 
+export interface FileDatasetTableSummary {
+  id: string;
+  datasetId: string;
+  tableName: string;
+  displayName: string;
+  sheetName: string | null;
+  rowCount: number;
+  columns: FileTableColumn[];
+  sampleRows: Array<Array<string | number | null>>;
+  warnings: string[];
+  createdAt: number;
+}
+
+export interface FileDatasetSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  fileType: "xlsx" | "csv";
+  fileCount: number;
+  tableCount: number;
+  rowCount: number;
+  sizeBytes: number;
+  createdAt: number;
+  updatedAt: number;
+  tables: FileDatasetTableSummary[];
+}
+
+export function listFileDatasets(): Promise<{ datasets: FileDatasetSummary[] }> {
+  return apiRequest("/api/file-datasets");
+}
+
+export function saveConversationAsDataset(
+  conversationId: string,
+  input: { name: string; description?: string },
+): Promise<{ dataset: FileDatasetSummary }> {
+  return apiRequest(`/api/file-datasets/from-conversation/${conversationId}`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateFileDataset(
+  id: string,
+  input: { name?: string; description?: string | null },
+): Promise<{ dataset: FileDatasetSummary }> {
+  return apiRequest(`/api/file-datasets/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteFileDataset(id: string): Promise<void> {
+  return apiRequest(`/api/file-datasets/${id}`, { method: "DELETE" });
+}
+
+export function createConversationFromDataset(input: {
+  datasetId: string;
+  title?: string;
+  modelId?: string;
+  thinkingLevel?: string;
+}): Promise<{
+  conversation: Conversation;
+  files: ConversationFileSummary[];
+  tables: ConversationFileTableSummary[];
+}> {
+  return apiRequest("/api/conversations/from-dataset", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function appendConversationFiles(
   conversationId: string,
   input: {
@@ -735,6 +806,16 @@ export function createReport(input: {
 
 export function getReport(id: string): Promise<{ report: ReportDetail }> {
   return apiRequest(`/api/reports/${id}`);
+}
+
+export function updateReport(
+  id: string,
+  input: { title?: string; markdown?: string },
+): Promise<{ report: ReportDetail }> {
+  return apiRequest(`/api/reports/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }
 
 export function deleteReport(id: string): Promise<void> {

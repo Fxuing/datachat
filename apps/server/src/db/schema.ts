@@ -302,6 +302,51 @@ export const conversationFileTables = sqliteTable(
   ],
 );
 
+export const fileDatasets = sqliteTable(
+  "file_datasets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    fileType: text("file_type", { enum: ["xlsx", "csv"] }).notNull().default("xlsx"),
+    fileCount: integer("file_count").notNull().default(1),
+    tableCount: integer("table_count").notNull().default(0),
+    rowCount: integer("row_count").notNull().default(0),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    index("file_datasets_user_updated_idx").on(t.userId, t.updatedAt),
+    check("file_datasets_type_check", sql`${t.fileType} in ('xlsx', 'csv')`),
+  ],
+);
+
+export const fileDatasetTables = sqliteTable(
+  "file_dataset_tables",
+  {
+    id: text("id").primaryKey(),
+    datasetId: text("dataset_id")
+      .notNull()
+      .references(() => fileDatasets.id, { onDelete: "cascade" }),
+    tableName: text("table_name").notNull(),
+    displayName: text("display_name").notNull(),
+    sheetName: text("sheet_name"),
+    rowCount: integer("row_count").notNull().default(0),
+    columnsJson: text("columns_json").notNull(),
+    sampleRowsJson: text("sample_rows_json").notNull(),
+    warningsJson: text("warnings_json").notNull().default("[]"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("file_dataset_tables_dataset_name_unique").on(t.datasetId, t.tableName),
+    index("file_dataset_tables_dataset_idx").on(t.datasetId, t.createdAt),
+  ],
+);
+
 export const runs = sqliteTable(
   "runs",
   {

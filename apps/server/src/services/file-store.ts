@@ -1,4 +1,4 @@
-import { access, mkdir, rename, rm, stat } from "node:fs/promises";
+import { access, copyFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import Database from "better-sqlite3";
 import type { FileTableColumn } from "../db/repositories/conversation-files.js";
@@ -170,4 +170,42 @@ export async function sqliteFileExists(sqlitePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export function resolveDatasetDir(dataDir: string, datasetId: string): string {
+  if (!UUID_RE.test(datasetId)) {
+    throw new Error(`非法的数据集 ID: ${datasetId}`);
+  }
+  const datasetsRoot = path.resolve(dataDir, "datasets");
+  const target = path.resolve(datasetsRoot, datasetId);
+  if (!target.startsWith(datasetsRoot + path.sep)) {
+    throw new Error("文件路径越界");
+  }
+  return target;
+}
+
+export function resolveDatasetSqlitePath(dataDir: string, datasetId: string): string {
+  return path.join(resolveDatasetDir(dataDir, datasetId), "data.sqlite");
+}
+
+/** Atomically copy a SQLite database file to a new destination path. */
+export async function copySqliteFile(srcPath: string, destPath: string): Promise<number> {
+  await access(srcPath);
+  const dir = path.dirname(destPath);
+  await mkdir(dir, { recursive: true });
+  const tmpPath = `${destPath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await copyFile(srcPath, tmpPath);
+    await rename(tmpPath, destPath);
+    return (await stat(destPath)).size;
+  } catch (error) {
+    await rm(tmpPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function removeDatasetDir(dataDir: string, datasetId: string): Promise<void> {
+  if (!UUID_RE.test(datasetId)) return;
+  const dir = resolveDatasetDir(dataDir, datasetId);
+  await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
 }

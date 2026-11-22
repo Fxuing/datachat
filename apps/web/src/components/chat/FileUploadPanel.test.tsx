@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { FileUploadPanel } from "./FileUploadPanel";
-import type { FilePreviewResponse } from "../../lib/api";
+import type { FileDatasetSummary, FilePreviewResponse } from "../../lib/api";
 
 const samplePreview: FilePreviewResponse = {
   files: [
@@ -103,5 +103,84 @@ describe("FileUploadPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "清空" }));
     expect(onClearAll).toHaveBeenCalled();
+  });
+
+  it("lets the user select and confirm-delete a saved dataset", async () => {
+    const user = userEvent.setup();
+    const onSelectDataset = vi.fn();
+    const onDeleteDataset = vi.fn();
+    const saved: FileDatasetSummary = {
+      id: "ds-1",
+      name: "Q4 销售数据集",
+      description: "已清洗的销售明细",
+      fileType: "csv",
+      fileCount: 1,
+      tableCount: 1,
+      rowCount: 2,
+      sizeBytes: 2048,
+      createdAt: 1,
+      updatedAt: 1,
+      tables: [
+        {
+          id: "t-1",
+          datasetId: "ds-1",
+          tableName: "sales",
+          displayName: "sales",
+          sheetName: null,
+          rowCount: 2,
+          columns: samplePreview.files[0]!.tables[0]!.columns,
+          sampleRows: samplePreview.files[0]!.tables[0]!.sampleRows,
+          warnings: [],
+          createdAt: 1,
+        },
+      ],
+    };
+
+    const { rerender } = render(
+      <FileUploadPanel
+        files={[]}
+        headerRows={[]}
+        preview={null}
+        previewLoading={false}
+        previewError={null}
+        savedDatasets={[saved]}
+        selectedDatasetId={null}
+        onAddFiles={vi.fn()}
+        onRemoveFile={vi.fn()}
+        onHeaderRowChange={vi.fn()}
+        onClearAll={vi.fn()}
+        onSelectDataset={onSelectDataset}
+        onDeleteDataset={onDeleteDataset}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^Q4 销售数据集/ }));
+    expect(onSelectDataset).toHaveBeenCalledWith("ds-1");
+
+    await user.click(screen.getByRole("button", { name: "删除数据集 Q4 销售数据集" }));
+    const dialog = await screen.findByRole("dialog", { name: "删除数据集" });
+    await user.click(within(dialog).getByRole("button", { name: "删除" }));
+    expect(onDeleteDataset).toHaveBeenCalledWith("ds-1");
+
+    rerender(
+      <FileUploadPanel
+        files={[]}
+        headerRows={[]}
+        preview={null}
+        previewLoading={false}
+        previewError={null}
+        savedDatasets={[saved]}
+        selectedDatasetId="ds-1"
+        onAddFiles={vi.fn()}
+        onRemoveFile={vi.fn()}
+        onHeaderRowChange={vi.fn()}
+        onClearAll={vi.fn()}
+        onSelectDataset={onSelectDataset}
+        onDeleteDataset={onDeleteDataset}
+      />,
+    );
+
+    expect(screen.getByText("已选用数据集：Q4 销售数据集")).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "华东" })).toBeInTheDocument();
   });
 });

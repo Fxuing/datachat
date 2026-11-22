@@ -585,4 +585,29 @@ describe("MessageItem", () => {
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
+
+  it("lets the user edit a historical prompt inline and resend it with its skill", async () => {
+    const browser = userEvent.setup();
+    const onEditResend = vi.fn();
+    render(
+      <MemoryRouter>
+        <MessageItem
+          onEditResend={onEditResend}
+          message={message({
+            status: "ok",
+            user: { content: "统计上月订单", skill: "order-check" },
+            assistant: { content: "共 120 单。" },
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    await browser.click(screen.getByRole("button", { name: "编辑并重新提问" }));
+    const editor = screen.getByLabelText("编辑提问内容");
+    await browser.clear(editor);
+    await browser.type(editor, "统计本月订单");
+    await browser.click(screen.getByRole("button", { name: "重新发送" }));
+
+    expect(onEditResend).toHaveBeenCalledWith("统计本月订单", "order-check");
+  });
 });

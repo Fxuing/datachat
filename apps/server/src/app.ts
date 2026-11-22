@@ -18,6 +18,7 @@ import { datasourceSchemaRoutes } from "./routes/datasource-schema.js";
 import { modelsRoutes } from "./routes/models.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { conversationFileRoutes } from "./routes/conversation-files.js";
+import { fileDatasetRoutes } from "./routes/file-datasets.js";
 import { FILE_MAX_FILES_PER_UPLOAD, FILE_MAX_SIZE_BYTES } from "./services/file-import.js";
 import { questionRoutes } from "./routes/questions.js";
 import { artifactRoutes } from "./routes/artifacts.js";
@@ -189,6 +190,12 @@ export async function buildApp({
     getRuntime: () => modelRuntime.get(),
   });
   await app.register(conversationFileRoutes, {
+    config,
+    db,
+    runtime: agentRuntime,
+    getRuntime: () => modelRuntime.get(),
+  });
+  await app.register(fileDatasetRoutes, {
     config,
     db,
     runtime: agentRuntime,

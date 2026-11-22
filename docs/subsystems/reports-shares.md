@@ -9,9 +9,9 @@
 | 表 | `reports`、`shares`、`artifacts` | [`schema.ts`](../../apps/server/src/db/schema.ts) |
 | 报告创建 | 归属、artifact 成员校验、Markdown 生成 | [`reports.ts`](../../apps/server/src/services/reports.ts) |
 | 报告工具 | 面向模型的 `create_report`、权限门禁 | [`create-report.ts`](../../apps/server/src/agent/tools/create-report.ts) |
-| 路由 | 报告列表/详情/删除；分享创建/撤销 | [`reports.ts` 路由](../../apps/server/src/routes/reports.ts)、[`shares.ts` 路由](../../apps/server/src/routes/shares.ts) |
+| 路由 | 报告列表/详情/编辑/删除；分享创建/撤销 | [`reports.ts` 路由](../../apps/server/src/routes/reports.ts)、[`shares.ts` 路由](../../apps/server/src/routes/shares.ts) |
 | 公开解析 | token 查找、过期/撤销、投影 | [`shares.ts`](../../apps/server/src/services/shares.ts) |
-| 报告 UI | Markdown、artifact、分享/导出 | [`ReportPage.tsx`](../../apps/web/src/pages/ReportPage.tsx) |
+| 报告 UI | Markdown、artifact、在线编辑、分享/导出（MD/HTML/打印） | [`ReportPage.tsx`](../../apps/web/src/pages/ReportPage.tsx)、[`report-export.ts`](../../apps/web/src/lib/report-export.ts) |
 | 公开 UI | 匿名报告/会话视图 | [`PublicSharePage.tsx`](../../apps/web/src/pages/PublicSharePage.tsx) |
 
 常量：`REPORT_MAX_ARTIFACTS = 20`、`REPORT_MAX_MARKDOWN_LENGTH = 50_000`、`SHARE_MAX_ROWS = 100`，有效期 1–365 天（默认 7 天）。
@@ -22,7 +22,9 @@
 2. 未提供 Markdown 时，服务根据引用的 artifact（列 + 预览行）生成；提供的 Markdown 要校验长度/数量。
 3. 报告保存 `markdown` 和 `artifact_ids`（JSON），不复制行数据；渲染报告时解析当前 artifact 内容。
 4. 报告详情可由属主或管理员读取。缺失和他人报告返回相同的 not-found 形状。
-5. 删除报告不删除底层 artifact；删除会话/artifact 可能让报告里的结果卡片不可用。
+5. `PATCH /api/reports/:id` 需要 `report.create` 权限与可读/范围内归属校验，只允许修改 `title` 与 `markdown`（更新 `updated_at`），不允许修改 `artifact_ids`（防止引用越权 artifact）；缺失/他人/越范围报告返回相同 `404`。
+6. 删除报告不删除底层 artifact；删除会话/artifact 可能让报告里的结果卡片不可用。
+7. 报告页支持导出 `.md` 与离线自包含 `.html`（将 ECharts `<canvas>` 转为内嵌 PNG 并移除交互按钮），以及浏览器打印 PDF。
 
 报告用 `[[artifact:<id>]]` 渲染结果卡片，可以包含 Mermaid 代码块。`[[result:<id>]]` 是聊天专用的，在报告 Markdown 中保持字面量。
 

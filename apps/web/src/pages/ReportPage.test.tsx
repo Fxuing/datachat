@@ -49,17 +49,34 @@ function jsonResponse(body: unknown, status = 200): Response {
 interface MockOptions {
   reportStatus?: number;
   confirmDelete?: boolean;
+  permissions?: string[];
 }
 
 function stubFetch(options: MockOptions = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
-    if (url === "/api/auth/me") return jsonResponse({ user, permissions: [], roles: [] });
+    if (url === "/api/auth/me") {
+      return jsonResponse({ user, permissions: options.permissions ?? [], roles: [] });
+    }
     if (url === "/api/conversations") {
       return jsonResponse({ items: [], nextCursor: null });
     }
     if (url.startsWith("/api/reports/") && (init?.method ?? "GET") === "DELETE") {
       return new Response(null, { status: 204 });
+    }
+    if (url === "/api/reports/r-1" && init?.method === "PATCH") {
+      const patch = JSON.parse(String(init.body ?? "{}")) as {
+        title?: string;
+        markdown?: string;
+      };
+      return jsonResponse({
+        report: {
+          ...report,
+          ...(patch.title !== undefined ? { title: patch.title } : {}),
+          ...(patch.markdown !== undefined ? { markdown: patch.markdown } : {}),
+          updatedAt: report.createdAt + 60_000,
+        },
+      });
     }
     if (url === "/api/reports/r-1") {
       if (options.reportStatus && options.reportStatus !== 200) {
@@ -222,5 +239,32 @@ describe("ReportPage", () => {
     renderPage("/reports/r-1");
 
     expect(await screen.findByText("报告不存在或已被删除。")).toBeInTheDocument();
+  });
+
+  it("edits title and markdown when user has report.create permission", async () => {
+    const fetchMock = stubFetch({ permissions: ["report.create"] });
+    const browser = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole("heading", { name: report.title });
+    await browser.click(screen.getByRole("button", { name: "编辑" }));
+
+    const titleInput = screen.getByLabelText("报告标题");
+    const bodyInput = screen.getByLabelText("Markdown 正文");
+    await browser.clear(titleInput);
+    await browser.type(titleInput, "修订版报告");
+    await browser.clear(bodyInput);
+    await browser.type(bodyInput, "## 新结论\n\n数据稳定增长。");
+
+    await browser.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/reports/r-1",
+        expect.objectContaining({ method: "PATCH" }),
+      ),
+    );
+    expect(await screen.findByRole("heading", { name: "修订版报告" })).toBeInTheDocument();
+    expect(screen.getByText("数据稳定增长。")).toBeInTheDocument();
   });
 });

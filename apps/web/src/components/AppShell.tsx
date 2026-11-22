@@ -1,7 +1,17 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Brain, Clock, LogOut, Menu, Settings, X, type LucideIcon } from "lucide-react";
+import {
+  Brain,
+  Clock,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { logout, type SessionUser } from "../lib/api";
 import { cn } from "../lib/utils";
 import { BrandMark } from "./BrandMark";
@@ -35,6 +45,24 @@ const STATUS_DOT_CLASSES: Record<AppShellStatusIndicator["tone"], string> = {
   error: "bg-danger",
 };
 
+const SIDEBAR_STORAGE_KEY = "datachat:sidebar-collapsed";
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSidebarCollapsed(collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? "1" : "0");
+  } catch {
+    // Storage may be unavailable in restricted contexts.
+  }
+}
+
 export function AppShell({
   user,
   sidebar,
@@ -46,6 +74,12 @@ export function AppShell({
   const location = useLocation();
   const queryClient = useQueryClient();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readSidebarCollapsed);
+
+  const setCollapsed = (next: boolean) => {
+    setSidebarCollapsed(next);
+    writeSidebarCollapsed(next);
+  };
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -90,7 +124,21 @@ export function AppShell({
             >
               <X className="h-4 w-4" />
             </Button>
-          ) : null}
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="收起侧边栏"
+                  onClick={() => setCollapsed(true)}
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">收起侧边栏</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
 
@@ -190,7 +238,13 @@ export function AppShell({
 
   return (
     <div className="flex h-full min-h-0 bg-canvas">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-surface md:flex print:hidden">
+      <aside
+        data-collapsed={sidebarCollapsed ? "true" : "false"}
+        className={cn(
+          "hidden w-60 shrink-0 flex-col border-r border-line bg-surface print:hidden",
+          !sidebarCollapsed && "md:flex",
+        )}
+      >
         {renderSidebarContent(false)}
       </aside>
 
@@ -215,6 +269,22 @@ export function AppShell({
               >
                 <Menu className="h-4 w-4" />
               </Button>
+              {sidebarCollapsed ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="展开侧边栏"
+                      className="hidden shrink-0 md:inline-flex"
+                      onClick={() => setCollapsed(false)}
+                    >
+                      <PanelLeftOpen className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">展开侧边栏</TooltipContent>
+                </Tooltip>
+              ) : null}
               <div className="flex min-w-0 flex-1 items-center gap-3">{topbar}</div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -230,20 +300,40 @@ export function AppShell({
             </div>
           </header>
         ) : (
-          <header className="flex h-12 shrink-0 items-center justify-between border-b border-line bg-surface px-3 md:hidden print:hidden">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="打开导航菜单"
-                onClick={() => setMobileNavOpen(true)}
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
-              <span className="text-sm font-semibold text-ink">DataChat</span>
-            </div>
-            <ThemeToggle />
-          </header>
+          <>
+            <header className="flex h-12 shrink-0 items-center justify-between border-b border-line bg-surface px-3 md:hidden print:hidden">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="打开导航菜单"
+                  onClick={() => setMobileNavOpen(true)}
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-semibold text-ink">DataChat</span>
+              </div>
+              <ThemeToggle />
+            </header>
+            {sidebarCollapsed ? (
+              <header className="hidden h-12 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 md:flex print:hidden">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="展开侧边栏"
+                      onClick={() => setCollapsed(false)}
+                    >
+                      <PanelLeftOpen className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">展开侧边栏</TooltipContent>
+                </Tooltip>
+                <span className="text-sm font-semibold text-ink">DataChat</span>
+              </header>
+            ) : null}
+          </>
         )}
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</main>
       </div>

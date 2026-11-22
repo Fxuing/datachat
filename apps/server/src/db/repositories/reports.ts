@@ -54,6 +54,24 @@ export function listReportsByConversation(
     .all();
 }
 
+export function updateReport(
+  db: Db,
+  id: string,
+  patch: { title?: string; markdown?: string },
+): ReportRow | undefined {
+  const values: Partial<typeof reports.$inferInsert> = {
+    updatedAt: Date.now(),
+  };
+  if (patch.title !== undefined) values.title = patch.title;
+  if (patch.markdown !== undefined) values.markdown = patch.markdown;
+  return db
+    .update(reports)
+    .set(values)
+    .where(eq(reports.id, id))
+    .returning()
+    .get();
+}
+
 export function deleteReport(db: Db, id: string): boolean {
   return db.delete(reports).where(eq(reports.id, id)).run().changes > 0;
 }

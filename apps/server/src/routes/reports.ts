@@ -2,7 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { REPORT_MAX_ARTIFACTS, REPORT_MAX_MARKDOWN_LENGTH } from "@datachat/shared";
 import type { Db } from "../db/client.js";
-import { deleteReport, findReport, parseReportArtifactIds } from "../db/repositories/reports.js";
+import {
+  deleteReport,
+  findReport,
+  parseReportArtifactIds,
+  updateReport,
+} from "../db/repositories/reports.js";
 import { canReadReport, createReport, toReportDetail, type ReportErrorCode } from "../services/reports.js";
 import type { ArtifactStore } from "../services/artifacts.js";
 import { artifactRunVisible } from "../services/scope-access.js";
@@ -22,6 +27,19 @@ const createBodySchema = z.object({
     .min(1)
     .max(REPORT_MAX_ARTIFACTS),
 });
+
+const updateBodySchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    markdown: z
+      .string()
+      .max(REPORT_MAX_MARKDOWN_LENGTH)
+      .refine((value) => value.trim().length > 0, { message: "正文不能为空" })
+      .optional(),
+  })
+  .refine((data) => data.title !== undefined || data.markdown !== undefined, {
+    message: "至少提供标题或正文",
+  });
 
 const ERROR_STATUS: Record<ReportErrorCode, number> = {
   EMPTY_ARTIFACTS: 400,
@@ -96,6 +114,35 @@ export async function reportRoutes(
     }
     return { report: toReportDetail(report) };
   });
+
+  app.patch(
+    "/api/reports/:id",
+    { preHandler: app.requirePermission("report.create") },
+    async (request, reply) => {
+      const params = idParamsSchema.safeParse(request.params);
+      const body = updateBodySchema.safeParse(request.body);
+      if (!params.success || !body.success) {
+        return reply.code(400).send(error("VALIDATION", "参数不合法"));
+      }
+      const user = request.user!;
+      const report = findReport(opts.db, params.data.id);
+      if (
+        !report ||
+        !canReadReport(report, user.sub, user.role === "admin") ||
+        !reportScopeVisible(opts, report, user.role === "admin")
+      ) {
+        return reply.code(404).send(error("NOT_FOUND", "报告不存在"));
+      }
+      const updated = updateReport(opts.db, report.id, {
+        ...(body.data.title !== undefined ? { title: body.data.title } : {}),
+        ...(body.data.markdown !== undefined ? { markdown: body.data.markdown } : {}),
+      });
+      if (!updated) {
+        return reply.code(404).send(error("NOT_FOUND", "报告不存在"));
+      }
+      return { report: toReportDetail(updated) };
+    },
+  );
 
   app.delete("/api/reports/:id", { preHandler: app.authenticate }, async (request, reply) => {
     const params = idParamsSchema.safeParse(request.params);
