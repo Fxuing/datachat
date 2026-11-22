@@ -1,6 +1,11 @@
 # DataChat
 
-面向团队的对话式数据分析平台：用自然语言向 **MySQL / PostgreSQL** 提问，或直接上传 **Excel / CSV** 文件进行即席分析，自动生成只读 SQL、交互式图表、完整明细表与可分享的分析报告。
+[![CI](https://github.com/Fxuing/datachat/actions/workflows/ci.yml/badge.svg)](https://github.com/Fxuing/datachat/actions/workflows/ci.yml)
+[![Docker](https://github.com/Fxuing/datachat/actions/workflows/docker.yml/badge.svg)](https://github.com/Fxuing/datachat/actions/workflows/docker.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.9-339933.svg)](package.json)
+
+面向团队的开源对话式数据分析平台（ChatBI）：用自然语言向 **MySQL / PostgreSQL** 或任意自定义插件数据源提问，或直接上传 **Excel / CSV** 文件进行即席与复用分析，自动生成只读 SQL、可交互图表、个人数据看板与可分享的分析报告。
 
 ---
 
@@ -32,12 +37,14 @@
 
 ## 核心特性
 
-- **只读 NL2SQL 对话**：基于 Pi Agent 运行时，通过 `db_schema` / `db_query` / `db_explain` 探索表结构并生成查询；AST + 执行器双层只读守卫，拒绝任何写操作与危险语句。
-- **Excel / CSV 即席分析**：无需预先配置数据库，新建对话即可拖拽上传 `.xlsx` / `.csv`（支持编码识别、表头行调整与多表追加 `JOIN`），在会话隔离的只读 SQLite 子进程中执行分析。
-- **可视化与报告分享**：内置 ECharts 图表生成（柱/线/面积/饼/散点 + PNG 导出）、Mermaid 结构图、大结果集弹窗分页与 CSV/Excel 导出、Markdown 分析报告及可撤销/设限的匿名分享链接。
-- **对话体验增强**：SSE 实时流式输出与断线按序号回放、折叠式执行过程（思考链 + SQL + 工具记录）、末轮建议追问、右侧会话导航 Minimap。
-- **企业级权限与治理**：RBAC 功能权限与数据源授权、部门树与行级数据过滤（支持历史结果快照鉴权）、完整查询与管理审计、运行指标与数据保留清理。
-- **可扩展生态**：支持动态模型服务管理（OpenAI-compatible / Anthropic Messages）、全局与数据源级 Skills、MCP 工具接入（`stdio` / `http`）、跨会话用户记忆与 Cron 定时任务。
+- **双层只读 NL2SQL 对话**：基于 Pi Agent 运行时，通过 `db_schema` / `db_query` / `db_explain` 探索表结构并生成查询；AST + 执行器双层只读守卫，拒绝任何写操作与危险函数。
+- **Excel / CSV 即席与可复用数据集**：新建对话即可拖拽上传 `.xlsx` / `.csv`（自动编码识别、表头行调整、多表追加 `JOIN`），并支持一键保存为个人可复用数据集随时开启新对话。
+- **轻量语义层**：按数据源维护业务指标口径（公式、同义词、默认过滤条件）与标准表关联关系，每轮对话自动按提问召回注入，并与行级数据权限联动过滤。
+- **个人数据看板**：支持将任意对话图表固定至个人看板，自由切换单/双栏布局、排序重命名，并一键通过只读守卫与当前权限重跑底层 SQL 实时刷新数据。
+- **多数据源插件标准（`@datachat/datasource-sdk`）**：内置 MySQL / PostgreSQL，提供标准驱动插件协议与一致性测试套件；支持在管理后台 **离线上传 `.mjs` / `.zip` / `.tgz` 驱动包热加载**（无需重启），或通过 `DATASOURCE_PLUGINS` 环境变量显式加载。
+- **可视化与报告分享**：ECharts 图表支持前端免 LLM 切换柱/线/面积/饼图、明细表切换与列排序、PNG/CSV/Excel 导出、Mermaid 结构图、对话 Markdown 导出与历史消息编辑重发、分析报告在线编辑与公开分享。
+- **企业级权限与治理**：RBAC 功能权限与数据源授权、部门树与行级数据过滤（支持历史结果快照鉴权）、完整查询与管理审计、运行指标、数据保留清理与一键备份恢复。
+- **可扩展 AI 生态**：动态多模型服务管理（OpenAI-compatible / Anthropic Messages）、全局与数据源级 Skills、MCP 工具接入（`stdio` / `http`）、跨会话用户记忆与 Cron 定时任务。
 
 ---
 
@@ -52,48 +59,79 @@
 │   ├── server/          # Fastify API、Agent 运行时、SQL 守卫/执行器、Drizzle 迁移
 │   └── web/             # React 19 + Vite 前端应用
 ├── packages/
+│   ├── datasource-sdk/  # 多数据源驱动插件标准协议（@datachat/datasource-sdk）
 │   └── shared/          # 前后端共享类型与 Zod 校验契约
+├── examples/
+│   ├── driver-clickhouse/  # 零依赖 ClickHouse HTTP 参考插件（可直接后台离线上传）
+│   └── driver-trino/       # 零依赖 Trino HTTP 参考插件（可直接后台离线上传）
 ├── agent/               # 系统提示词与内置分析/方言技能模板
 ├── evals/nl2sql/        # NL2SQL 金标评测集与评分器
-├── deploy/              # Nginx 配置与部署环境变量模板
-└── docs/                # 运维指南、编码规范与子系统架构参考
+├── deploy/              # Dockerfile、Nginx 配置、Demo 初始化脚本与环境变量模板
+└── docs/                # 运维指南、插件开发指南、编码规范与子系统架构参考
 ```
 
 ---
 
 ## 快速开始
 
-### 1. 本地开发
+### 1. 一键 Demo 沙箱（含只读 PostgreSQL 示例库 + 语义层 + 示例看板）
+
+适合 1 分钟快速体验完整流程（仅限本地评估使用）：
+
+```bash
+# 启动 Demo PostgreSQL + DataChat 服务端与前端
+docker compose -f docker-compose.demo.yml up -d --build
+
+# 注入示例数据源、3 条业务指标、3 条表关联和 1 个可刷新示例看板
+docker compose -f docker-compose.demo.yml exec server node apps/server/dist/cli/seed-demo.js
+```
+
+打开 `http://localhost:5173`，使用默认 Demo 账号 `admin` / `datachat-demo` 登录：
+- 可直接进入 **「数据看板」** 点击卡片右上角 **「刷新」** 验证实时只读 SQL 重跑；
+- 在 **「设置 → 模型服务」** 填入任意 OpenAI 兼容或 Anthropic API Key 后，即可对「电商示例库（Demo）」直接对话提问。
+
+### 2. Docker Compose 生产部署（支持预构建镜像或本地构建）
+
+```bash
+cp deploy/env.example .env
+# 编辑 .env，必填 APP_SECRET（>=32 字符）、ADMIN_PASSWORD（>=8 字符）及 APP_ORIGIN
+
+# 方式 A：直接拉取预构建镜像（在 .env 设置 IMAGE_PREFIX=ghcr.io/fxuing/ 或你的 Docker Hub 前缀）
+docker compose pull && docker compose up -d
+
+# 方式 B：从源码本地构建
+docker compose up -d --build
+```
+
+完整环境变量、GHCR / Docker Hub 自动发版、离线镜像导入与备份恢复请参考 [部署、配置与运维指南](docs/operations.md)。
+
+### 3. 本地开发
 
 **环境要求**：Node.js ≥ 22.9、pnpm 10（`corepack enable`）。
 
 ```bash
-# 1. 安装依赖并构建共享包
 pnpm install
 pnpm -r build
-
-# 2. 配置环境变量（APP_SECRET 至少 32 位，ADMIN_PASSWORD 至少 8 位）
-cp .env.example .env
-
-# 3. 启动前后端开发服务
+cp .env.example .env   # 填写 APP_SECRET（>=32 字符）和 ADMIN_PASSWORD（>=8 字符）
 pnpm dev
 ```
 
-默认访问地址：
-- 前端页面：`http://localhost:5173`
-- 后端 API：`http://localhost:8080`
+默认访问地址：前端 `http://localhost:5173`，后端 API `http://localhost:8080`。
 
-登录后可在后台「设置 → 模型服务」与「管理 → 数据源」中配置模型与数据库连接，或直接在「新建对话」选择「Excel / CSV 文件」开始分析。
+---
 
-### 2. Docker Compose 部署
+## 数据源驱动插件生态
 
-```bash
-cp deploy/env.example .env
-# 编辑 .env，填写 APP_SECRET、ADMIN_PASSWORD 及实际访问的 APP_ORIGIN
-docker compose up -d --build
-```
+DataChat 内置 **MySQL** 和 **PostgreSQL**，其他数据库可通过标准协议包 `@datachat/datasource-sdk` 无侵入扩展（所有插件 SQL 均强制经过核心 AST 只读守卫）：
 
-默认通过 `http://localhost:5173` 访问。完整环境变量、离线镜像打包与生产注意事项请参考 [部署、配置与运维指南](docs/operations.md)。
+| 驱动 | 类型 | 位置 / 说明 |
+| --- | --- | --- |
+| **MySQL** | 内置 | 核心默认支持（含只读检测、`EXPLAIN`、行级权限） |
+| **PostgreSQL** | 内置 | 核心默认支持（含只读检测、`EXPLAIN`、行级权限） |
+| **ClickHouse** | 参考插件 | [`examples/driver-clickhouse/`](examples/driver-clickhouse/)（零依赖 HTTP `.mjs`，支持后台直接离线上传） |
+| **Trino** | 参考插件 | [`examples/driver-trino/`](examples/driver-trino/)（零依赖 HTTP `.mjs`，支持 Hive/Iceberg 联邦查询） |
+
+编写或接入你自己的数据源驱动（如 StarRocks、Doris、SQL Server、Oracle、DuckDB 等），请阅读 [数据源驱动插件开发指南](docs/datasource-plugin-guide.md)。
 
 ---
 
@@ -101,27 +139,22 @@ docker compose up -d --build
 
 ```bash
 pnpm dev                          # 同时启动 server 与 web 开发服务
-pnpm verify                       # 全量门禁：lint + typecheck + 服务端/共享测试 + Web 测试 + 构建
-pnpm test                         # 运行服务端与共享包单元测试（内存 SQLite，无需外部库）
+pnpm verify                       # 全量门禁：lint + typecheck + 服务端/SDK/共享测试 + Web 测试 + 构建
+pnpm test                         # 运行服务端、SDK 与共享包单元测试（内存 SQLite，无需外部库）
 pnpm --filter @datachat/web test  # 运行前端组件测试
+pnpm demo:seed                    # 向本地 SQLite 注入 Demo 数据源、语义层与示例看板
 pnpm eval:nl2sql                  # 运行 NL2SQL 金标评测集（需 Docker 或测试库）
-pnpm ops:backup                   # 备份本地 SQLite、artifact 与会话数据
+pnpm ops:backup                   # 备份本地 SQLite、artifact、会话与已上传插件
 ```
 
 ---
 
 ## 文档导航
 
-- [部署、配置与运维指南](docs/operations.md)：环境变量全表、Docker 部署、权限与数据范围、记忆/定时任务、备份恢复、NL2SQL 评测
+- [部署、配置与运维指南](docs/operations.md)：环境变量全表、Docker 部署与自动发版、权限与数据范围、记忆/定时任务、备份恢复、NL2SQL 评测
+- [数据源驱动插件开发指南](docs/datasource-plugin-guide.md)：`@datachat/datasource-sdk` 协议、一致性测试、离线上传与环境变量加载
 - [子系统设计参考](docs/subsystems/README.md)：运行时、SQL 与 Artifact、认证权限、行级数据范围、聊天界面等模块契约
 - [编码规范](docs/code-standards.md) · [开发入口](AGENTS.md) · [事故教训记录](LESSONS.md)
-
----
-
-## 安全与适用边界
-
-- **只读保证**：数据库查询仅允许 `SELECT` / `SHOW` / `DESCRIBE` / `EXPLAIN`，并经过 SQL 守卫与只读执行保护；数据源密码与外部密钥在存储时加密，绝不注入提示词或前端响应。
-- **架构定位**：元数据与会话采用单机 SQLite 存储，面向中小团队内网部署与分析场景，暂不提供多租户水平扩展与自助注册。
 
 ---
 

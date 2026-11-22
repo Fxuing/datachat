@@ -16,11 +16,14 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY packages/datasource-sdk/package.json packages/datasource-sdk/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN pnpm install --frozen-lockfile
 
 COPY . .
-RUN pnpm -r build
+RUN pnpm --filter @datachat/datasource-sdk build \
+    && pnpm --filter @datachat/shared build \
+    && pnpm -r build
 
 # ---------- runtime ----------
 FROM node:22-bookworm-slim AS runtime
@@ -31,13 +34,15 @@ ENV DATA_DIR=/data
 
 WORKDIR /app
 
-# Workspace layout is kept intact: the server resolves @datachat/shared from
-# packages/shared and reads agent/ (models + seed skills) from the repo root.
+# Workspace layout is kept intact: the server resolves @datachat/shared and
+# @datachat/datasource-sdk from packages/ and reads agent/ from the repo root.
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/server/node_modules ./apps/server/node_modules
 COPY --from=build /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=build /app/packages/datasource-sdk/package.json ./packages/datasource-sdk/package.json
+COPY --from=build /app/packages/datasource-sdk/dist ./packages/datasource-sdk/dist
 COPY --from=build /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=build /app/packages/shared/src ./packages/shared/src
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist

@@ -130,6 +130,15 @@ export function EChart({ option, className, ariaLabel = "图表", onReady }: ECh
     const element = containerRef.current;
     if (!element) return;
 
+    // Headless / jsdom environments return null for canvas 2D contexts; ECharts 6
+    // defers context creation until setOption(), so probe upfront to degrade cleanly.
+    const probeCanvas =
+      typeof document !== "undefined" ? document.createElement("canvas") : null;
+    if (!probeCanvas || typeof probeCanvas.getContext !== "function" || !probeCanvas.getContext("2d")) {
+      setFailed(true);
+      return;
+    }
+
     let instance: EChartsType;
     try {
       instance = init(element, undefined, { renderer: "canvas" });
@@ -145,20 +154,34 @@ export function EChart({ option, className, ariaLabel = "图表", onReady }: ECh
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(() => instance.resize());
+        : new ResizeObserver(() => {
+            try {
+              instance.resize();
+            } catch {
+              // Ignore resize failures on detached containers.
+            }
+          });
     observer?.observe(element);
 
     return () => {
       observer?.disconnect();
       onReadyRef.current?.(null);
-      instance.dispose();
+      try {
+        instance.dispose();
+      } catch {
+        // Ignore canvas teardown failures in headless environments.
+      }
       chartRef.current = null;
     };
   }, [empty, retryKey]);
 
   useEffect(() => {
-    if (empty) return;
-    chartRef.current?.setOption(themedOption as ChartOption, { notMerge: true });
+    if (empty || !chartRef.current) return;
+    try {
+      chartRef.current.setOption(themedOption as ChartOption, { notMerge: true });
+    } catch {
+      setFailed(true);
+    }
   }, [empty, themedOption]);
 
   if (empty || failed) {

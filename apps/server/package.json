@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "eval:nl2sql": "tsx --env-file-if-exists=../../.env scripts/eval-nl2sql.ts",
     "ops:backup": "tsx --env-file-if-exists=../../.env scripts/ops-backup.ts",
-    "ops:restore": "tsx --env-file-if-exists=../../.env scripts/ops-restore.ts"
+    "ops:restore": "tsx --env-file-if-exists=../../.env scripts/ops-restore.ts",
+    "demo:seed": "tsx --env-file-if-exists=../../.env src/cli/seed-demo.ts"
   },
   "dependencies": {
     "@datachat/datasource-sdk": "workspace:*",

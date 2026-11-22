@@ -60,16 +60,25 @@ describe("datasource driver plugin architecture", () => {
   it("loads an external plugin module from disk and rejects duplicate built-in ids", async () => {
     const repoRoot = path.resolve(import.meta.dirname, "../../..");
     const registry = new DriverRegistry();
-    const loaded = await registry.loadExternalPlugins(["./examples/driver-clickhouse/index.mjs"], {
-      strict: true,
-      baseDir: repoRoot,
-    });
-    expect(loaded.loaded).toEqual(["clickhouse"]);
+    const loaded = await registry.loadExternalPlugins(
+      ["./examples/driver-clickhouse/index.mjs", "./examples/driver-trino/index.mjs"],
+      {
+        strict: true,
+        baseDir: repoRoot,
+      },
+    );
+    expect(loaded.loaded).toEqual(["clickhouse", "trino"]);
     expect(registry.has("clickhouse")).toBe(true);
-    expect(registry.listPublic().map((d) => d.id)).toEqual(["mysql", "postgres", "clickhouse"]);
+    expect(registry.has("trino")).toBe(true);
+    expect(registry.listPublic().map((d) => d.id)).toEqual([
+      "mysql",
+      "postgres",
+      "clickhouse",
+      "trino",
+    ]);
 
-    const validated = validateDatasourceDriver(registry.get("clickhouse"));
-    expect(validated.ok).toBe(true);
+    expect(validateDatasourceDriver(registry.get("clickhouse")).ok).toBe(true);
+    expect(validateDatasourceDriver(registry.get("trino")).ok).toBe(true);
 
     // Overriding a built-in driver id is rejected.
     expect(() =>

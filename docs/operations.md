@@ -46,6 +46,16 @@ cp deploy/env.example .env
 docker compose up -d --build
 ```
 
+### 自动发布多架构镜像（GHCR 与 Docker Hub）
+
+仓库已内置 [`.github/workflows/docker.yml`](../.github/workflows/docker.yml)，支持一键或打版本标签自动构建 `linux/amd64` + `linux/arm64` 双架构镜像（`datachat-server` 与 `datachat-web`）：
+
+- **GitHub Container Registry（GHCR，零配置默认开启）**：推送版本标签（如 `git tag v0.2.0 && git push origin v0.2.0`）或在 GitHub Actions 手动运行 **Docker Images** workflow，即可自动推送至 `ghcr.io/<owner>/datachat-server` 与 `ghcr.io/<owner>/datachat-web`。
+- **Docker Hub（可选双推）**：在 GitHub 仓库的 `Settings → Secrets and variables → Actions` 中添加两个 Secret：
+  - `DOCKERHUB_USERNAME`：你的 Docker Hub 用户名
+  - `DOCKERHUB_TOKEN`：在 Docker Hub 账号安全页创建的 Access Token（Read & Write 权限）
+  配置完成后，同一条 workflow 会自动同时推送到 `docker.io/<DOCKERHUB_USERNAME>/datachat-server` 与 `datachat-web`。
+
 ### 使用离线/预构建镜像
 
 ```bash

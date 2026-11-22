@@ -1,6 +1,6 @@
 services:
   server:
-    image: datachat-server:${DATACHAT_VERSION:-latest}
+    image: ${IMAGE_PREFIX:-}datachat-server:${DATACHAT_VERSION:-latest}
     build:
       context: .
       dockerfile: deploy/Dockerfile
@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
 
   web:
-    image: datachat-web:${DATACHAT_VERSION:-latest}
+    image: ${IMAGE_PREFIX:-}datachat-web:${DATACHAT_VERSION:-latest}
     build:
       context: .
       dockerfile: deploy/Dockerfile

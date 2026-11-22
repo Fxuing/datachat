@@ -16,7 +16,8 @@
     "eval:nl2sql": "pnpm --filter @datachat/server eval:nl2sql",
     "lint": "eslint .",
     "ops:backup": "pnpm --filter @datachat/server ops:backup",
-    "ops:restore": "pnpm --filter @datachat/server ops:restore"
+    "ops:restore": "pnpm --filter @datachat/server ops:restore",
+    "demo:seed": "pnpm --filter @datachat/server demo:seed"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
