@@ -80,6 +80,24 @@ const envSchema = z
         .default("false")
         .transform((value) => value === "true" || value === "1"),
     ),
+    /** Comma-separated npm package names or paths of external datasource driver plugins. */
+    DATASOURCE_PLUGINS: z.preprocess(emptyToUndefined, z.string().optional()),
+    /** Fail server startup if any plugin in DATASOURCE_PLUGINS fails to load. */
+    DATASOURCE_PLUGINS_STRICT: z.preprocess(
+      emptyToUndefined,
+      z
+        .enum(["true", "false", "1", "0"])
+        .default("false")
+        .transform((value) => value === "true" || value === "1"),
+    ),
+    /** Allow admins to upload offline datasource driver plugins from the Web UI. */
+    ALLOW_PLUGIN_UPLOAD: z.preprocess(
+      emptyToUndefined,
+      z
+        .enum(["true", "false", "1", "0"])
+        .default("true")
+        .transform((value) => value === "true" || value === "1"),
+    ),
   })
   .superRefine((env, ctx) => {
     if (PLACEHOLDER_SECRETS.has(env.APP_SECRET.trim())) {
@@ -128,6 +146,11 @@ export interface AppConfig {
   /** Whether MCP http(s) urls may target loopback/link-local/RFC1918 addresses. */
   mcpAllowPrivateHosts: boolean;
   trustProxy: boolean;
+  /** External datasource driver plugin specifiers loaded at startup. */
+  datasourcePlugins?: string[];
+  datasourcePluginsStrict?: boolean;
+  /** Allow admins to upload offline datasource driver plugins via the UI (default true). */
+  allowPluginUpload?: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -174,5 +197,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     retentionSweepHours: parsed.RETENTION_SWEEP_HOURS,
     mcpAllowPrivateHosts: parsed.MCP_ALLOW_PRIVATE_HOSTS,
     trustProxy: parsed.TRUST_PROXY,
+    datasourcePlugins: (parsed.DATASOURCE_PLUGINS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    datasourcePluginsStrict: parsed.DATASOURCE_PLUGINS_STRICT,
+    allowPluginUpload: parsed.ALLOW_PLUGIN_UPLOAD,
   };
 }

@@ -86,7 +86,13 @@ export function createDbQueryTool(
           }
 
           result = await runGuardedQuery(
-            { db: ctx.db, config: ctx.config, pools: ctx.pools, artifacts: ctx.artifacts },
+            {
+              db: ctx.db,
+              config: ctx.config,
+              pools: ctx.pools,
+              artifacts: ctx.artifacts,
+              ...(ctx.drivers ? { drivers: ctx.drivers } : {}),
+            },
             {
               datasource,
               userId: ctx.userId,

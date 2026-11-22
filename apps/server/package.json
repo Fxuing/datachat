@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @datachat/shared build && tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "dev": "pnpm --filter @datachat/datasource-sdk build && pnpm --filter @datachat/shared build && tsx watch --env-file-if-exists=../../.env src/index.ts",
     "build": "tsc -p tsconfig.json && node scripts/copy-drizzle.mjs",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "eval:nl2sql": "tsx --env-file-if-exists=../../.env scripts/eval-nl2sql.ts",
@@ -12,6 +12,7 @@
     "ops:restore": "tsx --env-file-if-exists=../../.env scripts/ops-restore.ts"
   },
   "dependencies": {
+    "@datachat/datasource-sdk": "workspace:*",
     "@datachat/shared": "workspace:*",
     "@earendil-works/pi-coding-agent": "1.5.0",
     "@earendil-works/pi-tui": "1.5.0",

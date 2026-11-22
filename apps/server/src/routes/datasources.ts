@@ -22,11 +22,18 @@ import { decryptSecret, deriveSecretKey, encryptSecret } from "../agent/datasour
 import { probeDatasource, safeErrorMessage } from "../agent/datasource/probe.js";
 import type { PoolRegistry } from "../agent/datasource/pool.js";
 import { recordAuditEvent } from "../services/audit.js";
+import {
+  DriverOptionsValidationError,
+  resolveDatasourceOptions,
+  serializeDatasourceOptions,
+} from "../drivers/options.js";
+import { defaultDriverRegistry, type DriverRegistry } from "../drivers/registry.js";
 
 export interface DatasourceRouteOptions {
   config: AppConfig;
   db: Db;
   pools: PoolRegistry;
+  drivers?: DriverRegistry;
 }
 
 const updateSchema = datasourceInputSchema.partial().extend({
@@ -58,6 +65,7 @@ export async function datasourceRoutes(
   opts: DatasourceRouteOptions,
 ): Promise<void> {
   const { config, db, pools } = opts;
+  const drivers = opts.drivers ?? defaultDriverRegistry;
   const key = deriveSecretKey(config.appSecret);
   const preHandler = app.requirePermission("admin.datasources");
 
@@ -75,9 +83,13 @@ export async function datasourceRoutes(
     });
   };
 
+  app.get("/api/datasources/drivers", { preHandler: app.authenticate }, async () => {
+    return { drivers: drivers.listPublic() };
+  });
+
   app.get("/api/datasources", { preHandler: app.authenticate }, async (request) => {
     const rows = listDatasourcesForAccess(db, request.access!);
-    return { datasources: rows.map((row) => toDatasourceSummary(row)) };
+    return { datasources: rows.map((row) => toDatasourceSummary(row, drivers)) };
   });
 
   app.post("/api/datasources", { preHandler }, async (request, reply) => {
@@ -85,26 +97,60 @@ export async function datasourceRoutes(
     if (!parsed.success || !parsed.data.password) {
       return reply.code(400).send({ error: { code: "VALIDATION", message: "缺少必要参数" } });
     }
+    const driver = drivers.get(parsed.data.type);
+    if (!driver) {
+      return reply.code(400).send({
+        error: {
+          code: "UNKNOWN_DRIVER",
+          message: `未安装「${parsed.data.type}」数据源驱动插件`,
+        },
+      });
+    }
     if (isBlockedDatasourceHost(parsed.data.host)) {
       return reply.code(400).send(blockedHostMessage());
     }
     if (findDatasourceByName(db, parsed.data.name)) {
       return reply.code(409).send({ error: { code: "CONFLICT", message: "数据源名称已存在" } });
     }
-    const probe = await probeDatasource({
-      type: parsed.data.type,
-      host: parsed.data.host,
-      port: parsed.data.port,
-      database: parsed.data.database,
-      username: parsed.data.username,
-      password: parsed.data.password,
-      sslMode: parsed.data.sslMode,
-    });
+
+    let optionsJson: string | null = null;
+    try {
+      optionsJson = serializeDatasourceOptions(
+        driver.manifest.optionsSchema,
+        parsed.data.options,
+        null,
+        key,
+        false,
+      );
+    } catch (err) {
+      if (err instanceof DriverOptionsValidationError) {
+        return reply.code(400).send({ error: { code: "VALIDATION", message: err.message } });
+      }
+      throw err;
+    }
+    const resolvedOpts = resolveDatasourceOptions(driver.manifest.optionsSchema, optionsJson, key);
+
+    const probe = await probeDatasource(
+      {
+        type: parsed.data.type,
+        host: parsed.data.host,
+        port: parsed.data.port,
+        database: parsed.data.database,
+        username: parsed.data.username,
+        password: parsed.data.password,
+        sslMode: parsed.data.sslMode,
+        options: resolvedOpts.options,
+      },
+      drivers,
+    );
     if (!probe.ok) {
       return reply.code(400).send({
         error: {
           code: "DS_UNREACHABLE",
-          message: safeErrorMessage(probe.error ?? "连接失败", parsed.data.password),
+          message: safeErrorMessage(probe.error ?? "连接失败", [
+            parsed.data.password,
+            ...resolvedOpts.secrets,
+          ]),
         },
       });
     }
@@ -121,6 +167,7 @@ export async function datasourceRoutes(
         username: parsed.data.username,
         passwordCipher: encryptSecret(parsed.data.password, key),
         sslMode: parsed.data.sslMode,
+        optionsJson,
         readOnlyVerified: probe.readOnly ? 1 : 0,
         allowWriteAccount: parsed.data.allowWriteAccount ? 1 : 0,
         status: "ok",
@@ -177,12 +224,30 @@ export async function datasourceRoutes(
     }
 
     const patch: Partial<Omit<DatasourceRow, "id" | "createdAt" | "createdBy">> = {};
+    const driver = drivers.get(existing.type);
+    if (body.data.options !== undefined && driver) {
+      try {
+        patch.optionsJson = serializeDatasourceOptions(
+          driver.manifest.optionsSchema,
+          body.data.options,
+          existing.optionsJson,
+          key,
+          true,
+        );
+      } catch (err) {
+        if (err instanceof DriverOptionsValidationError) {
+          return reply.code(400).send({ error: { code: "VALIDATION", message: err.message } });
+        }
+        throw err;
+      }
+    }
     const connectionChanged =
       body.data.host !== undefined ||
       body.data.port !== undefined ||
       body.data.database !== undefined ||
       body.data.username !== undefined ||
       body.data.sslMode !== undefined ||
+      body.data.options !== undefined ||
       Boolean(body.data.password);
     if (body.data.name !== undefined) patch.name = body.data.name;
     if (body.data.host !== undefined) patch.host = body.data.host;
@@ -256,15 +321,33 @@ export async function datasourceRoutes(
       return reply.code(400).send(blockedHostMessage());
     }
 
-    const probe = await probeDatasource({
-      type: ds.type,
-      host: ds.host,
-      port: ds.port,
-      database: ds.database,
-      username: ds.username,
-      password: decryptSecret(ds.passwordCipher, key),
-      sslMode: ds.sslMode,
-    });
+    const driver = drivers.get(ds.type);
+    if (!driver) {
+      return reply.code(503).send({
+        error: {
+          code: "DRIVER_NOT_INSTALLED",
+          message: `未安装「${ds.type}」数据源驱动插件`,
+        },
+      });
+    }
+    const resolvedOpts = resolveDatasourceOptions(
+      driver.manifest.optionsSchema,
+      ds.optionsJson,
+      key,
+    );
+    const probe = await probeDatasource(
+      {
+        type: ds.type,
+        host: ds.host,
+        port: ds.port,
+        database: ds.database,
+        username: ds.username,
+        password: decryptSecret(ds.passwordCipher, key),
+        sslMode: ds.sslMode,
+        options: resolvedOpts.options,
+      },
+      drivers,
+    );
     updateDatasource(db, ds.id, {
       status: probe.ok ? "ok" : "error",
       lastCheckedAt: Date.now(),

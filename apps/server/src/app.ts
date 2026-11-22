@@ -6,6 +6,7 @@ import { registerAuthGuards } from "./auth/guard.js";
 import { createSessionSigner } from "./auth/jwt.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
 import { adminDepartmentRoutes } from "./routes/admin-departments.js";
+import { adminDatasourcePluginRoutes } from "./routes/admin-datasource-plugins.js";
 import { adminDataScopeRoutes } from "./routes/admin-data-scope.js";
 import { adminSemanticRoutes } from "./routes/admin-semantic.js";
 import { adminRoleRoutes } from "./routes/admin-roles.js";
@@ -28,6 +29,8 @@ import { reportRoutes } from "./routes/reports.js";
 import { dashboardRoutes } from "./routes/dashboards.js";
 import { shareRoutes } from "./routes/shares.js";
 import { PoolRegistry } from "./agent/datasource/pool.js";
+import { DriverRegistry } from "./drivers/registry.js";
+import { loadPersistedDatasourcePlugins } from "./services/datasource-plugins.js";
 import { RuntimeManager } from "./agent/runtime.js";
 import { ModelRuntimeManager } from "./agent/model-runtime.js";
 import { seedLegacyLlmProvider } from "./services/llm-catalog.js";
@@ -53,6 +56,8 @@ export interface BuildAppOptions {
   /** Reuse stores created by the production entrypoint. */
   artifacts?: ArtifactStore;
   pools?: PoolRegistry;
+  /** Test seam; production creates a registry and loads DATASOURCE_PLUGINS. */
+  drivers?: DriverRegistry;
   /** Test seam; shortens the MCP connection test timeout. */
   mcpTestTimeoutMs?: number;
   /** Reuse the retention service so the scheduler and routes share one lock. */
@@ -96,6 +101,7 @@ export async function buildApp({
   agentRuntime: injectedAgentRuntime,
   artifacts: injectedArtifacts,
   pools: injectedPools,
+  drivers: injectedDrivers,
   mcpTestTimeoutMs,
   retention: injectedRetention,
   scheduledTasks: injectedScheduledTasks,
@@ -153,7 +159,27 @@ export async function buildApp({
   await app.register(authRoutes, { config, db, signer });
   await app.register(adminUserRoutes, { db });
   await app.register(adminDepartmentRoutes, { db });
-  await app.register(adminDataScopeRoutes, { db });
+  const drivers = injectedDrivers ?? new DriverRegistry();
+  const pluginLog = (
+    level: "info" | "warn" | "error",
+    message: string,
+    detail?: Record<string, unknown>,
+  ) => {
+    if (level === "error") app.log.error(detail ?? {}, message);
+    else if (level === "warn") app.log.warn(detail ?? {}, message);
+    else app.log.info(detail ?? {}, message);
+  };
+  if (!injectedDrivers && (config.datasourcePlugins?.length ?? 0) > 0) {
+    await drivers.loadExternalPlugins(config.datasourcePlugins ?? [], {
+      strict: config.datasourcePluginsStrict,
+      log: pluginLog,
+    });
+  }
+  if (!injectedDrivers) {
+    await loadPersistedDatasourcePlugins({ db, config, drivers, log: pluginLog });
+  }
+
+  await app.register(adminDataScopeRoutes, { db, drivers });
   await app.register(adminSemanticRoutes, { db });
   await app.register(adminRoleRoutes, { db });
   await app.register(adminSkillRoutes, { db, agentDir: config.agentDir });
@@ -165,7 +191,7 @@ export async function buildApp({
     injectedArtifacts ??
     new ArtifactStore(db, path.join(config.dataDir, "artifacts"));
   await artifacts.init();
-  const pools = injectedPools ?? new PoolRegistry();
+  const pools = injectedPools ?? new PoolRegistry(drivers);
   const agentRuntime =
     injectedAgentRuntime ??
     new RuntimeManager({
@@ -173,6 +199,7 @@ export async function buildApp({
       db,
       pools,
       artifacts,
+      drivers,
       getModelRuntime: () => modelRuntime.get(),
     });
   const retention =
@@ -181,9 +208,10 @@ export async function buildApp({
   const scheduledTasks =
     injectedScheduledTasks ??
     createScheduledTaskService({ db, config, pools, artifacts, runtime: agentRuntime });
-  await app.register(datasourceRoutes, { config, db, pools });
+  await app.register(datasourceRoutes, { config, db, pools, drivers });
+  await app.register(adminDatasourcePluginRoutes, { config, db, pools, drivers });
   await app.register(skillRoutes, { db });
-  await app.register(datasourceSchemaRoutes, { config, db, pools });
+  await app.register(datasourceSchemaRoutes, { config, db, pools, drivers });
   await app.register(modelsRoutes, { config, db, getRuntime: () => modelRuntime.get() });
   await app.register(conversationRoutes, {
     config,
@@ -207,7 +235,7 @@ export async function buildApp({
   await app.register(questionRoutes, { db, runtime: agentRuntime });
   await app.register(artifactRoutes, { db, artifacts });
   await app.register(reportRoutes, { db, artifacts });
-  await app.register(dashboardRoutes, { config, db, pools, artifacts });
+  await app.register(dashboardRoutes, { config, db, pools, artifacts, drivers });
   await app.register(shareRoutes, { db, artifacts, config });
   const runSuggestions = createRunSuggestionsService({
     db,

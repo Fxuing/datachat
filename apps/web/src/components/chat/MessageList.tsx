@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUpRight, Bot, Database, FileSpreadsheet, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import type {
-  ChatArtifact,
-  ChatMessage,
-  ChatModelInfo,
-  ConversationFileSummary,
-  ConversationFileTableSummary,
-  DatasourceSummary,
+import {
+  datasourceTypeLabel,
+  type ChatArtifact,
+  type ChatMessage,
+  type ChatModelInfo,
+  type ConversationFileSummary,
+  type ConversationFileTableSummary,
+  type DatasourceSummary,
 } from "../../lib/api";
 import type { RunStreamState } from "../../lib/run-events";
 import { PageSpinner } from "../ui/spinner";
@@ -290,7 +291,7 @@ function EmptyChat({
               <SelectContent>
                 {datasources.map((item) => (
                   <SelectItem key={item.id} value={item.id}>
-                    {item.name} · {item.type === "mysql" ? "MySQL" : "PostgreSQL"}
+                    {item.name} · {datasourceTypeLabel(item)}
                   </SelectItem>
                 ))}
               </SelectContent>

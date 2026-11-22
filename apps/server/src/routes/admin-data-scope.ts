@@ -24,9 +24,11 @@ import { revokeSharesForDatasource } from "../services/shares.js";
 import { importMappingsFromCsv } from "../services/scope-import.js";
 import { applyScopeToSql } from "../services/data-scope.js";
 import { safeRecordAuditEvent } from "../services/audit.js";
+import { defaultDriverRegistry, type DriverRegistry } from "../drivers/registry.js";
 
 export interface AdminDataScopeRouteOptions {
   db: Db;
+  drivers?: DriverRegistry;
 }
 
 const idParams = z.object({ id: z.string().uuid() });
@@ -327,6 +329,23 @@ export async function adminDataScopeRoutes(
     const user = findUserById(db, body.data.userId);
     if (!user) return sendScopeError(reply, "NOT_FOUND", "用户不存在", 404);
     try {
+      const driver = (opts.drivers ?? defaultDriverRegistry).get(datasource.type);
+      if (!driver) {
+        return sendScopeError(
+          reply,
+          "DRIVER_NOT_INSTALLED",
+          `未安装「${datasource.type}」数据源驱动插件`,
+          503,
+        );
+      }
+      if (!driver.manifest.capabilities.rowScope) {
+        return sendScopeError(
+          reply,
+          "SCOPE_UNSUPPORTED_BY_DRIVER",
+          `数据源驱动「${driver.manifest.label}」暂不支持行级数据权限`,
+          400,
+        );
+      }
       const applied = applyScopeToSql({
         db,
         datasourceId: datasource.id,
@@ -334,7 +353,7 @@ export async function adminDataScopeRoutes(
         mode: "enabled",
         userId: user.id,
         sql: body.data.sql,
-        dialect: datasource.type,
+        dialect: driver.dialect,
       });
       return applied;
     } catch (error) {
@@ -450,6 +469,23 @@ export async function adminDataScopeRoutes(
     if (!params.success) return sendScopeError(reply, "VALIDATION", "参数不合法");
     const datasource = requireDatasource(reply, params.data.id);
     if (!datasource) return;
+    const driver = (opts.drivers ?? defaultDriverRegistry).get(datasource.type);
+    if (!driver) {
+      return sendScopeError(
+        reply,
+        "DRIVER_NOT_INSTALLED",
+        `未安装「${datasource.type}」数据源驱动插件`,
+        503,
+      );
+    }
+    if (!driver.manifest.capabilities.rowScope) {
+      return sendScopeError(
+        reply,
+        "SCOPE_UNSUPPORTED_BY_DRIVER",
+        `数据源驱动「${driver.manifest.label}」暂不支持行级数据权限`,
+        400,
+      );
+    }
     const tables = loadSchema(db, datasource.id)?.tables.map((table) => table.name) ?? [];
     if (tables.length === 0) {
       return sendScopeError(reply, "SCOPE_COVERAGE_INCOMPLETE", "数据源表结构尚未缓存，无法核对覆盖", 409);

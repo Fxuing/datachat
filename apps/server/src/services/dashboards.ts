@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import type { PoolRegistry } from "../agent/datasource/pool.js";
+import type { DriverRegistry } from "../drivers/registry.js";
 import { findConversation } from "../db/repositories/conversations.js";
 import { findDatasource } from "../db/repositories/datasources.js";
 import {
@@ -13,7 +14,7 @@ import {
   updateOwnedDashboardCard,
   type DashboardCardDto,
 } from "../db/repositories/dashboards.js";
-import { queryAudit } from "../db/schema.js";
+import { queryAudit, runEvents } from "../db/schema.js";
 import { MAX_CHART_INPUT_ROWS, type ArtifactStore } from "./artifacts.js";
 import { ChartError, buildChartOption, type ChartInput } from "./charts.js";
 import { runGuardedQuery } from "./query-service.js";
@@ -26,6 +27,7 @@ export interface DashboardServiceDeps {
   config: AppConfig;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
+  drivers?: DriverRegistry;
 }
 
 export type PinCardResult =
@@ -68,10 +70,27 @@ function parseChartInput(spec: unknown): ChartInput | null {
   };
 }
 
-function findRunQuerySql(db: Db, runId: string | null): string | null {
+function extractSourceResultArtifactId(spec: unknown): string | null {
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) return null;
+  const id = (spec as Record<string, unknown>).sourceArtifactId;
+  return typeof id === "string" && id.trim() ? id : null;
+}
+
+/**
+ * Resolves the exact SQL query that produced a chart's source result artifact.
+ * A single agent run frequently executes multiple `db_query` calls, so matching
+ * by `resultArtifactId` (via `query_audit.detail_json` or persisted `run_events`
+ * `result` events) prevents pinning or refreshing the wrong query from the same turn.
+ */
+function resolveSourceQuerySql(
+  db: Db,
+  input: { resultArtifactId: string | null; runId: string | null },
+): { sql: string; exact: boolean } | null {
+  const { resultArtifactId, runId } = input;
   if (!runId) return null;
-  const row = db
-    .select({ sqlText: queryAudit.sqlText })
+
+  const auditRows = db
+    .select({ sqlText: queryAudit.sqlText, detailJson: queryAudit.detailJson })
     .from(queryAudit)
     .where(
       and(
@@ -81,9 +100,52 @@ function findRunQuerySql(db: Db, runId: string | null): string | null {
       ),
     )
     .orderBy(desc(queryAudit.createdAt))
-    .limit(1)
-    .get();
-  return row?.sqlText ?? null;
+    .all();
+
+  if (resultArtifactId) {
+    // 1. Exact match from query_audit.detail_json.artifactId (new runs; also preserves unscoped originalSql).
+    for (const row of auditRows) {
+      if (!row.detailJson) continue;
+      try {
+        const detail = JSON.parse(row.detailJson) as Record<string, unknown>;
+        if (detail.artifactId === resultArtifactId) {
+          const sql =
+            typeof detail.originalSql === "string" && detail.originalSql.trim()
+              ? detail.originalSql
+              : row.sqlText;
+          return { sql, exact: true };
+        }
+      } catch {
+        // Ignore malformed detail json.
+      }
+    }
+
+    // 2. Exact match from persisted `run_events` `result` event (covers historical multi-query runs).
+    const eventRows = db
+      .select({ payloadJson: runEvents.payloadJson })
+      .from(runEvents)
+      .where(and(eq(runEvents.runId, runId), eq(runEvents.type, "result")))
+      .orderBy(desc(runEvents.seq))
+      .all();
+    for (const ev of eventRows) {
+      try {
+        const payload = JSON.parse(ev.payloadJson) as Record<string, unknown>;
+        if (
+          payload.artifactId === resultArtifactId &&
+          typeof payload.sql === "string" &&
+          payload.sql.trim()
+        ) {
+          return { sql: payload.sql, exact: true };
+        }
+      } catch {
+        // Ignore malformed event json.
+      }
+    }
+  }
+
+  // 3. Legacy fallback when no artifactId linkage exists (single-query runs / unit fixtures).
+  const latest = auditRows[0];
+  return latest ? { sql: latest.sqlText, exact: false } : null;
 }
 
 export function pinChartArtifactToDashboard(
@@ -141,19 +203,21 @@ export function pinChartArtifactToDashboard(
     ? (findDatasource(deps.db, datasourceId)?.name ?? null)
     : null;
 
-  // Prefer the SQL for the source result artifact's run when present, falling back to chart's run.
+  // Resolve the exact SQL for the chart's source result artifact (not merely the last SQL in the run).
   let sourceRunId = artifact.runId;
-  const sourceArtId =
-    parsedSpec && typeof parsedSpec === "object" && !Array.isArray(parsedSpec)
-      ? (parsedSpec as Record<string, unknown>).sourceArtifactId
-      : null;
-  if (typeof sourceArtId === "string") {
-    const sourceMeta = deps.artifacts.findMeta(sourceArtId);
+  const sourceResultArtifactId = extractSourceResultArtifactId(parsedSpec);
+  if (sourceResultArtifactId) {
+    const sourceMeta = deps.artifacts.findMeta(sourceResultArtifactId);
     if (sourceMeta && sourceMeta.userId === input.userId && sourceMeta.runId) {
       sourceRunId = sourceMeta.runId;
     }
   }
-  const sqlText = datasourceId ? findRunQuerySql(deps.db, sourceRunId) : null;
+  const sqlText = datasourceId
+    ? (resolveSourceQuerySql(deps.db, {
+        resultArtifactId: sourceResultArtifactId,
+        runId: sourceRunId,
+      })?.sql ?? null)
+    : null;
 
   const title = input.title?.trim() || chartConfig?.title || "图表卡片";
   const nextPosition =
@@ -242,19 +306,52 @@ export async function refreshDashboardCard(
     };
   }
 
+  // Self-heal cards pinned before exact artifact-to-SQL linkage: if we can unambiguously
+  // resolve the exact SQL for this chart's source result artifact and it differs from the
+  // stored SQL (from a multi-query run), prefer and persist the exact SQL.
+  let effectiveSql = card.sqlText;
+  let repairedSql: string | undefined;
+  if (card.sourceArtifactId) {
+    const chartArt = deps.artifacts.get(card.sourceArtifactId);
+    if (chartArt && chartArt.userId === input.userId && chartArt.specJson) {
+      try {
+        const parsed = JSON.parse(chartArt.specJson) as unknown;
+        const resultArtId = extractSourceResultArtifactId(parsed);
+        let sourceRunId = chartArt.runId;
+        if (resultArtId) {
+          const resultMeta = deps.artifacts.findMeta(resultArtId);
+          if (resultMeta && resultMeta.userId === input.userId && resultMeta.runId) {
+            sourceRunId = resultMeta.runId;
+          }
+          const resolved = resolveSourceQuerySql(deps.db, {
+            resultArtifactId: resultArtId,
+            runId: sourceRunId,
+          });
+          if (resolved?.exact && resolved.sql !== card.sqlText) {
+            effectiveSql = resolved.sql;
+            repairedSql = resolved.sql;
+          }
+        }
+      } catch {
+        // Keep stored card.sqlText on parse failure.
+      }
+    }
+  }
+
   const queryResult = await runGuardedQuery(
     {
       db: deps.db,
       config: deps.config,
       pools: deps.pools,
       artifacts: deps.artifacts,
+      ...(deps.drivers ? { drivers: deps.drivers } : {}),
     },
     {
       datasource,
       userId: input.userId,
       conversationId: null,
       runId: null,
-      sql: card.sqlText,
+      sql: effectiveSql,
     },
   );
 
@@ -306,6 +403,7 @@ export async function refreshDashboardCard(
     const now = Date.now();
     const updated =
       updateOwnedDashboardCard(deps.db, card.dashboardId, card.id, input.userId, {
+        ...(repairedSql ? { sqlText: repairedSql } : {}),
         specJson: JSON.stringify(nextSpec),
         points: built.points,
         lastRefreshedAt: now,

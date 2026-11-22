@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@datachat/datasource-sdk": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {

@@ -2,6 +2,7 @@ import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AppConfig } from "../../config.js";
 import type { Db } from "../../db/client.js";
 import type { ArtifactStore } from "../../services/artifacts.js";
+import type { DriverRegistry } from "../../drivers/registry.js";
 import type { PoolRegistry } from "../datasource/pool.js";
 
 /**
@@ -13,6 +14,7 @@ export interface AgentToolContext {
   config: AppConfig;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
+  drivers?: DriverRegistry;
   userId: string;
   conversationId: string;
   datasourceId: string | null;

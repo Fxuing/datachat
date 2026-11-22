@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "pnpm -r build",
-    "typecheck": "pnpm --filter @datachat/shared build && pnpm -r typecheck",
+    "typecheck": "pnpm --filter @datachat/datasource-sdk build && pnpm --filter @datachat/shared build && pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @datachat/web test && pnpm -r build",

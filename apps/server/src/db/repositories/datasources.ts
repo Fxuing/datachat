@@ -9,7 +9,9 @@ import {
 } from "../schema.js";
 import { isUniqueViolation } from "./users.js";
 import type { UserAccess } from "../../auth/access.js";
-import type { DatasourceType } from "@datachat/shared";
+import type { DatasourceType, OptionValue } from "@datachat/shared";
+import { publicDatasourceOptions } from "../../drivers/options.js";
+import { defaultDriverRegistry, type DriverRegistry } from "../../drivers/registry.js";
 
 export type DatasourceRow = typeof datasources.$inferSelect;
 export type DatasourceInsert = typeof datasources.$inferInsert;
@@ -90,27 +92,42 @@ export interface DatasourceSummary {
   id: string;
   name: string;
   type: DatasourceType;
+  driverLabel: string;
+  driverAvailable: boolean;
   host: string;
   port: number;
   database: string;
   username: string;
   sslMode: DatasourceRow["sslMode"];
+  options: Record<string, OptionValue>;
+  secretOptionKeys: string[];
   status: string;
   readOnlyVerified: boolean;
   allowWriteAccount: boolean;
   lastCheckedAt: number | null;
 }
 
-export function toDatasourceSummary(row: DatasourceRow): DatasourceSummary {
+export function toDatasourceSummary(
+  row: DatasourceRow,
+  drivers: DriverRegistry = defaultDriverRegistry,
+): DatasourceSummary {
+  const driver = drivers.get(row.type);
+  const { options, secretOptionKeys } = driver
+    ? publicDatasourceOptions(driver.manifest.optionsSchema, row.optionsJson)
+    : { options: {}, secretOptionKeys: [] };
   return {
     id: row.id,
     name: row.name,
     type: row.type,
+    driverLabel: driver?.manifest.label ?? row.type,
+    driverAvailable: Boolean(driver),
     host: row.host,
     port: row.port,
     database: row.database,
     username: row.username,
     sslMode: row.sslMode,
+    options,
+    secretOptionKeys,
     status: row.status,
     readOnlyVerified: Boolean(row.readOnlyVerified),
     allowWriteAccount: Boolean(row.allowWriteAccount),

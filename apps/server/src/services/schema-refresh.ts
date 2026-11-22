@@ -1,3 +1,4 @@
+import type { OptionValue } from "@datachat/datasource-sdk";
 import { decryptSecret, deriveSecretKey } from "../agent/datasource/crypto.js";
 import {
   introspectMysql,
@@ -10,6 +11,8 @@ import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import type { DatasourceRow } from "../db/repositories/datasources.js";
 import { saveSchema, saveSchemaError } from "../db/repositories/schema-cache.js";
+import { resolveDatasourceOptions } from "../drivers/options.js";
+import { defaultDriverRegistry, type DriverRegistry } from "../drivers/registry.js";
 
 export interface DatasourceConnection {
   id: string;
@@ -20,6 +23,7 @@ export interface DatasourceConnection {
   username: string;
   password: string;
   sslMode: DatasourceRow["sslMode"];
+  options?: Record<string, OptionValue | undefined>;
 }
 
 export interface SchemaIntrospector {
@@ -30,7 +34,8 @@ export interface SchemaRefreshDeps {
   db: Db;
   pools: PoolRegistry;
   config: AppConfig;
-  /** Test seam; defaults to the real MySQL/PostgreSQL introspection. */
+  drivers?: DriverRegistry;
+  /** Test seam; defaults to the real driver introspection. */
   introspect?: SchemaIntrospector;
 }
 
@@ -43,16 +48,29 @@ export class SchemaRefreshError extends Error {
 
 const inFlight = new Map<string, Promise<SchemaSnapshot>>();
 
-function connectionFor(datasource: DatasourceRow, key: Buffer): DatasourceConnection {
+function connectionFor(
+  datasource: DatasourceRow,
+  key: Buffer,
+  drivers: DriverRegistry,
+): { connection: DatasourceConnection; secrets: string[] } {
+  const password = decryptSecret(datasource.passwordCipher, key);
+  const driver = drivers.get(datasource.type);
+  const resolved = driver
+    ? resolveDatasourceOptions(driver.manifest.optionsSchema, datasource.optionsJson, key)
+    : { options: {}, secrets: [] };
   return {
-    id: datasource.id,
-    type: datasource.type,
-    host: datasource.host,
-    port: datasource.port,
-    database: datasource.database,
-    username: datasource.username,
-    password: decryptSecret(datasource.passwordCipher, key),
-    sslMode: datasource.sslMode,
+    connection: {
+      id: datasource.id,
+      type: datasource.type,
+      host: datasource.host,
+      port: datasource.port,
+      database: datasource.database,
+      username: datasource.username,
+      password,
+      sslMode: datasource.sslMode,
+      options: resolved.options,
+    },
+    secrets: [password, ...resolved.secrets],
   };
 }
 
@@ -68,19 +86,33 @@ export async function refreshDatasourceSchema(
   const running = inFlight.get(datasource.id);
   if (running) return running;
 
+  const drivers = deps.drivers ?? defaultDriverRegistry;
   const task = (async () => {
     const key = deriveSecretKey(deps.config.appSecret);
-    const connection = connectionFor(datasource, key);
+    const { connection, secrets } = connectionFor(datasource, key, drivers);
     try {
-      const snapshot = deps.introspect
-        ? await deps.introspect(datasource, connection)
-        : datasource.type === "mysql"
-          ? await introspectMysql(deps.pools.get(connection).mysql!, datasource.database)
-          : await introspectPostgres(deps.pools.get(connection).pg!);
+      let snapshot: SchemaSnapshot;
+      if (deps.introspect) {
+        snapshot = await deps.introspect(datasource, connection);
+      } else if (datasource.type === "mysql") {
+        snapshot = await introspectMysql(deps.pools.get(connection).mysql!, datasource.database);
+      } else if (datasource.type === "postgres") {
+        snapshot = await introspectPostgres(deps.pools.get(connection).pg!);
+      } else {
+        const driver = drivers.get(datasource.type);
+        if (!driver) {
+          throw new Error(`未安装「${datasource.type}」数据源驱动插件`);
+        }
+        const pool = deps.pools.get(connection).custom;
+        if (!pool) {
+          throw new Error(`无法初始化「${datasource.type}」数据源连接池`);
+        }
+        snapshot = await pool.introspect();
+      }
       saveSchema(deps.db, datasource.id, snapshot);
       return snapshot;
     } catch (error) {
-      const message = safeErrorMessage(error, connection.password);
+      const message = safeErrorMessage(error, secrets);
       saveSchemaError(deps.db, datasource.id, message);
       throw new SchemaRefreshError(message);
     }

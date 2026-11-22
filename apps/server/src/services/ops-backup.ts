@@ -6,7 +6,7 @@ import Database from "better-sqlite3";
 
 const BACKUP_VERSION = 1;
 const DB_FILE = "datachat.db";
-const COPY_ENTRIES = ["artifacts", "pi-sessions", "skills", "agent"] as const;
+const COPY_ENTRIES = ["artifacts", "pi-sessions", "skills", "agent", "plugins"] as const;
 const RESTORE_ENTRIES = [DB_FILE, ...COPY_ENTRIES] as const;
 
 export interface BackupManifest {

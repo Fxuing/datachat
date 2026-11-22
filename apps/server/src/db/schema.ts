@@ -24,7 +24,7 @@ export const users = sqliteTable(
 export const datasources = sqliteTable("datasources", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
-  type: text("type", { enum: ["mysql", "postgres"] }).notNull(),
+  type: text("type").notNull(),
   host: text("host").notNull(),
   port: integer("port").notNull(),
   database: text("database").notNull(),
@@ -807,3 +807,18 @@ export const notifications = sqliteTable(
     index("notifications_unread_idx").on(t.userId, t.readAt),
   ],
 );
+
+export const datasourcePlugins = sqliteTable("datasource_plugins", {
+  driverId: text("driver_id").primaryKey(),
+  label: text("label").notNull(),
+  version: text("version").notNull(),
+  fileName: text("file_name").notNull(),
+  /** Entry path relative to `DATA_DIR/plugins/datasources` (POSIX slashes). */
+  entryPath: text("entry_path").notNull(),
+  sha256: text("sha256").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  enabled: integer("enabled").notNull().default(1),
+  uploadedBy: text("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});

@@ -28,6 +28,9 @@
 | `QUERY_MAX_ROWS` | 否 | 单次查询最大保留行数，默认 `100000` |
 | `QUERY_TIMEOUT_MS` | 否 | 单次查询超时（ms），默认 `30000` |
 | `RETENTION_SWEEP_HOURS` | 否 | 定时清理检查间隔（小时），默认 `0`（关闭） |
+| `DATASOURCE_PLUGINS` | 否 | 逗号分隔的数据源驱动插件模块名或 ESM 文件路径白名单（详见 [插件开发指南](datasource-plugin-guide.md)） |
+| `DATASOURCE_PLUGINS_STRICT` | 否 | 设为 `true` 时，任一配置的数据源插件加载失败会直接阻止服务启动，默认 `false` |
+| `ALLOW_PLUGIN_UPLOAD` | 否 | 是否允许管理员在「管理 → 数据源 → 驱动插件」界面离线上传驱动包，默认 `true`（高安全环境可设 `false`） |
 | `BILI_NATIVE_PI` | 否 | 设为 `0` 可关闭内置 `billion-context` 上下文压缩插件 |
 
 ---

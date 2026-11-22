@@ -13,6 +13,7 @@ import { updateConversation } from "../db/repositories/conversations.js";
 import { findDatasource } from "../db/repositories/datasources.js";
 import type { MemoryUsageItem } from "../memory/recall.js";
 import type { ArtifactStore } from "../services/artifacts.js";
+import { defaultDriverRegistry, type DriverRegistry } from "../drivers/registry.js";
 import type { PoolRegistry } from "./datasource/pool.js";
 import { resolveConversationModel } from "./model-runtime.js";
 
@@ -40,6 +41,7 @@ export interface CreateConversationSessionInput {
   canCreateReports: boolean;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
+  drivers?: DriverRegistry;
   questionBridge: QuestionBridge;
 }
 
@@ -69,9 +71,12 @@ export async function createConversationSession(
 ): Promise<ConversationSessionResult> {
   const { conversation } = input;
   const isFileSession = conversation.sourceKind === "file";
+  const drivers = input.drivers ?? defaultDriverRegistry;
   let datasourceId: string | null = null;
   let datasourceName: string;
-  let datasourceType: "mysql" | "postgres" | "sqlite";
+  let datasourceType: string;
+  let datasourceTypeLabel: string | undefined;
+  let dialectGuidance: string | undefined;
   let database: string;
 
   if (isFileSession) {
@@ -92,6 +97,9 @@ export async function createConversationSession(
     datasourceId = datasource.id;
     datasourceName = datasource.name;
     datasourceType = datasource.type;
+    const driver = drivers.get(datasource.type);
+    datasourceTypeLabel = driver?.manifest.label;
+    dialectGuidance = driver?.dialect.promptGuidance;
     database = datasource.database;
   }
 
@@ -111,6 +119,8 @@ export async function createConversationSession(
     ...(input.onMemoryUsed ? { onMemoryUsed: input.onMemoryUsed } : {}),
     datasourceName,
     datasourceType,
+    ...(datasourceTypeLabel ? { datasourceTypeLabel } : {}),
+    ...(dialectGuidance ? { dialectGuidance } : {}),
     database,
   });
 
@@ -119,6 +129,7 @@ export async function createConversationSession(
     config: input.config,
     pools: input.pools,
     artifacts: input.artifacts,
+    drivers,
     userId: input.userId,
     conversationId: conversation.id,
     datasourceId,

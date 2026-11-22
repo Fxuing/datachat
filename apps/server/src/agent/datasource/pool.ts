@@ -1,6 +1,8 @@
 import mysql, { type Pool as MysqlPool } from "mysql2/promise";
 import { Pool as PgPool } from "pg";
 import type { DatasourceType } from "@datachat/shared";
+import type { DatasourceDriverPool, OptionValue } from "@datachat/datasource-sdk";
+import { defaultDriverRegistry, type DriverRegistry } from "../../drivers/registry.js";
 
 export type SslMode = "disable" | "require" | "no-verify";
 
@@ -13,11 +15,13 @@ export interface DatasourceConnection {
   username: string;
   password: string;
   sslMode: SslMode;
+  options?: Record<string, OptionValue | undefined>;
 }
 
 export interface Pools {
   mysql?: MysqlPool;
   pg?: PgPool;
+  custom?: DatasourceDriverPool;
 }
 
 /** `require` verifies the server certificate; `no-verify` is the explicit opt-out. */
@@ -32,11 +36,16 @@ interface CallbackConnection {
 }
 
 export class PoolRegistry {
-  private pools = new Map<string, Pools>();
+  private pools = new Map<string, { type: string; pools: Pools }>();
+  private readonly drivers: DriverRegistry;
+
+  constructor(drivers: DriverRegistry = defaultDriverRegistry) {
+    this.drivers = drivers;
+  }
 
   get(ds: DatasourceConnection): Pools {
     const existing = this.pools.get(ds.id);
-    if (existing) return existing;
+    if (existing) return existing.pools;
 
     const pools: Pools = {};
     if (ds.type === "mysql") {
@@ -52,9 +61,6 @@ export class PoolRegistry {
         supportBigNumbers: true,
         ssl: sslConfig(ds.sslMode),
       });
-      // mysql2 emits this before handing the connection to the caller, and commands
-      // are queued in order, so the caller's first query cannot overtake the setup.
-      // On failure the connection is destroyed, which fails that first query closed.
       pool.on("connection", (connection) => {
         const raw = connection as unknown as CallbackConnection;
         raw.query("SET SESSION TRANSACTION READ ONLY", (readOnlyError) => {
@@ -68,7 +74,7 @@ export class PoolRegistry {
         });
       });
       pools.mysql = pool;
-    } else {
+    } else if (ds.type === "postgres") {
       const pool = new PgPool({
         host: ds.host,
         port: ds.port,
@@ -78,32 +84,58 @@ export class PoolRegistry {
         max: 5,
         connectionTimeoutMillis: 10_000,
         statement_timeout: 30_000,
-        // Startup options are applied by the server before the connection is
-        // usable, which is stronger than a fire-and-forget SET after acquisition.
         options: "-c default_transaction_read_only=on -c timezone=UTC",
         ssl: sslConfig(ds.sslMode),
       });
       pools.pg = pool;
+    } else {
+      const driver = this.drivers.get(ds.type);
+      if (!driver) {
+        throw new Error(`未安装「${ds.type}」数据源驱动插件`);
+      }
+      pools.custom = driver.createPool({
+        id: ds.id,
+        type: ds.type,
+        host: ds.host,
+        port: ds.port,
+        database: ds.database,
+        username: ds.username,
+        password: ds.password,
+        sslMode: ds.sslMode,
+        options: ds.options ?? {},
+      });
     }
-    this.pools.set(ds.id, pools);
+    this.pools.set(ds.id, { type: ds.type, pools });
     return pools;
   }
 
   /** Drop cached connections so edited/deleted datasources cannot keep using them. */
   async evict(id: string): Promise<void> {
-    const pools = this.pools.get(id);
-    if (!pools) return;
+    const entry = this.pools.get(id);
+    if (!entry) return;
     this.pools.delete(id);
-    await closePools(pools);
+    await closePools(entry.pools);
+  }
+
+  /** Drop all cached connections belonging to a driver plugin (on disable/upgrade/uninstall). */
+  async evictByDriver(driverId: string): Promise<void> {
+    const targets: Pools[] = [];
+    for (const [id, entry] of this.pools.entries()) {
+      if (entry.type === driverId) {
+        this.pools.delete(id);
+        targets.push(entry.pools);
+      }
+    }
+    await Promise.all(targets.map((pools) => closePools(pools)));
   }
 
   async closeAll(): Promise<void> {
-    const all = [...this.pools.values()];
+    const all = [...this.pools.values()].map((entry) => entry.pools);
     this.pools.clear();
     await Promise.all(all.map((pools) => closePools(pools)));
   }
 }
 
 async function closePools(pools: Pools): Promise<void> {
-  await Promise.allSettled([pools.mysql?.end(), pools.pg?.end()]);
+  await Promise.allSettled([pools.mysql?.end(), pools.pg?.end(), pools.custom?.close()]);
 }

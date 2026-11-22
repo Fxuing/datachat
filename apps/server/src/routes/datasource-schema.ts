@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import type { PoolRegistry } from "../agent/datasource/pool.js";
+import type { DriverRegistry } from "../drivers/registry.js";
 import { findDatasource } from "../db/repositories/datasources.js";
 import { canAccessDatasource } from "../auth/access.js";
 import { SCHEMA_CACHE_TTL_MS, loadSchemaEntry } from "../db/repositories/schema-cache.js";
@@ -11,6 +12,7 @@ interface DatasourceSchemaRoutesOptions {
   config: AppConfig;
   db: Db;
   pools: PoolRegistry;
+  drivers?: DriverRegistry;
 }
 
 const idParamsSchema = {

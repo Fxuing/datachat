@@ -1,7 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChartCard } from "./ChartCard";
+
+vi.mock("./EChart", () => ({
+  EChart: ({ height }: { height?: number }) => (
+    <div data-testid="mock-echart" style={{ height }} />
+  ),
+}));
 
 const sampleOption = {
   xAxis: { type: "category", name: "地区", data: ["华东", "华北", "华南"] },

@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DatasourceInput } from "@datachat/shared";
-import { CheckCircle2, Plus, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Plug, Plus, ShieldAlert } from "lucide-react";
 import { AdminShell } from "../../components/admin/AdminShell";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { DatasourceEditor } from "../../components/admin/DatasourceEditor";
 import { DatasourceGrantsDialog } from "../../components/admin/DatasourceGrantsDialog";
+import { DatasourcePluginsDrawer } from "../../components/admin/DatasourcePluginsDrawer";
 import { DatasourceRowActions } from "../../components/admin/DatasourceRowActions";
 import { DatasourceSchemaDrawer } from "../../components/admin/DatasourceSchemaDrawer";
 import { Button } from "../../components/ui/button";
@@ -19,8 +20,10 @@ import {
 import {
   ApiError,
   createDatasource,
+  datasourceTypeLabel,
   deleteDatasource,
   fetchMe,
+  listDatasourceDrivers,
   listDatasources,
   refreshDatasourceSchema,
   testDatasource,
@@ -64,15 +67,12 @@ function statusHint(status: string): string {
   return "尚未进行连接测试。";
 }
 
-function typeLabel(type: DatasourceSummary["type"]): string {
-  return type === "mysql" ? "MySQL" : "PostgreSQL";
-}
-
 export default function DatasourcesPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [pluginsOpen, setPluginsOpen] = useState(false);
   const [schemaTarget, setSchemaTarget] = useState<DatasourceSummary | null>(null);
   const [grantsTarget, setGrantsTarget] = useState<DatasourceSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DatasourceSummary | null>(null);
@@ -82,6 +82,10 @@ export default function DatasourcesPage() {
   const datasourcesQuery = useQuery({
     queryKey: queryKeys.datasources,
     queryFn: listDatasources,
+  });
+  const driversQuery = useQuery({
+    queryKey: queryKeys.datasourceDrivers,
+    queryFn: listDatasourceDrivers,
   });
 
   const invalidateDatasources = () =>
@@ -210,14 +214,25 @@ export default function DatasourcesPage() {
                 管理只读数据库连接；密码仅提交给服务端，不会回显。
               </p>
             </div>
-            <Button
-              size="sm"
-              className="gap-1.5"
-              onClick={() => openEditor({ mode: "new" })}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              新建数据源
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setPluginsOpen(true)}
+              >
+                <Plug className="h-3.5 w-3.5" />
+                驱动插件
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => openEditor({ mode: "new" })}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                新建数据源
+              </Button>
+            </div>
           </div>
 
           {banner ? (
@@ -276,15 +291,22 @@ export default function DatasourcesPage() {
                           </p>
                         </td>
                         <td className="px-4 py-2.5">
-                          <span
-                            className={
-                              datasource.type === "mysql"
-                                ? "rounded bg-subtle px-1.5 py-0.5 text-[11px] text-inksoft"
-                                : "rounded bg-brandsoft px-1.5 py-0.5 text-[11px] text-brandtext"
-                            }
-                          >
-                            {typeLabel(datasource.type)}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={
+                                datasource.type === "mysql"
+                                  ? "rounded bg-subtle px-1.5 py-0.5 text-[11px] text-inksoft"
+                                  : "rounded bg-brandsoft px-1.5 py-0.5 text-[11px] text-brandtext"
+                              }
+                            >
+                              {datasourceTypeLabel(datasource)}
+                            </span>
+                            {datasource.driverAvailable === false ? (
+                              <span className="rounded bg-warningsoft px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                                驱动未安装
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="px-4 py-2.5 font-mono text-xs text-muted">
                           {datasource.host}:{datasource.port}/{datasource.database}
@@ -377,6 +399,7 @@ export default function DatasourcesPage() {
         <DatasourceEditor
           key={editor.mode === "new" ? "new" : editor.datasource.id}
           datasource={editor.mode === "edit" ? editor.datasource : null}
+          drivers={driversQuery.data?.drivers}
           saving={saveMutation.isPending}
           error={
             saveMutation.error
@@ -391,6 +414,10 @@ export default function DatasourcesPage() {
           }
           onClose={closeEditor}
         />
+      ) : null}
+
+      {pluginsOpen ? (
+        <DatasourcePluginsDrawer onClose={() => setPluginsOpen(false)} />
       ) : null}
 
       {schemaTarget ? (

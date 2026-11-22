@@ -3,6 +3,11 @@ import { createRequire } from "node:module";
 import type { Pool as MysqlPool, PoolConnection as MysqlConnection } from "mysql2/promise";
 import type { Pool as PgPool, PoolClient, QueryResult } from "pg";
 import Cursor from "pg-cursor";
+import type {
+  DatasourceDriver,
+  DatasourceDriverPool,
+  DialectProfile,
+} from "@datachat/datasource-sdk";
 import { guardSql, type GuardErrorCode } from "./guard.js";
 import type { ColumnInfo } from "../../services/artifacts.js";
 
@@ -33,8 +38,11 @@ export class SqlRejectedError extends Error {
 }
 
 export interface ExecuteInput {
-  dialect: "mysql" | "postgres" | "sqlite";
+  dialect: "mysql" | "postgres" | "sqlite" | "driver";
+  dialectProfile?: DialectProfile;
   pool?: MysqlPool | PgPool;
+  driverPool?: DatasourceDriverPool;
+  classifyError?: DatasourceDriver["classifyError"];
   sqlitePath?: string;
   sql: string;
   /** Bound values for placeholders produced by the scope rewrite. */
@@ -81,7 +89,9 @@ export async function executeReadOnly(
   if (input.guard) {
     const guard = guardSql({
       sql,
-      dialect: input.dialect,
+      dialect:
+        input.dialectProfile ??
+        (input.dialect === "driver" ? "mysql" : input.dialect),
       maxRows: input.maxRows,
       maxTables: input.guard.maxTables,
     });
@@ -122,18 +132,22 @@ export async function executeReadOnly(
 
   try {
     const streamedColumns =
-      input.dialect === "mysql"
-        ? await streamMysql(input, sql, consume, shouldStop)
-        : input.dialect === "postgres"
-          ? await streamPostgres(input, sql, consume, shouldStop)
-          : await streamSqlite(input, sql, consume, shouldStop);
+      input.dialect === "driver"
+        ? await streamDriverPool(input, sql, consume, shouldStop)
+        : input.dialect === "mysql"
+          ? await streamMysql(input, sql, consume, shouldStop)
+          : input.dialect === "postgres"
+            ? await streamPostgres(input, sql, consume, shouldStop)
+            : await streamSqlite(input, sql, consume, shouldStop);
     if (columnsRef.columns.length === 0 && streamedColumns.length > 0) {
       columnsRef.columns = streamedColumns;
     }
   } catch (error) {
     if (input.signal?.aborted) throw new SqlAbortedError();
     if (error instanceof SqlTimeoutError || error instanceof SqlAbortedError) throw error;
-    if (isTimeoutError(error)) throw new SqlTimeoutError();
+    const classified = input.classifyError?.(error);
+    if (classified === "timeout" || isTimeoutError(error)) throw new SqlTimeoutError();
+    if (classified === "aborted") throw new SqlAbortedError();
     throw error;
   }
 
@@ -146,6 +160,78 @@ export async function executeReadOnly(
     truncated,
     durationMs: Date.now() - started,
   };
+}
+
+async function streamDriverPool(
+  input: ExecuteInput,
+  sql: string,
+  consume: (batch: Batch) => Promise<void>,
+  shouldStop: () => boolean,
+): Promise<ColumnInfo[]> {
+  const pool = input.driverPool;
+  if (!pool) throw new Error("数据源驱动连接池未初始化");
+
+  const controller = new AbortController();
+  let timedOut = false;
+  const onParentAbort = () => controller.abort();
+  input.signal?.addEventListener("abort", onParentAbort, { once: true });
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, Math.max(1, input.timeoutMs));
+  timer.unref?.();
+
+  let columns: ColumnInfo[] = [];
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    controller.signal.addEventListener(
+      "abort",
+      () => {
+        if (input.signal?.aborted) reject(new SqlAbortedError());
+        else if (timedOut) reject(new SqlTimeoutError());
+      },
+      { once: true },
+    );
+  });
+
+  try {
+    await Promise.race([
+      pool.executeQuery(
+        {
+          sql,
+          params: input.params ?? [],
+          batchSize: BATCH_SIZE,
+          maxRows: input.maxRows,
+          timeoutMs: input.timeoutMs,
+          signal: controller.signal,
+        },
+        async (batch) => {
+          if (batch.columns.length > 0 && columns.length === 0) {
+            columns = batch.columns;
+          }
+          if (shouldStop()) {
+            controller.abort();
+            return;
+          }
+          await consume(batch);
+          if (shouldStop()) {
+            controller.abort();
+          }
+        },
+      ),
+      timeoutPromise,
+    ]);
+    return columns;
+  } catch (error) {
+    if (input.signal?.aborted) throw new SqlAbortedError();
+    if (timedOut) throw new SqlTimeoutError();
+    // Stopping early after hitting maxRows intentionally aborts the driver stream.
+    if (shouldStop()) return columns;
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    input.signal?.removeEventListener("abort", onParentAbort);
+  }
 }
 
 export function inferType(values: unknown[]): ColumnInfo["type"] {

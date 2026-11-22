@@ -23,8 +23,16 @@ export const publicUserSchema = z.object({
 });
 export type PublicUser = z.infer<typeof publicUserSchema>;
 
-export const datasourceTypeSchema = z.enum(["mysql", "postgres"]);
+export const datasourceTypeSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-z][a-z0-9_-]{1,31}$/, "数据源类型不合法");
 export type DatasourceType = z.infer<typeof datasourceTypeSchema>;
+
+export const datasourceOptionsSchema = z.record(
+  z.string().min(1).max(64),
+  z.union([z.string(), z.number(), z.boolean(), z.null()]),
+);
 
 export const datasourceInputSchema = z.object({
   name: z.string().trim().min(1).max(64),
@@ -37,6 +45,8 @@ export const datasourceInputSchema = z.object({
   sslMode: z.enum(["disable", "require", "no-verify"]).default("disable"),
   /** Allow saving an account that has write grants; queries stay read-only. */
   allowWriteAccount: z.boolean().default(false),
+  /** Driver-specific options declared in the driver's manifest.optionsSchema. */
+  options: datasourceOptionsSchema.optional(),
 });
 export type DatasourceInput = z.infer<typeof datasourceInputSchema>;
 
@@ -69,3 +79,11 @@ export type ApiError = z.infer<typeof apiErrorSchema>;
 
 export * from "./events.js";
 export * from "./permissions.js";
+export type {
+  ConnectionMode,
+  DatasourceDriverCapabilities,
+  DatasourceDriverManifest,
+  OptionFieldSchema,
+  OptionValue,
+  PublicDriverDescriptor,
+} from "@datachat/datasource-sdk";

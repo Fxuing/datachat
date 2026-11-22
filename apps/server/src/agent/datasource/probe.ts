@@ -1,7 +1,6 @@
-import mysql from "mysql2/promise";
-import { Client as PgClient } from "pg";
 import type { DatasourceType } from "@datachat/shared";
-
+import { safeDriverErrorMessage, type OptionValue } from "@datachat/datasource-sdk";
+import { defaultDriverRegistry, type DriverRegistry } from "../../drivers/registry.js";
 import type { SslMode } from "./pool.js";
 
 export interface ProbeInput {
@@ -12,6 +11,7 @@ export interface ProbeInput {
   username: string;
   password: string;
   sslMode: SslMode;
+  options?: Record<string, OptionValue | undefined>;
 }
 
 export interface ProbeResult {
@@ -22,73 +22,37 @@ export interface ProbeResult {
   error?: string;
 }
 
-/** Collapse driver errors so responses stay single-line and never echo the password. */
-export function safeErrorMessage(error: unknown, secret?: string): string {
-  let message = error instanceof Error ? error.message : String(error);
-  if (secret) message = message.split(secret).join("***");
-  message = message.replace(/\s+/g, " ").trim();
-  return message.slice(0, 500) || "连接失败";
+/** Collapse driver errors so responses stay single-line and never echo secrets. */
+export function safeErrorMessage(error: unknown, secret?: string | Array<string | undefined>): string {
+  const secrets = Array.isArray(secret) ? secret : secret ? [secret] : [];
+  return safeDriverErrorMessage(error, secrets);
 }
 
-export async function probeDatasource(input: ProbeInput): Promise<ProbeResult> {
-  const ssl =
-    input.sslMode === "disable" ? undefined : { rejectUnauthorized: input.sslMode === "require" };
-  if (input.type === "mysql") {
-    let connection: mysql.Connection | undefined;
-    try {
-      connection = await mysql.createConnection({
-        host: input.host,
-        port: input.port,
-        database: input.database,
-        user: input.username,
-        password: input.password,
-        connectTimeout: 10_000,
-        ssl,
-      });
-      const [versionRows] = await connection.query("SELECT VERSION() AS version");
-      const version = String((versionRows as Array<{ version: string }>)[0]?.version ?? "unknown");
-      const [grantRows] = await connection.query("SHOW GRANTS FOR CURRENT_USER()");
-      const grants = (grantRows as Array<Record<string, string>>)
-        .flatMap((row) => Object.values(row))
-        .join(" ");
-      const writeGrant = /\b(ALL PRIVILEGES|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/i.test(grants);
-      const warnings = writeGrant ? ["当前账号具有写权限，建议改用只读账号"] : [];
-      return { ok: true, serverVersion: version, readOnly: !writeGrant, warnings };
-    } catch (error) {
-      return {
-        ok: false,
-        readOnly: false,
-        warnings: [],
-        error: safeErrorMessage(error, input.password),
-      };
-    } finally {
-      await connection?.end().catch(() => undefined);
-    }
+export async function probeDatasource(
+  input: ProbeInput,
+  drivers: DriverRegistry = defaultDriverRegistry,
+): Promise<ProbeResult> {
+  const driver = drivers.get(input.type);
+  if (!driver) {
+    return {
+      ok: false,
+      readOnly: false,
+      warnings: [],
+      error: `未安装「${input.type}」数据源驱动插件`,
+    };
   }
-
-  const client = new PgClient({
-    host: input.host,
-    port: input.port,
-    database: input.database,
-    user: input.username,
-    password: input.password,
-    connectionTimeoutMillis: 10_000,
-    ssl,
-  });
   try {
-    await client.connect();
-    const version = String(
-      (await client.query("SELECT version() AS version")).rows[0]?.version ?? "unknown",
-    );
-    const readOnlyRow = await client.query("SHOW default_transaction_read_only");
-    const canCreate = await client.query(
-      "SELECT has_database_privilege(current_user, current_database(), 'CREATE') AS can_create",
-    );
-    const defaultReadOnly =
-      String(readOnlyRow.rows[0]?.default_transaction_read_only ?? "off") === "on";
-    const writeGrant = Boolean(canCreate.rows[0]?.can_create);
-    const warnings = writeGrant ? ["当前账号具有建表权限，建议改用只读账号"] : [];
-    return { ok: true, serverVersion: version, readOnly: defaultReadOnly && !writeGrant, warnings };
+    return await driver.probe({
+      id: "probe",
+      type: input.type,
+      host: input.host,
+      port: input.port,
+      database: input.database,
+      username: input.username,
+      password: input.password,
+      sslMode: input.sslMode,
+      options: input.options ?? {},
+    });
   } catch (error) {
     return {
       ok: false,
@@ -96,7 +60,5 @@ export async function probeDatasource(input: ProbeInput): Promise<ProbeResult> {
       warnings: [],
       error: safeErrorMessage(error, input.password),
     };
-  } finally {
-    await client.end().catch(() => undefined);
   }
 }

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
-import type {
-  AdminMcpServer,
-  DatasourceSummary,
-  MaskedSecretEntry,
-  McpServerInput,
-  McpTestResult,
-  McpTransport,
+import {
+  datasourceTypeLabel,
+  type AdminMcpServer,
+  type DatasourceSummary,
+  type MaskedSecretEntry,
+  type McpServerInput,
+  type McpTestResult,
+  type McpTransport,
 } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -399,8 +400,7 @@ export function McpEditor({
                       <SelectItem value="__global__">全局（所有数据源）</SelectItem>
                       {datasources.map((datasource) => (
                         <SelectItem key={datasource.id} value={datasource.id}>
-                          {datasource.name}（
-                          {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}）
+                          {datasource.name}（{datasourceTypeLabel(datasource)}）
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -101,9 +101,17 @@ export function DatasourceRowActions({
     action();
   };
 
+  const driverUnavailable = datasource.driverAvailable === false;
+
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <Button variant="ghost" size="sm" disabled={testing} onClick={onTest}>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={testing || driverUnavailable}
+        title={driverUnavailable ? "驱动插件未加载" : undefined}
+        onClick={onTest}
+      >
         {testing ? "测试中…" : "测试连接"}
       </Button>
       <Button variant="ghost" size="sm" onClick={onEdit}>
@@ -168,7 +176,7 @@ export function DatasourceRowActions({
             </MenuItem>
             <MenuItem
               icon={<RefreshCw className={refreshing ? "animate-spin" : undefined} />}
-              disabled={refreshing}
+              disabled={refreshing || driverUnavailable}
               onSelect={choose(onRefresh)}
             >
               {refreshing ? "刷新中…" : "刷新 schema"}

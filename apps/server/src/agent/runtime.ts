@@ -14,6 +14,7 @@ import { findRun, markRun } from "../db/repositories/runs.js";
 import { findUserById } from "../db/repositories/users.js";
 import type { ArtifactStore } from "../services/artifacts.js";
 import type { PoolRegistry } from "./datasource/pool.js";
+import type { DriverRegistry } from "../drivers/registry.js";
 import { RunEventBus } from "./event-bus.js";
 import {
   bridgeSessionEvents,
@@ -504,6 +505,7 @@ export interface RuntimeManagerOptions {
   config: AppConfig;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
+  drivers?: DriverRegistry;
   /** Shared provider catalog resolver; defaults to a private lazy runtime. */
   getModelRuntime?: () => Promise<ModelRuntime>;
   bus?: RunEventBus;
@@ -528,6 +530,7 @@ export class RuntimeManager {
   private readonly config: AppConfig;
   private readonly pools: PoolRegistry;
   private readonly artifacts: ArtifactStore;
+  private readonly drivers: DriverRegistry | undefined;
   private readonly modelRuntimeFactory: (() => Promise<ModelRuntime>) | undefined;
   private readonly createSession: ConversationSessionFactory;
   private readonly onRunComplete: ((runId: string) => void) | undefined;
@@ -545,6 +548,7 @@ export class RuntimeManager {
     this.config = options.config;
     this.pools = options.pools;
     this.artifacts = options.artifacts;
+    this.drivers = options.drivers;
     this.modelRuntimeFactory = options.getModelRuntime;
     this.bus = options.bus ?? new RunEventBus();
     this.onRunComplete =
@@ -581,6 +585,7 @@ export class RuntimeManager {
           canCreateReports: permissions.reports,
           pools: this.pools,
           artifacts: this.artifacts,
+          ...(this.drivers ? { drivers: this.drivers } : {}),
           questionBridge,
         });
       });

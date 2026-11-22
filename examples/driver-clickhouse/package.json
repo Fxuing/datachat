@@ -1,0 +1,11 @@
+{
+  "name": "@datachat/example-driver-clickhouse",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.mjs",
+  "description": "Minimal reference ClickHouse HTTP datasource driver plugin for DataChat.",
+  "peerDependencies": {
+    "@datachat/datasource-sdk": "^0.1.0"
+  }
+}

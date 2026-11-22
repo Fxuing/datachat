@@ -2,11 +2,15 @@ import {
   isPermission,
   type Column,
   type DatasourceInput,
+  type OptionFieldSchema,
   type Permission,
+  type PublicDriverDescriptor,
   type ReportDetail,
   type ReportSummary,
   type RunMemory,
 } from "@datachat/shared";
+
+export type { OptionFieldSchema, PublicDriverDescriptor };
 
 export class ApiError extends Error {
   readonly code: string;
@@ -298,16 +302,27 @@ export interface FilePreviewResponse {
 export interface DatasourceSummary {
   id: string;
   name: string;
-  type: "mysql" | "postgres";
+  type: string;
+  driverLabel?: string;
+  driverAvailable?: boolean;
   host: string;
   port: number;
   database: string;
   username: string;
   sslMode: "disable" | "require" | "no-verify";
+  options?: Record<string, string | number | boolean>;
+  secretOptionKeys?: string[];
   status: string;
   readOnlyVerified: boolean;
   allowWriteAccount: boolean;
   lastCheckedAt: number | null;
+}
+
+export function datasourceTypeLabel(source: { type: string; driverLabel?: string }): string {
+  if (source.driverLabel) return source.driverLabel;
+  if (source.type === "mysql") return "MySQL";
+  if (source.type === "postgres") return "PostgreSQL";
+  return source.type;
 }
 
 export interface DatasourceProbeResult {
@@ -831,7 +846,7 @@ export interface SemanticSchemaTableOption {
 }
 
 export interface SemanticLayerResponse {
-  datasource: { id: string; name: string; type: "mysql" | "postgres" };
+  datasource: { id: string; name: string; type: string };
   metrics: SemanticMetric[];
   relations: SemanticRelation[];
   tables: SemanticSchemaTableOption[];
@@ -1085,6 +1100,74 @@ export function getRunSuggestions(runId: string): Promise<{ suggestions: string[
 
 export function listDatasources(): Promise<{ datasources: DatasourceSummary[] }> {
   return apiRequest("/api/datasources");
+}
+
+export interface AdminDriverPluginItem {
+  id: string;
+  label: string;
+  source: "builtin" | "env" | "upload";
+  builtin: boolean;
+  enabled: boolean;
+  loaded: boolean;
+  version: string | null;
+  fileName: string | null;
+  sha256: string | null;
+  sizeBytes: number | null;
+  defaultPort: number | null;
+  supportsSsl: boolean;
+  capabilities: {
+    explain: boolean;
+    readOnlyProbe: boolean;
+    rowScope: boolean;
+  } | null;
+  optionsSchema: OptionFieldSchema[];
+  datasourceCount: number;
+  uploadedAt: number | null;
+  updatedAt: number | null;
+}
+
+export interface AdminDatasourcePluginsResponse {
+  allowUpload: boolean;
+  drivers: AdminDriverPluginItem[];
+}
+
+export function listDatasourceDrivers(): Promise<{ drivers: PublicDriverDescriptor[] }> {
+  return apiRequest("/api/datasources/drivers");
+}
+
+export function listAdminDatasourcePlugins(): Promise<AdminDatasourcePluginsResponse> {
+  return apiRequest("/api/admin/datasource-plugins");
+}
+
+export function uploadDatasourcePlugin(
+  file: File,
+  options?: { replace?: boolean },
+): Promise<{ plugin: AdminDriverPluginItem; replaced: boolean }> {
+  const formData = new FormData();
+  if (options?.replace) {
+    formData.append("replace", "true");
+  }
+  formData.append("file", file);
+  return apiRequest("/api/admin/datasource-plugins/upload", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function toggleDatasourcePlugin(
+  driverId: string,
+  enabled: boolean,
+): Promise<{ plugin: AdminDriverPluginItem }> {
+  return apiRequest(`/api/admin/datasource-plugins/${encodeURIComponent(driverId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export function deleteDatasourcePlugin(driverId: string): Promise<{ ok: boolean }> {
+  return apiRequest(`/api/admin/datasource-plugins/${encodeURIComponent(driverId)}`, {
+    method: "DELETE",
+  });
 }
 
 export function createDatasource(

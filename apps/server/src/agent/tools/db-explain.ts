@@ -15,6 +15,8 @@ import {
   ScopeResolveError,
   applyScopeToSql,
 } from "../../services/data-scope.js";
+import { resolveDatasourceOptions } from "../../drivers/options.js";
+import { defaultDriverRegistry } from "../../drivers/registry.js";
 import {
   errorMessage,
   errorResult,
@@ -163,14 +165,32 @@ export function createDbExplainTool(
           return failed("FORBIDDEN", "数据源尚未通过只读校验，已拒绝执行");
         }
 
+        const driver = (ctx.drivers ?? defaultDriverRegistry).get(datasource.type);
+        if (!driver) {
+          const reason = `未安装「${datasource.type}」数据源驱动插件`;
+          audit("rejected", Date.now() - started, { errorMessage: reason });
+          return failed("DRIVER_NOT_INSTALLED", reason);
+        }
+        if (!driver.manifest.capabilities.explain) {
+          const reason = `数据源驱动「${driver.manifest.label}」不支持 EXPLAIN 执行计划`;
+          audit("rejected", Date.now() - started, { errorMessage: reason });
+          return failed("EXPLAIN_UNSUPPORTED", reason);
+        }
+
         const guarded = guardSql({
           sql,
-          dialect: datasource.type,
+          dialect: driver.dialect,
           maxRows: ctx.config.queryMaxRows,
         });
         if (!guarded.ok) {
           audit("rejected", Date.now() - started, { errorMessage: guarded.reason });
           return failed(guarded.code, guarded.reason);
+        }
+
+        if (datasource.dataScopeMode === "enabled" && !driver.manifest.capabilities.rowScope) {
+          const reason = `数据源驱动「${driver.manifest.label}」暂不支持行级数据权限`;
+          audit("rejected", Date.now() - started, { errorMessage: reason });
+          return failed("SCOPE_UNSUPPORTED_BY_DRIVER", reason);
         }
 
         // EXPLAIN must resolve department scope before opening a connection pool.
@@ -182,7 +202,7 @@ export function createDbExplainTool(
             mode: datasource.dataScopeMode,
             userId: ctx.userId,
             sql: guarded.sql,
-            dialect: datasource.type,
+            dialect: driver.dialect,
           });
         } catch (error) {
           if (error instanceof ScopeResolveError || error instanceof ScopeRewriteError) {
@@ -195,6 +215,12 @@ export function createDbExplainTool(
           throw error;
         }
 
+        const key = deriveSecretKey(ctx.config.appSecret);
+        const resolvedOpts = resolveDatasourceOptions(
+          driver.manifest.optionsSchema,
+          datasource.optionsJson,
+          key,
+        );
         const handle = ctx.pools.get({
           id: datasource.id,
           type: datasource.type,
@@ -202,17 +228,19 @@ export function createDbExplainTool(
           port: datasource.port,
           database: datasource.database,
           username: datasource.username,
-          password: decryptSecret(
-            datasource.passwordCipher,
-            deriveSecretKey(ctx.config.appSecret),
-          ),
+          password: decryptSecret(datasource.passwordCipher, key),
           sslMode: datasource.sslMode,
+          options: resolvedOpts.options,
         });
 
+        const isBuiltinSql = datasource.type === "mysql" || datasource.type === "postgres";
         const result = await executeReadOnly(
           {
-            dialect: datasource.type,
-            pool: datasource.type === "mysql" ? handle.mysql! : handle.pg!,
+            dialect: isBuiltinSql ? (datasource.type as "mysql" | "postgres") : "driver",
+            dialectProfile: driver.dialect,
+            ...(isBuiltinSql
+              ? { pool: datasource.type === "mysql" ? handle.mysql! : handle.pg! }
+              : { driverPool: handle.custom, classifyError: driver.classifyError }),
             sql: scoped.sql,
             params: scoped.params.length > 0 ? scoped.params : undefined,
             maxRows: ctx.config.queryMaxRows,

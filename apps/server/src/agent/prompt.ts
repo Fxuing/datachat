@@ -3,7 +3,11 @@ import path from "node:path";
 
 export interface SystemPromptInput {
   datasourceName: string;
-  datasourceType: "mysql" | "postgres" | "sqlite";
+  datasourceType: string;
+  /** Optional display label from a registered driver manifest (e.g. "ClickHouse"). */
+  datasourceTypeLabel?: string;
+  /** Optional driver-specific SQL dialect guidance (from DialectProfile.promptGuidance). */
+  dialectGuidance?: string;
   database: string;
   now?: Date;
 }
@@ -24,7 +28,7 @@ export const HARD_RULES: readonly string[] = [
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
 const TEMPLATE_PATH = path.join(REPO_ROOT, "agent", "prompts", "system.md");
 
-const DIALECT_LABELS: Record<SystemPromptInput["datasourceType"], string> = {
+const DIALECT_LABELS: Record<string, string> = {
   mysql: "MySQL",
   postgres: "PostgreSQL",
   sqlite: "SQLite（上传文件临时库）",
@@ -55,14 +59,20 @@ export function renderSystemPrompt(input: SystemPromptInput): string {
   const now = formatPromptTime(input.now ?? new Date());
   const values: Record<string, string> = {
     datasourceName: input.datasourceName,
-    datasourceType: DIALECT_LABELS[input.datasourceType],
+    datasourceType:
+      input.datasourceTypeLabel ?? DIALECT_LABELS[input.datasourceType] ?? input.datasourceType,
     database: input.database,
     now,
   };
 
   const template = loadTemplate().replace(/\{\{(\w+)\}\}/g, (match, key: string) => values[key] ?? match);
   const rules = HARD_RULES.map((rule, index) => `${index + 1}. ${rule}`).join("\n");
+  const extraGuidance = input.dialectGuidance?.trim();
   const dialectSection =
-    input.datasourceType === "sqlite" ? `\n\n${SQLITE_DIALECT_GUIDANCE}` : "";
+    input.datasourceType === "sqlite"
+      ? `\n\n${SQLITE_DIALECT_GUIDANCE}`
+      : extraGuidance
+        ? `\n\n## ${values.datasourceType} 方言要点\n\n${extraGuidance}`
+        : "";
   return `${template.trimEnd()}${dialectSection}\n\n## 硬性规则\n\n${rules}\n\n当前时间：${now}\n`;
 }

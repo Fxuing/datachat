@@ -1,8 +1,10 @@
 import sqlParser, { type AST } from "node-sql-parser";
+import type { DialectProfile, PlaceholderStyle } from "@datachat/datasource-sdk";
 
 const { Parser } = sqlParser;
 
 export type SqlDialect = "mysql" | "postgres";
+export type ScopeDialect = SqlDialect | DialectProfile;
 
 export type ScopeOperator = "eq" | "in" | "not_in" | "gt" | "gte" | "lt" | "lte";
 
@@ -42,11 +44,21 @@ export function normalizeTableName(name: string): string {
   return name.replace(/^[`"[]+|[`"\]]+$/g, "").trim().toLowerCase();
 }
 
-function databaseFor(dialect: SqlDialect): string {
-  return dialect === "mysql" ? "mysql" : "postgresql";
+function databaseFor(dialect: ScopeDialect): string {
+  if (typeof dialect === "string") {
+    return dialect === "mysql" ? "mysql" : "postgresql";
+  }
+  return dialect.parserDialect;
 }
 
-function parseSql(sql: string, dialect: SqlDialect): Record<string, unknown> {
+function placeholderStyleFor(dialect: ScopeDialect): PlaceholderStyle {
+  if (typeof dialect === "string") {
+    return dialect === "postgres" ? "dollar" : "qmark";
+  }
+  return dialect.placeholderStyle;
+}
+
+function parseSql(sql: string, dialect: ScopeDialect): Record<string, unknown> {
   try {
     const parsed = new Parser().astify(sql, { database: databaseFor(dialect) });
     if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
@@ -185,7 +197,7 @@ function isScopableRoot(ast: Record<string, unknown>): boolean {
 }
 
 /** Rejects metadata statements like SHOW / DESC that cannot be row-scoped. */
-export function assertScopableSql(sql: string, dialect: SqlDialect): void {
+export function assertScopableSql(sql: string, dialect: ScopeDialect): void {
   const ast = parseSql(sql, dialect);
   if (!isScopableRoot(ast)) {
     throw new ScopeRewriteError(
@@ -196,7 +208,7 @@ export function assertScopableSql(sql: string, dialect: SqlDialect): void {
 }
 
 /** Physical table references in a statement, excluding CTE names and derived-table aliases. */
-export function collectTableNames(sql: string, dialect: SqlDialect): string[] {
+export function collectTableNames(sql: string, dialect: ScopeDialect): string[] {
   const ast = parseSql(sql, dialect);
   const found = new Set<string>();
   walkWithCtes(ast, new Set(), (entry, ctes) => {
@@ -210,7 +222,8 @@ export function collectTableNames(sql: string, dialect: SqlDialect): string[] {
 }
 
 interface RewriteContext {
-  dialect: SqlDialect;
+  dialect: ScopeDialect;
+  placeholderStyle: PlaceholderStyle;
   plan: ScopePlan;
   params: string[];
   applied: Set<string>;
@@ -220,9 +233,17 @@ interface RewriteContext {
 function placeholders(values: string[], ctx: RewriteContext): AstNode[] {
   return values.map((value) => {
     ctx.params.push(value);
-    if (ctx.dialect === "postgres") {
+    if (ctx.placeholderStyle === "dollar") {
       ctx.paramIndex += 1;
       return { type: "origin", value: `$${ctx.paramIndex}` };
+    }
+    if (ctx.placeholderStyle === "at") {
+      ctx.paramIndex += 1;
+      return { type: "origin", value: `@p${ctx.paramIndex}` };
+    }
+    if (ctx.placeholderStyle === "colon") {
+      ctx.paramIndex += 1;
+      return { type: "origin", value: `:${ctx.paramIndex}` };
     }
     return { type: "origin", value: "?" };
   });
@@ -359,12 +380,13 @@ function rewriteFromEntry(entry: AstNode, ctx: RewriteContext, ctes: ReadonlySet
  */
 export function rewriteSqlForScope(
   sql: string,
-  dialect: SqlDialect,
+  dialect: ScopeDialect,
   plan: ScopePlan,
 ): { sql: string; params: string[]; appliedTables: string[] } {
   const ast = parseSql(sql, dialect);
   const ctx: RewriteContext = {
     dialect,
+    placeholderStyle: placeholderStyleFor(dialect),
     plan,
     params: [],
     applied: new Set(),

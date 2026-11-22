@@ -15,6 +15,8 @@ import { SqlAbortedError, SqlTimeoutError, executeReadOnly } from "../agent/sql/
 import type { ArtifactStore, ColumnInfo } from "./artifacts.js";
 import { resolveQueryLimits } from "./app-settings.js";
 import { recordAudit } from "./audit.js";
+import { resolveDatasourceOptions } from "../drivers/options.js";
+import { defaultDriverRegistry, type DriverRegistry } from "../drivers/registry.js";
 
 export interface RunQueryInput {
   datasource: DatasourceRow;
@@ -39,6 +41,8 @@ export type QueryFailureCode =
   | GuardErrorCode
   | ScopeResolveCode
   | "SCOPE_REWRITE_FAILED"
+  | "SCOPE_UNSUPPORTED_BY_DRIVER"
+  | "DRIVER_NOT_INSTALLED"
   | "FORBIDDEN"
   | "SQL_ERROR"
   | "SQL_TIMEOUT"
@@ -64,6 +68,7 @@ export interface QueryServiceDeps {
   config: AppConfig;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
+  drivers?: DriverRegistry;
 }
 
 /**
@@ -108,10 +113,27 @@ export async function runGuardedQuery(
   input: RunQueryInput,
 ): Promise<RunQueryResult> {
   const { db, config, pools, artifacts } = deps;
+  const drivers = deps.drivers ?? defaultDriverRegistry;
   const action = input.action ?? "query";
   // Read once so the guard, the executor and the returned SQL all agree, and
   // admin changes take effect on the next run without a restart.
   const limits = resolveQueryLimits(db, config);
+
+  const driver = drivers.get(input.datasource.type);
+  if (!driver) {
+    const reason = `未安装「${input.datasource.type}」数据源驱动插件`;
+    const auditId = recordAudit(db, {
+      runId: input.runId,
+      conversationId: input.conversationId,
+      userId: input.userId,
+      datasourceId: input.datasource.id,
+      action,
+      sqlText: input.sql,
+      status: "rejected",
+      errorMessage: reason,
+    });
+    return { ok: false, code: "DRIVER_NOT_INSTALLED", reason, auditId };
+  }
 
   const denied = authorizeDatasourceAccess(db, input.userId, input.datasource.id);
   if (denied) {
@@ -145,7 +167,7 @@ export async function runGuardedQuery(
 
   const guard = guardSql({
     sql: input.sql,
-    dialect: input.datasource.type,
+    dialect: driver.dialect,
     maxRows: limits.maxRows,
   });
 
@@ -165,6 +187,21 @@ export async function runGuardedQuery(
     return { ok: false, code: guard.code, reason: guard.reason, auditId };
   }
 
+  if (input.datasource.dataScopeMode === "enabled" && !driver.manifest.capabilities.rowScope) {
+    const reason = `数据源驱动「${driver.manifest.label}」暂不支持行级数据权限`;
+    const auditId = recordAudit(db, {
+      runId: input.runId,
+      conversationId: input.conversationId,
+      userId: input.userId,
+      datasourceId: input.datasource.id,
+      action,
+      sqlText: guard.sql,
+      status: "rejected",
+      errorMessage: reason,
+    });
+    return { ok: false, code: "SCOPE_UNSUPPORTED_BY_DRIVER", reason, auditId };
+  }
+
   // Department scope is resolved after the guard (so only safe statements reach the
   // AST rewrite) but before any connection or artifact is opened.
   let executableSql = guard.sql;
@@ -178,7 +215,7 @@ export async function runGuardedQuery(
       mode: input.datasource.dataScopeMode,
       userId: input.userId,
       sql: guard.sql,
-      dialect: input.datasource.type,
+      dialect: driver.dialect,
     });
     executableSql = scoped.sql;
     params = scoped.params.length > 0 ? scoped.params : undefined;
@@ -226,6 +263,13 @@ export async function runGuardedQuery(
   let finished = false;
 
   try {
+    const key = deriveSecretKey(config.appSecret);
+    const password = decryptSecret(input.datasource.passwordCipher, key);
+    const resolvedOpts = resolveDatasourceOptions(
+      driver.manifest.optionsSchema,
+      input.datasource.optionsJson,
+      key,
+    );
     const connection = {
       id: input.datasource.id,
       type: input.datasource.type,
@@ -233,17 +277,19 @@ export async function runGuardedQuery(
       port: input.datasource.port,
       database: input.datasource.database,
       username: input.datasource.username,
-      password: decryptSecret(
-        input.datasource.passwordCipher,
-        deriveSecretKey(config.appSecret),
-      ),
+      password,
       sslMode: input.datasource.sslMode,
+      options: resolvedOpts.options,
     };
     const handle = pools.get(connection);
+    const isBuiltinSql = input.datasource.type === "mysql" || input.datasource.type === "postgres";
     const result = await executeReadOnly(
       {
-        dialect: input.datasource.type,
-        pool: input.datasource.type === "mysql" ? handle.mysql! : handle.pg!,
+        dialect: isBuiltinSql ? (input.datasource.type as "mysql" | "postgres") : "driver",
+        dialectProfile: driver.dialect,
+        ...(isBuiltinSql
+          ? { pool: input.datasource.type === "mysql" ? handle.mysql! : handle.pg! }
+          : { driverPool: handle.custom, classifyError: driver.classifyError }),
         sql: executableSql,
         params,
         maxRows: limits.maxRows,
@@ -273,12 +319,13 @@ export async function runGuardedQuery(
         status: "ok",
         rowCount: result.rowCount,
         durationMs: Date.now() - started,
-        ...(appliedTables.length > 0
-          ? {
-              scopeReason: "SCOPED",
-              detail: { scopeTables: appliedTables },
-            }
-          : {}),
+        ...(appliedTables.length > 0 ? { scopeReason: "SCOPED" } : {}),
+        detail: {
+          artifactId: meta.id,
+          ...(appliedTables.length > 0
+            ? { scopeTables: appliedTables, originalSql: guard.sql }
+            : {}),
+        },
       });
     } catch {
       // Keep the successful result; only the audit row is lost.

@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import type { AdminSkillDetail, DatasourceSummary, SkillInput, SkillScope } from "../../lib/api";
+import {
+  datasourceTypeLabel,
+  type AdminSkillDetail,
+  type DatasourceSummary,
+  type SkillInput,
+  type SkillScope,
+} from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -200,8 +206,7 @@ export function SkillEditor({
                       </SelectItem>
                       {datasources.map((datasource) => (
                         <SelectItem key={datasource.id} value={datasource.id}>
-                          {datasource.name}（
-                          {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}）
+                          {datasource.name}（{datasourceTypeLabel(datasource)}）
                         </SelectItem>
                       ))}
                     </SelectContent>

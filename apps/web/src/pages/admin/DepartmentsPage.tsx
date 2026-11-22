@@ -25,6 +25,7 @@ import {
 import { PageSpinner } from "../../components/ui/spinner";
 import {
   createDepartment,
+  datasourceTypeLabel,
   deleteDepartment,
   fetchMe,
   getDepartmentGrants,
@@ -300,7 +301,7 @@ export default function DepartmentsPage() {
                             >
                               <span>{datasource.name}</span>
                               <span className="text-[10px] text-muted">
-                                {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}
+                                {datasourceTypeLabel(datasource)}
                               </span>
                             </li>
                           ))}

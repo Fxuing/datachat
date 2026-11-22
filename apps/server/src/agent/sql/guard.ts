@@ -1,6 +1,8 @@
 import sqlParser from "node-sql-parser";
+import type { DialectProfile } from "@datachat/datasource-sdk";
 
 export type SqlDialect = "mysql" | "postgres" | "sqlite";
+export type GuardDialect = SqlDialect | DialectProfile;
 export type GuardErrorCode =
   | "EMPTY"
   | "PARSE_ERROR"
@@ -45,12 +47,40 @@ const MAX_OFFSET = 100_000;
 
 export interface GuardInput {
   sql: string;
-  dialect: SqlDialect;
+  dialect: GuardDialect;
   maxRows: number;
   maxTables?: number;
 }
 
+function resolveGuardDialect(dialect: GuardDialect): {
+  parserDatabase: string;
+  isSqlite: boolean;
+  extraFunctions: Set<string>;
+  extraSchemas: Set<string>;
+} {
+  if (typeof dialect === "string") {
+    return {
+      parserDatabase:
+        dialect === "mysql" ? "mysql" : dialect === "sqlite" ? "sqlite" : "postgresql",
+      isSqlite: dialect === "sqlite",
+      extraFunctions: new Set(),
+      extraSchemas: new Set(),
+    };
+  }
+  return {
+    parserDatabase: dialect.parserDialect,
+    isSqlite: dialect.parserDialect === "sqlite",
+    extraFunctions: new Set(
+      (dialect.extraForbiddenFunctions ?? []).map((fn) => fn.trim().toLowerCase()).filter(Boolean),
+    ),
+    extraSchemas: new Set(
+      (dialect.extraSystemSchemas ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean),
+    ),
+  };
+}
+
 export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput): GuardResult {
+  const resolved = resolveGuardDialect(dialect);
   const trimmed = sql.trim().replace(/(?:\s*;)+$/, "").trim();
   if (!trimmed) return { ok: false, code: "EMPTY", reason: "SQL 为空" };
   if (trimmed.length > MAX_SQL_LENGTH) {
@@ -68,7 +98,7 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
 
   let explainPrefix = "";
   let parseSql = trimmed;
-  if (dialect === "sqlite") {
+  if (resolved.isSqlite) {
     const explainMatch = trimmed.match(/^explain\s+(?:(query\s+plan)\s+)?([\s\S]+)$/i);
     if (explainMatch) {
       explainPrefix = explainMatch[1] ? "EXPLAIN QUERY PLAN " : "EXPLAIN ";
@@ -81,9 +111,7 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
 
   let ast: unknown;
   try {
-    const database =
-      dialect === "mysql" ? "mysql" : dialect === "sqlite" ? "sqlite" : "postgresql";
-    ast = parser.astify(parseSql, { database });
+    ast = parser.astify(parseSql, { database: resolved.parserDatabase });
   } catch (error) {
     return {
       ok: false,
@@ -121,8 +149,8 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
       return;
     }
     if (type === "function") {
-      const name = functionName(node);
-      if (name && FORBIDDEN_FUNCTIONS.has(name)) {
+      const name = functionName(node, resolved.extraFunctions);
+      if (name) {
         violation = `禁止调用函数：${name}`;
         return;
       }
@@ -153,20 +181,20 @@ export function guardSql({ sql, dialect, maxRows, maxTables = 20 }: GuardInput):
         tableCount += 1;
         const schema = (entry as Record<string, unknown>).db;
         if (typeof schema === "string" && schema !== "") {
-          if (dialect === "sqlite" && schema.toLowerCase() !== "main") {
+          if (resolved.isSqlite && schema.toLowerCase() !== "main") {
             violation = `禁止访问外部库：${schema}`;
             return;
           }
-          if (isSystemSchema(schema)) {
+          if (isSystemSchema(schema) || resolved.extraSchemas.has(schema.toLowerCase())) {
             violation = `禁止访问系统库：${schema}`;
             return;
           }
         }
         // `pg_stat_activity` lives in pg_catalog implicitly and `sqlite_master` lives in `main`,
         // so check table names regardless of whether `main.`/`empty` qualifier was used.
-        if (typeof schema !== "string" || schema === "" || (dialect === "sqlite" && schema.toLowerCase() === "main")) {
+        if (typeof schema !== "string" || schema === "" || (resolved.isSqlite && schema.toLowerCase() === "main")) {
           const bare = table.includes(".") ? table.split(".")[0]! : table;
-          if (isImplicitSystemName(bare)) {
+          if (isImplicitSystemName(bare) || resolved.extraSchemas.has(bare.toLowerCase())) {
             violation = `禁止访问系统表：${table}`;
             return;
           }
@@ -243,14 +271,14 @@ function walk(value: unknown, visit: (node: Record<string, unknown>) => void, se
   for (const child of Object.values(node)) walk(child, visit, seen);
 }
 
-function functionName(node: Record<string, unknown>): string | null {
+function functionName(node: Record<string, unknown>, extraForbidden: ReadonlySet<string>): string | null {
   const name = node.name as { name?: Array<{ value?: unknown }> } | undefined;
   const parts = name?.name;
   if (!Array.isArray(parts)) return null;
   for (const part of parts) {
     if (typeof part?.value === "string") {
       const normalized = part.value.toLowerCase();
-      if (FORBIDDEN_FUNCTIONS.has(normalized)) return normalized;
+      if (FORBIDDEN_FUNCTIONS.has(normalized) || extraForbidden.has(normalized)) return normalized;
     }
   }
   return null;

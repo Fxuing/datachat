@@ -39,7 +39,9 @@ export interface ConversationResourcesInput {
   /** Receives the memories injected into a turn, for the run's trace. */
   onMemoryUsed?: (items: MemoryUsageItem[]) => void;
   datasourceName: string;
-  datasourceType: "mysql" | "postgres" | "sqlite";
+  datasourceType: string;
+  datasourceTypeLabel?: string;
+  dialectGuidance?: string;
   database: string;
 }
 
@@ -164,6 +166,8 @@ export async function createConversationResources(
     systemPrompt: renderSystemPrompt({
       datasourceName: input.datasourceName,
       datasourceType: input.datasourceType,
+      ...(input.datasourceTypeLabel ? { datasourceTypeLabel: input.datasourceTypeLabel } : {}),
+      ...(input.dialectGuidance ? { dialectGuidance: input.dialectGuidance } : {}),
       database: input.database,
     }),
     ...(extensionFactories.length > 0 ? { extensionFactories } : {}),

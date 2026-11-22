@@ -26,6 +26,8 @@ export const queryKeys = {
   artifact: (id: string) => ["artifact", id] as const,
   artifactRows: (id: string) => ["artifactRows", id] as const,
   datasources: ["datasources"] as const,
+  datasourceDrivers: ["datasource-drivers"] as const,
+  adminDatasourcePlugins: ["admin-datasource-plugins"] as const,
   datasourceSchema: (id: string, search: string) => ["datasourceSchema", id, search] as const,
   datasourceSchemaAll: (id: string) => ["datasourceSchema", id] as const,
   datasourceGrants: (id: string) => ["datasourceGrants", id] as const,

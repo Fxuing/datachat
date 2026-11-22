@@ -284,6 +284,7 @@ export function updateOwnedDashboardCard(
     title?: string;
     width?: 1 | 2;
     position?: number;
+    sqlText?: string;
     specJson?: string;
     points?: number;
     lastRefreshedAt?: number | null;
@@ -297,6 +298,7 @@ export function updateOwnedDashboardCard(
   if (patch.title !== undefined) values.title = patch.title;
   if (patch.width !== undefined) values.width = patch.width;
   if (patch.position !== undefined) values.position = patch.position;
+  if (patch.sqlText !== undefined) values.sqlText = patch.sqlText;
   if (patch.specJson !== undefined) values.specJson = patch.specJson;
   if (patch.points !== undefined) values.points = patch.points;
   if (patch.lastRefreshedAt !== undefined) values.lastRefreshedAt = patch.lastRefreshedAt;

@@ -23,7 +23,7 @@ import {
   rewriteSqlForScope,
   type ScopePlan,
   type ScopeTable,
-  type SqlDialect,
+  type ScopeDialect,
 } from "../agent/sql/scope.js";
 import { findUserById } from "../db/repositories/users.js";
 
@@ -353,7 +353,7 @@ export function applyScopeToSql(input: {
   mode: DataScopeMode;
   userId: string;
   sql: string;
-  dialect: SqlDialect;
+  dialect: ScopeDialect;
 }): AppliedScope {
   if (input.mode !== "enabled") {
     const policyHash = datasourcePolicyHashFrom(input.db, input.datasourceId);

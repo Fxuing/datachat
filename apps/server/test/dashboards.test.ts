@@ -10,10 +10,12 @@ import { encryptSecret, deriveSecretKey } from "../src/agent/datasource/crypto.j
 import type { PoolRegistry } from "../src/agent/datasource/pool.js";
 import { createDb, type Db } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
+import { eq } from "drizzle-orm";
 import { createConversation } from "../src/db/repositories/conversations.js";
 import { insertDatasource } from "../src/db/repositories/datasources.js";
 import { replaceGrants } from "../src/db/repositories/grants.js";
 import { insertUser } from "../src/db/repositories/users.js";
+import { dashboardCards, runEvents } from "../src/db/schema.js";
 import { ArtifactStore } from "../src/services/artifacts.js";
 import { recordAudit } from "../src/services/audit.js";
 import { testConfig } from "./helpers/config.js";
@@ -29,6 +31,8 @@ let ownerId: string;
 let datasourceId: string;
 let conversationId: string;
 let fakeRows: Array<[string, number]>;
+let lastExecutedSql = "";
+let fakeFields: Array<{ name: string }> = [{ name: "region" }, { name: "total" }];
 
 beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "datachat-dashboards-test-"));
@@ -87,11 +91,16 @@ beforeEach(async () => {
     ["华东", 500],
     ["华北", 800],
   ];
+  fakeFields = [{ name: "region" }, { name: "total" }];
+  lastExecutedSql = "";
   const fakeMysqlPool = {
     async getConnection() {
       return {
         query(input: unknown) {
           if (typeof input === "string") return Promise.resolve([{}, []]);
+          if (input && typeof input === "object" && "sql" in input) {
+            lastExecutedSql = String((input as { sql: unknown }).sql);
+          }
           const listeners = new Map<string, (value: unknown) => void>();
           return {
             on(event: string, listener: (value: unknown) => void) {
@@ -99,7 +108,7 @@ beforeEach(async () => {
               return this;
             },
             stream() {
-              listeners.get("fields")?.([{ name: "region" }, { name: "total" }]);
+              listeners.get("fields")?.(fakeFields);
               return (async function* rows() {
                 for (const row of fakeRows) {
                   yield row;
@@ -249,5 +258,143 @@ describe("dashboards api", () => {
       cookies: { dc_session: ownerCookie },
     });
     expect(delDash.statusCode).toBe(204);
+  });
+
+  it("matches the exact query for a chart in a multi-query run and self-heals stale pinned SQL", async () => {
+    const createDash = await app.inject({
+      method: "POST",
+      url: "/api/dashboards",
+      cookies: { dc_session: ownerCookie },
+      payload: { name: "多查询看板" },
+    });
+    const dashboardId = (createDash.json() as { dashboard: { id: string } }).dashboard.id;
+
+    const runId = randomUUID();
+    const monthlySql = "SELECT ym, gmv FROM monthly_orders LIMIT 100";
+    const dailySql = "SELECT d, paid_orders, gmv FROM daily_orders LIMIT 100";
+
+    const writerMonthly = store.openResult({ userId: ownerId, conversationId, runId });
+    await writerMonthly.write(["2026-01", 1000]);
+    const monthlyResult = await writerMonthly.finish({
+      columns: [
+        { name: "ym", type: "string" },
+        { name: "gmv", type: "number" },
+      ],
+      rowCount: 1,
+      truncated: false,
+    });
+
+    const writerDaily = store.openResult({ userId: ownerId, conversationId, runId });
+    await writerDaily.write(["2026-01-01", 10, 500]);
+    const dailyResult = await writerDaily.finish({
+      columns: [
+        { name: "d", type: "string" },
+        { name: "paid_orders", type: "number" },
+        { name: "gmv", type: "number" },
+      ],
+      rowCount: 1,
+      truncated: false,
+    });
+
+    // Record legacy-style audit rows (no detail.artifactId) with dailySql LAST, plus run_events result events.
+    recordAudit(db, {
+      runId,
+      conversationId,
+      userId: ownerId,
+      datasourceId,
+      action: "query",
+      sqlText: monthlySql,
+      status: "ok",
+      rowCount: 1,
+    });
+    recordAudit(db, {
+      runId,
+      conversationId,
+      userId: ownerId,
+      datasourceId,
+      action: "query",
+      sqlText: dailySql,
+      status: "ok",
+      rowCount: 1,
+    });
+
+    const now = Date.now();
+    db.insert(runEvents)
+      .values([
+        {
+          id: randomUUID(),
+          runId,
+          conversationId,
+          seq: 1,
+          type: "result",
+          payloadJson: JSON.stringify({ artifactId: monthlyResult.id, sql: monthlySql }),
+          createdAt: now,
+        },
+        {
+          id: randomUUID(),
+          runId,
+          conversationId,
+          seq: 2,
+          type: "result",
+          payloadJson: JSON.stringify({ artifactId: dailyResult.id, sql: dailySql }),
+          createdAt: now + 1,
+        },
+      ])
+      .run();
+
+    const monthlyChart = store.createChart({
+      conversationId,
+      userId: ownerId,
+      runId,
+      columns: [
+        { name: "ym", type: "string" },
+        { name: "gmv", type: "number" },
+      ],
+      rowCount: 1,
+      spec: {
+        sourceArtifactId: monthlyResult.id,
+        chart: { type: "bar", x: "ym", y: "gmv", title: "月度 GMV" },
+        option: {
+          xAxis: { type: "category", data: ["2026-01"] },
+          yAxis: { type: "value" },
+          series: [{ type: "bar", data: [1000] }],
+        },
+      },
+    });
+
+    const pinRes = await app.inject({
+      method: "POST",
+      url: `/api/dashboards/${dashboardId}/cards/from-artifact`,
+      cookies: { dc_session: ownerCookie },
+      payload: { artifactId: monthlyChart.id },
+    });
+    expect(pinRes.statusCode).toBe(201);
+    const cardId = (pinRes.json() as { card: { id: string } }).card.id;
+
+    // Simulate a card pinned BEFORE this fix that mistakenly stored dailySql.
+    db.update(dashboardCards)
+      .set({ sqlText: dailySql })
+      .where(eq(dashboardCards.id, cardId))
+      .run();
+
+    fakeFields = [{ name: "ym" }, { name: "gmv" }];
+    fakeRows = [
+      ["2026-01", 1200],
+      ["2026-02", 1500],
+    ];
+
+    const refreshRes = await app.inject({
+      method: "POST",
+      url: `/api/dashboards/${dashboardId}/cards/${cardId}/refresh`,
+      cookies: { dc_session: ownerCookie },
+    });
+    expect(refreshRes.statusCode).toBe(200);
+    expect(lastExecutedSql).toContain("monthly_orders");
+    const saved = db
+      .select({ sqlText: dashboardCards.sqlText })
+      .from(dashboardCards)
+      .where(eq(dashboardCards.id, cardId))
+      .get();
+    expect(saved?.sqlText).toBe(monthlySql);
   });
 });

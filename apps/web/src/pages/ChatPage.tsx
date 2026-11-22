@@ -23,6 +23,7 @@ import {
   createConversationFromDataset,
   createFileConversation,
   createReport,
+  datasourceTypeLabel,
   deleteConversation,
   deleteFileDataset,
   fetchMe,
@@ -748,7 +749,7 @@ export default function ChatPage() {
     const sourceLabel = isFileConversation
       ? `Excel / CSV（${conversationTables.length} 张表）`
       : datasource
-        ? `${datasource.name} · ${datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}`
+        ? `${datasource.name} · ${datasourceTypeLabel(datasource)}`
         : null;
     const markdown = buildConversationMarkdown({
       title,
@@ -785,7 +786,7 @@ export default function ChatPage() {
           </button>
         ) : datasource ? (
           <span className="hidden shrink-0 rounded bg-subtle px-1.5 py-0.5 text-[11px] text-muted sm:inline">
-            {datasource.name} · {datasource.type === "mysql" ? "MySQL" : "PostgreSQL"}
+            {datasource.name} · {datasourceTypeLabel(datasource)}
           </span>
         ) : null}
         {!isFileConversation && (meQuery.data?.departmentNames ?? []).length > 0 ? (

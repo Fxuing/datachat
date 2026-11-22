@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db/client.js";
 import type { PoolRegistry } from "../agent/datasource/pool.js";
+import type { DriverRegistry } from "../drivers/registry.js";
 import type { ArtifactStore } from "../services/artifacts.js";
 import {
   deleteOwnedDashboard,
@@ -28,6 +29,7 @@ export interface DashboardRouteOptions {
   db: Db;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
+  drivers?: DriverRegistry;
 }
 
 const idParamsSchema = z.object({ id: z.string().uuid() });

@@ -100,6 +100,34 @@ function stubApi(override?: Override) {
     if (custom) return custom;
 
     if (url === "/api/auth/me") return jsonResponse({ user: admin, permissions: [], roles: [] });
+    if (url === "/api/datasources/drivers" && method === "GET") {
+      return jsonResponse({
+        drivers: [
+          {
+            sdkVersion: 1,
+            id: "mysql",
+            label: "MySQL",
+            connectionMode: "network",
+            defaultPort: 3306,
+            supportsSsl: true,
+            optionsSchema: [],
+            capabilities: { explain: true, readOnlyProbe: true, rowScope: true },
+            builtin: true,
+          },
+          {
+            sdkVersion: 1,
+            id: "postgres",
+            label: "PostgreSQL",
+            connectionMode: "network",
+            defaultPort: 5432,
+            supportsSsl: true,
+            optionsSchema: [],
+            capabilities: { explain: true, readOnlyProbe: true, rowScope: true },
+            builtin: true,
+          },
+        ],
+      });
+    }
     if (url === "/api/datasources" && method === "GET") {
       return jsonResponse({ datasources: [healthy, broken] });
     }
@@ -404,5 +432,231 @@ describe("DatasourcesPage", () => {
     await browser.click(within(drawer).getByRole("button", { name: "展开表 public.orders" }));
     expect(within(drawer).getByText("user_id")).toBeInTheDocument();
     expect(within(drawer).getAllByText("主键").length).toBeGreaterThan(0);
+  });
+
+  it("renders dynamic plugin driver options, submits options, and marks uninstalled drivers", async () => {
+    const fetchMock = stubApi((url, method) => {
+      if (url === "/api/datasources/drivers" && method === "GET") {
+        return jsonResponse({
+          drivers: [
+            {
+              sdkVersion: 1,
+              id: "mysql",
+              label: "MySQL",
+              connectionMode: "network",
+              defaultPort: 3306,
+              supportsSsl: true,
+              optionsSchema: [],
+              capabilities: { explain: true, readOnlyProbe: true, rowScope: true },
+              builtin: true,
+            },
+            {
+              sdkVersion: 1,
+              id: "clickhouse",
+              label: "ClickHouse",
+              connectionMode: "network",
+              defaultPort: 8123,
+              supportsSsl: true,
+              optionsSchema: [
+                {
+                  key: "protocol",
+                  label: "传输协议",
+                  type: "select",
+                  defaultValue: "http",
+                  options: [
+                    { value: "http", label: "HTTP" },
+                    { value: "https", label: "HTTPS" },
+                  ],
+                },
+                {
+                  key: "apiToken",
+                  label: "访问令牌",
+                  type: "text",
+                  secret: true,
+                  required: true,
+                },
+              ],
+              capabilities: { explain: false, readOnlyProbe: false, rowScope: false },
+              builtin: false,
+            },
+          ],
+        });
+      }
+      if (url === "/api/datasources" && method === "GET") {
+        return jsonResponse({
+          datasources: [
+            healthy,
+            {
+              ...broken,
+              id: "ds-missing",
+              name: "legacy-oracle",
+              type: "oracle",
+              driverLabel: "oracle",
+              driverAvailable: false,
+            },
+          ],
+        });
+      }
+      return undefined;
+    });
+
+    const browser = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText("驱动未安装")).toBeInTheDocument();
+    const missingRow = screen.getByText("legacy-oracle").closest("tr")!;
+    expect(within(missingRow).getByRole("button", { name: "测试连接" })).toBeDisabled();
+
+    await browser.click(screen.getByRole("button", { name: "新建数据源" }));
+    const dialog = await screen.findByRole("dialog", { name: "新建数据源" });
+
+    await pickSelectOption(browser, within(dialog).getByLabelText("类型"), "ClickHouse（插件）");
+
+    expect(within(dialog).getByLabelText("端口")).toHaveValue(8123);
+    expect(within(dialog).getByText("ClickHouse 扩展参数")).toBeInTheDocument();
+
+    await browser.type(within(dialog).getByLabelText("名称"), "埋点分析库");
+    await browser.type(within(dialog).getByLabelText("主机"), "ck.internal");
+    await browser.type(within(dialog).getByLabelText("数据库"), "analytics");
+    await browser.type(within(dialog).getByLabelText("用户名"), "ro");
+    await browser.type(within(dialog).getByLabelText("密码"), "secret-pw");
+
+    // Missing required secret option blocks submit.
+    await browser.click(within(dialog).getByRole("button", { name: "保存" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("请填写「访问令牌」。");
+
+    await pickSelectOption(browser, within(dialog).getByLabelText("传输协议"), "HTTPS");
+    await browser.type(within(dialog).getByLabelText(/访问令牌/), "tok-123");
+    await browser.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      const body = requestBody(fetchMock, "/api/datasources", "POST") as {
+        type: string;
+        port: number;
+        options?: Record<string, unknown>;
+      };
+      expect(body.type).toBe("clickhouse");
+      expect(body.port).toBe(8123);
+      expect(body.options).toEqual({ protocol: "https", apiToken: "tok-123" });
+    });
+  });
+
+  it("manages offline datasource plugins in the plugins drawer (upload, toggle, uninstall)", async () => {
+    let uploaded: {
+      id: string;
+      label: string;
+      source: "upload";
+      builtin: false;
+      enabled: boolean;
+      loaded: boolean;
+      version: string;
+      fileName: string;
+      sha256: string;
+      sizeBytes: number;
+      defaultPort: number;
+      supportsSsl: boolean;
+      capabilities: { explain: boolean; readOnlyProbe: boolean; rowScope: boolean };
+      optionsSchema: [];
+      datasourceCount: number;
+      uploadedAt: number;
+      updatedAt: number;
+    } | null = null;
+
+    const fetchMock = stubApi((url, method) => {
+      if (url === "/api/admin/datasource-plugins" && method === "GET") {
+        return jsonResponse({
+          allowUpload: true,
+          drivers: [
+            {
+              id: "mysql",
+              label: "MySQL",
+              source: "builtin",
+              builtin: true,
+              enabled: true,
+              loaded: true,
+              version: null,
+              fileName: null,
+              sha256: null,
+              sizeBytes: null,
+              defaultPort: 3306,
+              supportsSsl: true,
+              capabilities: { explain: true, readOnlyProbe: true, rowScope: true },
+              optionsSchema: [],
+              datasourceCount: 1,
+              uploadedAt: null,
+              updatedAt: null,
+            },
+            ...(uploaded ? [uploaded] : []),
+          ],
+        });
+      }
+      if (url === "/api/admin/datasource-plugins/upload" && method === "POST") {
+        uploaded = {
+          id: "clickhouse",
+          label: "ClickHouse",
+          source: "upload",
+          builtin: false,
+          enabled: true,
+          loaded: true,
+          version: "1.0.0",
+          fileName: "clickhouse.mjs",
+          sha256: "abcdef1234567890",
+          sizeBytes: 2048,
+          defaultPort: 8123,
+          supportsSsl: true,
+          capabilities: { explain: false, readOnlyProbe: false, rowScope: false },
+          optionsSchema: [],
+          datasourceCount: 0,
+          uploadedAt: 1_760_000_000_000,
+          updatedAt: 1_760_000_000_000,
+        };
+        return jsonResponse({ plugin: uploaded, replaced: false }, 201);
+      }
+      if (url === "/api/admin/datasource-plugins/clickhouse" && method === "PATCH") {
+        uploaded = { ...uploaded!, enabled: false, loaded: false };
+        return jsonResponse({ plugin: uploaded });
+      }
+      if (url === "/api/admin/datasource-plugins/clickhouse" && method === "DELETE") {
+        uploaded = null;
+        return jsonResponse({ ok: true });
+      }
+      return undefined;
+    });
+
+    const browser = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("analytics");
+    await browser.click(screen.getByRole("button", { name: "驱动插件" }));
+    const drawer = await screen.findByRole("dialog", { name: "数据源驱动插件" });
+    expect(await within(drawer).findByText("内置")).toBeInTheDocument();
+
+    const fileInput = drawer.querySelector(
+      "#datasource-plugin-upload-input",
+    ) as HTMLInputElement;
+    const file = new File(["export default {}"], "clickhouse.mjs", {
+      type: "text/javascript",
+    });
+    await browser.upload(fileInput, file);
+
+    expect(await within(drawer).findByText(/驱动「ClickHouse」已上传并热加载/)).toBeInTheDocument();
+    expect(await within(drawer).findByText("离线上传")).toBeInTheDocument();
+
+    await browser.click(within(drawer).getByRole("button", { name: "停用" }));
+    expect(await within(drawer).findByText(/驱动「ClickHouse」已停用/)).toBeInTheDocument();
+
+    await browser.click(within(drawer).getByRole("button", { name: "卸载" }));
+    const confirm = await screen.findByRole("dialog", { name: "卸载驱动插件" });
+    await browser.click(within(confirm).getByRole("button", { name: "确认卸载" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([u, init]) =>
+            String(u) === "/api/admin/datasource-plugins/clickhouse" &&
+            init?.method === "DELETE",
+        ),
+      ).toBe(true);
+    });
   });
 });
