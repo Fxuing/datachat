@@ -74,13 +74,39 @@
 
 ## 快速开始
 
-### 1. 一键 Demo 沙箱（含只读 PostgreSQL 示例库 + 语义层 + 示例看板）
+### 1. Docker 预构建镜像极速启动（推荐，无需克隆源码）
+
+已发布 `linux/amd64` 与 `linux/arm64` 多架构官方镜像，直接拉取即可运行：
+
+| 镜像源 | Server 镜像 | Web 镜像 |
+| --- | --- | --- |
+| **Docker Hub（默认）** | `fxuing/datachat-server:latest` | `fxuing/datachat-web:latest` |
+| **GitHub Container Registry** | `ghcr.io/fxuing/datachat-server:latest` | `ghcr.io/fxuing/datachat-web:latest` |
+
+```bash
+mkdir datachat && cd datachat
+curl -fsSLO https://raw.githubusercontent.com/Fxuing/datachat/main/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Fxuing/datachat/main/deploy/env.example -o .env
+
+# 1. 编辑 .env：填写 APP_SECRET（>=32 字符，可用 openssl rand -hex 32 生成）和 ADMIN_PASSWORD（>=8 字符）
+#    如需改用 GHCR，将 IMAGE_PREFIX 改为 ghcr.io/fxuing/
+# 2. 启动服务（默认映射 http://localhost:5173）
+docker compose up -d
+```
+
+打开浏览器访问 `http://localhost:5173`，使用 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录；如需升级版本，执行 `docker compose pull && docker compose up -d` 即可（数据持久化在 `datachat-data` 卷中）。
+
+完整环境变量、离线镜像导入、备份恢复及从源码构建（`docker compose up -d --build`）请参考 [部署、配置与运维指南](docs/operations.md)。
+
+### 2. 一键 Demo 沙箱（含只读 PostgreSQL 示例库 + 语义层 + 示例看板）
 
 适合 1 分钟快速体验完整流程（仅限本地评估使用）：
 
 ```bash
-# 启动 Demo PostgreSQL + DataChat 服务端与前端
-docker compose -f docker-compose.demo.yml up -d --build
+git clone https://github.com/Fxuing/datachat.git && cd datachat
+
+# 启动 Demo PostgreSQL + DataChat 服务端与前端（默认直接拉取预构建镜像；改过源码可加 --build）
+docker compose -f docker-compose.demo.yml up -d
 
 # 注入示例数据源、3 条业务指标、3 条表关联和 1 个可刷新示例看板
 docker compose -f docker-compose.demo.yml exec server node apps/server/dist/cli/seed-demo.js
@@ -89,21 +115,6 @@ docker compose -f docker-compose.demo.yml exec server node apps/server/dist/cli/
 打开 `http://localhost:5173`，使用默认 Demo 账号 `admin` / `datachat-demo` 登录：
 - 可直接进入 **「数据看板」** 点击卡片右上角 **「刷新」** 验证实时只读 SQL 重跑；
 - 在 **「设置 → 模型服务」** 填入任意 OpenAI 兼容或 Anthropic API Key 后，即可对「电商示例库（Demo）」直接对话提问。
-
-### 2. Docker Compose 生产部署（支持预构建镜像或本地构建）
-
-```bash
-cp deploy/env.example .env
-# 编辑 .env，必填 APP_SECRET（>=32 字符）、ADMIN_PASSWORD（>=8 字符）及 APP_ORIGIN
-
-# 方式 A：直接拉取预构建镜像（在 .env 设置 IMAGE_PREFIX=ghcr.io/fxuing/ 或你的 Docker Hub 前缀）
-docker compose pull && docker compose up -d
-
-# 方式 B：从源码本地构建
-docker compose up -d --build
-```
-
-完整环境变量、GHCR / Docker Hub 自动发版、离线镜像导入与备份恢复请参考 [部署、配置与运维指南](docs/operations.md)。
 
 ### 3. 本地开发
 
