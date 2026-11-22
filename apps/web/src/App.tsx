@@ -28,8 +28,6 @@ const SettingsPage = lazy(() => import("./pages/admin/SettingsPage"));
 const OpsPage = lazy(() => import("./pages/admin/OpsPage"));
 const ScheduledTasksPage = lazy(() => import("./pages/ScheduledTasksPage"));
 const MemoryPage = lazy(() => import("./pages/MemoryPage"));
-// Prototype-only page for evaluating the Trace call chain; never shipped.
-const DevTracePage = import.meta.env.DEV ? lazy(() => import("./pages/DevTracePage")) : null;
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const meQuery = useQuery({
@@ -202,7 +200,6 @@ function AppRoutes() {
             </RequireAdmin>
           }
         />
-        {DevTracePage ? <Route path="/dev/trace" element={<DevTracePage />} /> : null}
         <Route path="/" element={<Navigate to="/chat" replace />} />
         <Route path="*" element={<Navigate to="/chat" replace />} />
       </Routes>
