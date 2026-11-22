@@ -12,6 +12,7 @@ import {
   LineChart,
   Maximize2,
   PieChart,
+  Pin,
   ScatterChart,
   Table2,
   X,
@@ -198,6 +199,8 @@ export interface ChartCardProps {
   /** Number of plotted points, shown as metadata when provided. */
   points?: number;
   className?: string;
+  /** Optional handler to pin this chart to a user dashboard. */
+  onPin?: () => void;
 }
 
 /** Extract the ECharts option from a persisted chart spec (`{option, chart}`). */
@@ -228,7 +231,7 @@ function pngFileName(title: string): string {
   return `${safe || "chart"}.png`;
 }
 
-export function ChartCard({ title, option, points, className }: ChartCardProps) {
+export function ChartCard({ title, option, points, className, onPin }: ChartCardProps) {
   const inlineRef = useRef<EChartsType | null>(null);
   const fullscreenRef = useRef<EChartsType | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -375,6 +378,23 @@ export function ChartCard({ title, option, points, className }: ChartCardProps) 
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {renderModeControls()}
+          {onPin ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label="固定到看板"
+                  onClick={onPin}
+                >
+                  <Pin className="h-3.5 w-3.5" />
+                  固定
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">固定到数据看板</TooltipContent>
+            </Tooltip>
+          ) : null}
           {activeMode !== "table" ? (
             <Button
               variant="ghost"

@@ -792,6 +792,255 @@ export function answerQuestion(
   );
 }
 
+export interface SemanticMetric {
+  id: string;
+  datasourceId: string;
+  name: string;
+  synonyms: string[];
+  description: string | null;
+  sqlExpression: string;
+  tableName: string | null;
+  defaultFilters: string[];
+  timeColumn: string | null;
+  unit: string | null;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type SemanticJoinType = "inner" | "left" | "right";
+
+export interface SemanticRelation {
+  id: string;
+  datasourceId: string;
+  leftTable: string;
+  leftColumn: string;
+  rightTable: string;
+  rightColumn: string;
+  joinType: SemanticJoinType;
+  description: string | null;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SemanticSchemaTableOption {
+  name: string;
+  comment: string | null;
+  columns: string[];
+}
+
+export interface SemanticLayerResponse {
+  datasource: { id: string; name: string; type: "mysql" | "postgres" };
+  metrics: SemanticMetric[];
+  relations: SemanticRelation[];
+  tables: SemanticSchemaTableOption[];
+}
+
+export interface SemanticMetricInput {
+  name: string;
+  synonyms?: string[];
+  description?: string | null;
+  sqlExpression: string;
+  tableName?: string | null;
+  defaultFilters?: string[];
+  timeColumn?: string | null;
+  unit?: string | null;
+  enabled?: boolean;
+}
+
+export interface SemanticRelationInput {
+  leftTable: string;
+  leftColumn: string;
+  rightTable: string;
+  rightColumn: string;
+  joinType?: SemanticJoinType;
+  description?: string | null;
+  enabled?: boolean;
+}
+
+export function getSemanticLayer(datasourceId: string): Promise<SemanticLayerResponse> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic`);
+}
+
+export function createSemanticMetric(
+  datasourceId: string,
+  input: SemanticMetricInput,
+): Promise<{ metric: SemanticMetric }> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/metrics`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateSemanticMetric(
+  datasourceId: string,
+  id: string,
+  input: Partial<SemanticMetricInput>,
+): Promise<{ metric: SemanticMetric }> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/metrics/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteSemanticMetric(datasourceId: string, id: string): Promise<void> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/metrics/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function createSemanticRelation(
+  datasourceId: string,
+  input: SemanticRelationInput,
+): Promise<{ relation: SemanticRelation }> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/relations`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateSemanticRelation(
+  datasourceId: string,
+  id: string,
+  input: Partial<SemanticRelationInput>,
+): Promise<{ relation: SemanticRelation }> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/relations/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteSemanticRelation(datasourceId: string, id: string): Promise<void> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/relations/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function previewSemanticRecall(
+  datasourceId: string,
+  query: string,
+): Promise<{ text: string; metricIds: string[]; relationIds: string[] }> {
+  return apiRequest(`/api/admin/datasources/${datasourceId}/semantic/preview`, {
+    method: "POST",
+    body: JSON.stringify({ query }),
+  });
+}
+
+export interface DashboardSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  cardCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DashboardCard {
+  id: string;
+  dashboardId: string;
+  title: string;
+  sourceConversationId: string | null;
+  sourceArtifactId: string | null;
+  datasourceId: string | null;
+  datasourceName: string | null;
+  refreshable: boolean;
+  spec: unknown;
+  points: number;
+  width: 1 | 2;
+  position: number;
+  lastRefreshedAt: number | null;
+  lastError: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DashboardDetail extends DashboardSummary {
+  cards: DashboardCard[];
+}
+
+export function listDashboards(): Promise<{ dashboards: DashboardSummary[] }> {
+  return apiRequest("/api/dashboards");
+}
+
+export function createDashboard(input: {
+  name: string;
+  description?: string | null;
+}): Promise<{ dashboard: DashboardSummary }> {
+  return apiRequest("/api/dashboards", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getDashboard(id: string): Promise<{ dashboard: DashboardDetail }> {
+  return apiRequest(`/api/dashboards/${id}`);
+}
+
+export function updateDashboard(
+  id: string,
+  input: { name?: string; description?: string | null },
+): Promise<{ dashboard: DashboardDetail }> {
+  return apiRequest(`/api/dashboards/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteDashboard(id: string): Promise<void> {
+  return apiRequest(`/api/dashboards/${id}`, { method: "DELETE" });
+}
+
+export function pinChartToDashboard(
+  dashboardId: string,
+  input: { artifactId: string; title?: string; width?: 1 | 2 },
+): Promise<{ card: DashboardCard }> {
+  return apiRequest(`/api/dashboards/${dashboardId}/cards/from-artifact`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateDashboardCard(
+  dashboardId: string,
+  cardId: string,
+  input: { title?: string; width?: 1 | 2 },
+): Promise<{ card: DashboardCard }> {
+  return apiRequest(`/api/dashboards/${dashboardId}/cards/${cardId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function reorderDashboardCards(
+  dashboardId: string,
+  cardIds: string[],
+): Promise<{ cards: DashboardCard[] }> {
+  return apiRequest(`/api/dashboards/${dashboardId}/cards/reorder`, {
+    method: "PATCH",
+    body: JSON.stringify({ cardIds }),
+  });
+}
+
+export function deleteDashboardCard(dashboardId: string, cardId: string): Promise<void> {
+  return apiRequest(`/api/dashboards/${dashboardId}/cards/${cardId}`, { method: "DELETE" });
+}
+
+export function refreshDashboardCard(
+  dashboardId: string,
+  cardId: string,
+): Promise<{ card: DashboardCard }> {
+  return apiRequest(`/api/dashboards/${dashboardId}/cards/${cardId}/refresh`, {
+    method: "POST",
+  });
+}
+
+export function refreshAllDashboardCards(
+  dashboardId: string,
+): Promise<{ refreshed: number; failed: number; skipped: number; cards: DashboardCard[] }> {
+  return apiRequest(`/api/dashboards/${dashboardId}/refresh`, { method: "POST" });
+}
+
 export function createReport(input: {
   conversationId: string;
   title?: string;

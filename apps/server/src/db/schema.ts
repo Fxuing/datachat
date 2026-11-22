@@ -231,6 +231,107 @@ export const dataScopeRules = sqliteTable(
   ],
 );
 
+export const semanticMetrics = sqliteTable(
+  "semantic_metrics",
+  {
+    id: text("id").primaryKey(),
+    datasourceId: text("datasource_id")
+      .notNull()
+      .references(() => datasources.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    synonymsJson: text("synonyms_json").notNull().default("[]"),
+    description: text("description"),
+    sqlExpression: text("sql_expression").notNull(),
+    tableName: text("table_name"),
+    defaultFiltersJson: text("default_filters_json").notNull().default("[]"),
+    timeColumn: text("time_column"),
+    unit: text("unit"),
+    enabled: integer("enabled").notNull().default(1),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("semantic_metrics_ds_name_unique").on(t.datasourceId, t.name),
+    index("semantic_metrics_ds_enabled_idx").on(t.datasourceId, t.enabled),
+    check("semantic_metrics_enabled_check", sql`${t.enabled} in (0, 1)`),
+  ],
+);
+
+export const semanticRelations = sqliteTable(
+  "semantic_relations",
+  {
+    id: text("id").primaryKey(),
+    datasourceId: text("datasource_id")
+      .notNull()
+      .references(() => datasources.id, { onDelete: "cascade" }),
+    leftTable: text("left_table").notNull(),
+    leftColumn: text("left_column").notNull(),
+    rightTable: text("right_table").notNull(),
+    rightColumn: text("right_column").notNull(),
+    joinType: text("join_type", { enum: ["inner", "left", "right"] }).notNull().default("left"),
+    description: text("description"),
+    enabled: integer("enabled").notNull().default(1),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("semantic_relations_ds_edge_unique").on(
+      t.datasourceId,
+      t.leftTable,
+      t.leftColumn,
+      t.rightTable,
+      t.rightColumn,
+    ),
+    index("semantic_relations_ds_enabled_idx").on(t.datasourceId, t.enabled),
+    check("semantic_relations_join_type_check", sql`${t.joinType} in ('inner', 'left', 'right')`),
+    check("semantic_relations_enabled_check", sql`${t.enabled} in (0, 1)`),
+  ],
+);
+
+export const dashboards = sqliteTable(
+  "dashboards",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [index("dashboards_user_updated_idx").on(t.userId, t.updatedAt)],
+);
+
+export const dashboardCards = sqliteTable(
+  "dashboard_cards",
+  {
+    id: text("id").primaryKey(),
+    dashboardId: text("dashboard_id")
+      .notNull()
+      .references(() => dashboards.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    title: text("title").notNull(),
+    sourceConversationId: text("source_conversation_id"),
+    sourceArtifactId: text("source_artifact_id"),
+    datasourceId: text("datasource_id"),
+    sqlText: text("sql_text"),
+    chartConfigJson: text("chart_config_json"),
+    specJson: text("spec_json").notNull(),
+    points: integer("points").notNull().default(0),
+    width: integer("width").notNull().default(1),
+    position: integer("position").notNull().default(0),
+    lastRefreshedAt: integer("last_refreshed_at"),
+    lastError: text("last_error"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    index("dashboard_cards_dashboard_pos_idx").on(t.dashboardId, t.position, t.createdAt),
+    check("dashboard_cards_width_check", sql`${t.width} in (1, 2)`),
+  ],
+);
+
 export const conversations = sqliteTable(
   "conversations",
   {

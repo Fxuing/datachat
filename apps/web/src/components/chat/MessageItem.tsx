@@ -208,7 +208,13 @@ export function UserBubble({
  * Historical charts come from the conversation detail's artifacts. When the
  * detail omitted the spec (legacy row or malformed JSON), fetch the artifact.
  */
-function HistoricalChart({ artifact }: { artifact: ChatArtifact }) {
+function HistoricalChart({
+  artifact,
+  onPin,
+}: {
+  artifact: ChatArtifact;
+  onPin?: (artifact: ChatArtifact, title: string) => void;
+}) {
   const hasSpec = artifact.spec !== null && artifact.spec !== undefined;
   const [spec, setSpec] = useState<unknown>(artifact.spec);
   const [status, setStatus] = useState<"ready" | "loading" | "failed">(
@@ -241,11 +247,13 @@ function HistoricalChart({ artifact }: { artifact: ChatArtifact }) {
   if (status === "loading") {
     return <p className="text-[11px] text-muted">图表加载中…</p>;
   }
+  const title = chartTitleFromSpec(spec);
   return (
     <ChartCard
-      title={chartTitleFromSpec(spec)}
+      title={title}
       option={chartOptionFromSpec(spec)}
       points={artifact.rowCount}
+      onPin={onPin ? () => onPin(artifact, title) : undefined}
     />
   );
 }
@@ -257,6 +265,7 @@ function InlineArtifact({
   onCreateReport,
   creatingReport,
   canExport,
+  onPinChart,
 }: {
   artifactId: string;
   results: ChatResult[];
@@ -264,6 +273,7 @@ function InlineArtifact({
   onCreateReport?: (artifactId: string) => void;
   creatingReport?: boolean;
   canExport?: boolean;
+  onPinChart?: (artifact: ChatArtifact, title: string) => void;
 }) {
   const result = results.find((item) => item.artifactId === artifactId);
   if (result) {
@@ -278,7 +288,7 @@ function InlineArtifact({
   }
   const chart = charts.find((item) => item.id === artifactId);
   if (chart) {
-    return <HistoricalChart artifact={chart} />;
+    return <HistoricalChart artifact={chart} onPin={onPinChart} />;
   }
   return (
     <p className="text-[11px] text-muted">
@@ -319,6 +329,7 @@ export function MessageItem({
   onRetry,
   onEditResend,
   editDisabled = false,
+  onPinChart,
 }: {
   message: ChatMessage;
   artifacts?: ChatArtifact[];
@@ -330,6 +341,7 @@ export function MessageItem({
   onRetry?: (message: ChatMessage, modelId?: string) => void;
   onEditResend?: (content: string, skill?: string | null) => void;
   editDisabled?: boolean;
+  onPinChart?: (artifact: ChatArtifact, title: string) => void;
 }) {
   const assistantText = message.assistant?.content ?? "";
   const allCharts = artifacts.filter((artifact) => artifact.kind === "chart");
@@ -416,7 +428,7 @@ export function MessageItem({
               if (segment.type === "chart") {
                 const chart = allCharts.find((item) => item.id === segment.artifactId);
                 return chart ? (
-                  <HistoricalChart key={`chart-${index}`} artifact={chart} />
+                  <HistoricalChart key={`chart-${index}`} artifact={chart} onPin={onPinChart} />
                 ) : (
                   <p key={`chart-${index}`} className="text-[11px] text-muted">
                     图表引用不可用
@@ -443,6 +455,7 @@ export function MessageItem({
                   onCreateReport={onCreateReport}
                   creatingReport={creatingReport}
                   canExport={canExport}
+                  onPinChart={onPinChart}
                 />
               );
             })}
@@ -451,7 +464,7 @@ export function MessageItem({
         {standaloneCharts.length > 0 ? (
           <div className="flex flex-col gap-2">
             {standaloneCharts.map((chart) => (
-              <HistoricalChart key={chart.id} artifact={chart} />
+              <HistoricalChart key={chart.id} artifact={chart} onPin={onPinChart} />
             ))}
           </div>
         ) : null}

@@ -12,6 +12,10 @@ import type { Db } from "../db/client.js";
 import type { AppConfig } from "../config.js";
 import { loadMcpFor } from "./mcp.js";
 import { createMemoryExtension, type MemoryUsageItem } from "../memory/recall.js";
+import {
+  createSemanticExtension,
+  hasEnabledSemanticEntries,
+} from "../services/semantic-layer.js";
 import { renderSystemPrompt } from "./prompt.js";
 
 /** Functional permissions that shape the agent's resource loader. */
@@ -122,6 +126,15 @@ export async function createConversationResources(
             config: input.config,
             datasourceId: input.datasourceId,
           }),
+      }),
+    );
+  }
+  if (input.datasourceId && hasEnabledSemanticEntries(input.db, input.datasourceId)) {
+    extensionFactories.push(
+      createSemanticExtension({
+        db: input.db,
+        datasourceId: input.datasourceId,
+        userId: input.userId,
       }),
     );
   }

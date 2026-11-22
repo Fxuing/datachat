@@ -13,6 +13,7 @@
 | 连接池 | 复用连接；配置变化时关闭 | [`pool.ts`](../../apps/server/src/agent/datasource/pool.ts) |
 | Schema 缓存 | 持久化快照/错误、24h TTL、并发去重、过期回退 | [`schema-refresh.ts`](../../apps/server/src/services/schema-refresh.ts)、[`schema-cache.ts`](../../apps/server/src/db/repositories/schema-cache.ts) |
 | 管理路由 | CRUD、测试、schema 刷新、权限检查 | [`datasources.ts`](../../apps/server/src/routes/datasources.ts)、[`datasource-schema.ts`](../../apps/server/src/routes/datasource-schema.ts) |
+| 轻量语义层 | 按数据源管理业务指标口径、同义词与标准表关联，并在每轮对话按需召回注入 | [`semantic-layer.ts` 服务](../../apps/server/src/services/semantic-layer.ts)、[`semantic-layer.ts` 仓储](../../apps/server/src/db/repositories/semantic-layer.ts)、[`admin-semantic.ts`](../../apps/server/src/routes/admin-semantic.ts)、[`DatasourceSemanticPage.tsx`](../../apps/web/src/pages/admin/DatasourceSemanticPage.tsx) |
 | 授权检查 | 用户/角色/直接数据源访问 | [`access.ts`](../../apps/server/src/auth/access.ts) |
 
 `datasources.password_cipher` 是唯一保存的秘密。绝不记录或返回明文密码；探测错误通过 `safeErrorMessage` 传递，并抹掉密码。
@@ -45,6 +46,7 @@ schema 端点读取同一份缓存；不暴露凭据或查询数据。
 - 新增方言不能只在 UI 分支。守卫解析、执行器、内省、占位符语法和测试都要支持。
 - 删除仍被会话引用的数据源必须返回 `409`；成功后清理 schema 缓存/pool/授权。
 - schema 快照是元数据，不是安全边界：表名/列名可以出现在 prompt 里，但行数据仍然必须走 `db_query`。
+- 轻量语义层通过 `createSemanticExtension` 在 `before_agent_start` 钩子按当前提问召回启用中的指标与关联，并在数据源启用行级数据权限时为非管理员过滤掉未开放或拒绝表上的指标与关联，绝不借语义层泄露受限表名。
 - DDL 或连接修改后要显式失效缓存。管理员可以立即刷新，不能只依赖 TTL。
 
 ## 失败行为

@@ -7,6 +7,7 @@ import { createSessionSigner } from "./auth/jwt.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
 import { adminDepartmentRoutes } from "./routes/admin-departments.js";
 import { adminDataScopeRoutes } from "./routes/admin-data-scope.js";
+import { adminSemanticRoutes } from "./routes/admin-semantic.js";
 import { adminRoleRoutes } from "./routes/admin-roles.js";
 import { adminSkillRoutes } from "./routes/admin-skills.js";
 import { adminMcpRoutes } from "./routes/admin-mcp.js";
@@ -24,6 +25,7 @@ import { questionRoutes } from "./routes/questions.js";
 import { artifactRoutes } from "./routes/artifacts.js";
 import { runRoutes } from "./routes/runs.js";
 import { reportRoutes } from "./routes/reports.js";
+import { dashboardRoutes } from "./routes/dashboards.js";
 import { shareRoutes } from "./routes/shares.js";
 import { PoolRegistry } from "./agent/datasource/pool.js";
 import { RuntimeManager } from "./agent/runtime.js";
@@ -152,6 +154,7 @@ export async function buildApp({
   await app.register(adminUserRoutes, { db });
   await app.register(adminDepartmentRoutes, { db });
   await app.register(adminDataScopeRoutes, { db });
+  await app.register(adminSemanticRoutes, { db });
   await app.register(adminRoleRoutes, { db });
   await app.register(adminSkillRoutes, { db, agentDir: config.agentDir });
   await app.register(adminMcpRoutes, { db, config, mcpTestTimeoutMs });
@@ -204,6 +207,7 @@ export async function buildApp({
   await app.register(questionRoutes, { db, runtime: agentRuntime });
   await app.register(artifactRoutes, { db, artifacts });
   await app.register(reportRoutes, { db, artifacts });
+  await app.register(dashboardRoutes, { config, db, pools, artifacts });
   await app.register(shareRoutes, { db, artifacts, config });
   const runSuggestions = createRunSuggestionsService({
     db,

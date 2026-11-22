@@ -49,7 +49,7 @@ Mermaid 代码块由 `MermaidDiagram` 在聊天、报告和公开分享中渲染
 ## 布局与交互契约
 
 - 消息区域是滚动所有者。输入框不在其中 sticky；它在下方，不能遮住最后一行。桌面端左侧导航栏支持一键收起/展开并持久化到 `localStorage`（`datachat:sidebar-collapsed`）；窄屏下左侧栏收起为左抽屉（`Sheet`），通过顶栏菜单按钮打开，避免挤压对话与后台表格。
-- `ChartCard` 支持在前端直接切换图表视图（柱状/折线/面积/单系列非负饼图/散点与可排序明细表）及数值排序（默认/降序/升序），不重跑模型或数据库查询；聊天、流式、报告与公开分享共享同一组件。
+- `ChartCard` 支持在前端直接切换图表视图（柱状/折线/面积/单系列非负饼图/散点与可排序明细表）及数值排序（默认/降序/升序），不重跑模型或数据库查询；聊天、流式、报告与公开分享共享同一组件。对话中的持久化图表还支持点击「固定」通过 [`PinToDashboardDialog.tsx`](../../apps/web/src/components/chat/PinToDashboardDialog.tsx) 沉淀到个人数据看板（[`DashboardsPage.tsx`](../../apps/web/src/pages/DashboardsPage.tsx)），数据源图表在看板内可经 `runGuardedQuery` 重新查询刷新，文件图表作为静态快照展示。
 - 历史用户提问支持行内「编辑并重新提问」（保留原技能标签，经 `handleSend` 发送新一轮）；聊天顶栏支持将当前会话一键导出为 Markdown（清洗行内标记并附 SQL 块）。
 - 左侧会话栏的「新建对话」直接进入 `/chat` 空态，支持在「数据库分析」（默认）与「Excel / CSV 文件」之间切换：数据库模式在发送首条消息时携带数据源、模型与思考等级创建会话；文件模式通过 [`FileUploadPanel.tsx`](../../apps/web/src/components/chat/FileUploadPanel.tsx) 上传最多 5 个（单文件 ≤ 20 MB）`.xlsx`/`.csv` 文件并调用 `POST /api/files/preview` 展示推断结构、3 行样例与表头行调整，无需预设数据库数据源即可开始提问。
 - 活跃的文件分析会话在顶栏展示 `Excel / CSV · N 张表` 按钮（打开 [`FileTablesDialog.tsx`](../../apps/web/src/components/chat/FileTablesDialog.tsx) 查看导入文件、列类型、样例，支持空闲时追加文件进行多表 `JOIN`，并支持通过 `POST /api/file-datasets/from-conversation/:conversationId` 保存为个人可复用轻量数据集）；在新对话「Excel / CSV 文件」模式下可直接选用已保存的数据集（`POST /api/conversations/from-dataset`）克隆到新会话独立分析。侧边栏对文件会话直接显示 `Excel / CSV` 标识，不发额外请求。

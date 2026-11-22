@@ -8,6 +8,7 @@ import { QuestionCard } from "../components/chat/QuestionCard";
 import { SuggestedQuestions } from "../components/chat/SuggestedQuestions";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { FileTablesDialog } from "../components/chat/FileTablesDialog";
+import { PinToDashboardDialog } from "../components/chat/PinToDashboardDialog";
 import { MessageList } from "../components/chat/MessageList";
 import type { ModelPickerStatus } from "../components/chat/ModelPicker";
 import { ShareDialog } from "../components/ShareDialog";
@@ -84,6 +85,7 @@ export default function ChatPage() {
   const [draftThinkingLevel, setDraftThinkingLevel] = useState<string>("off");
   const [dismissedSuggestionRunId, setDismissedSuggestionRunId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [pinTarget, setPinTarget] = useState<{ artifactId: string; title: string } | null>(null);
   const location = useLocation();
 
   const currentTurn =
@@ -918,6 +920,11 @@ export default function ChatPage() {
             : undefined
         }
         editDisabled={active || showStream || Boolean(retryingRunId)}
+        onPinChart={
+          canUseChat
+            ? (artifact, title) => setPinTarget({ artifactId: artifact.id, title })
+            : undefined
+        }
         datasources={availableDatasources}
         datasourcesLoading={datasourcesQuery.isPending}
         datasourcesError={
@@ -1067,6 +1074,13 @@ export default function ChatPage() {
             ...(conversation?.title ? { label: conversation.title } : {}),
           }}
           onClose={() => setShareOpen(false)}
+        />
+      ) : null}
+      {pinTarget ? (
+        <PinToDashboardDialog
+          artifactId={pinTarget.artifactId}
+          defaultTitle={pinTarget.title}
+          onClose={() => setPinTarget(null)}
         />
       ) : null}
       {conversationId && isFileConversation ? (

@@ -20,6 +20,7 @@ const RolesPage = lazy(() => import("./pages/admin/RolesPage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
 const DepartmentsPage = lazy(() => import("./pages/admin/DepartmentsPage"));
 const DatasourceScopePage = lazy(() => import("./pages/admin/DatasourceScopePage"));
+const DatasourceSemanticPage = lazy(() => import("./pages/admin/DatasourceSemanticPage"));
 const SkillsPage = lazy(() => import("./pages/admin/SkillsPage"));
 const McpPage = lazy(() => import("./pages/admin/McpPage"));
 const DatasourcesPage = lazy(() => import("./pages/admin/DatasourcesPage"));
@@ -28,6 +29,7 @@ const SettingsPage = lazy(() => import("./pages/admin/SettingsPage"));
 const OpsPage = lazy(() => import("./pages/admin/OpsPage"));
 const ScheduledTasksPage = lazy(() => import("./pages/ScheduledTasksPage"));
 const MemoryPage = lazy(() => import("./pages/MemoryPage"));
+const DashboardsPage = lazy(() => import("./pages/DashboardsPage"));
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const meQuery = useQuery({
@@ -93,6 +95,22 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ChatPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/dashboards"
+          element={
+            <RequireAuth>
+              <DashboardsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/dashboards/:dashboardId"
+          element={
+            <RequireAuth>
+              <DashboardsPage />
             </RequireAuth>
           }
         />
@@ -173,6 +191,14 @@ function AppRoutes() {
           element={
             <RequireAdmin>
               <DatasourceScopePage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/datasources/:datasourceId/semantic"
+          element={
+            <RequireAdmin>
+              <DatasourceSemanticPage />
             </RequireAdmin>
           }
         />

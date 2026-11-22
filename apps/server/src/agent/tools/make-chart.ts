@@ -128,7 +128,11 @@ export function createMakeChartTool(
       }
 
       const title = chart.title ?? chart.y;
-      const spec: Record<string, unknown> = { option, chart: { ...chart, title } };
+      const spec: Record<string, unknown> = {
+        option,
+        chart: { ...chart, title },
+        sourceArtifactId: params.artifactId,
+      };
       const meta = ctx.artifacts.createChart({
         conversationId: ctx.conversationId,
         userId: ctx.userId,

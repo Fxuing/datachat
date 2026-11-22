@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  BookOpen,
   MoreHorizontal,
   RefreshCw,
   ShieldCheck,
@@ -53,6 +54,7 @@ export interface DatasourceRowActionsProps {
   onViewSchema: () => void;
   onGrants: () => void;
   onScope: () => void;
+  onSemantic?: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }
@@ -70,6 +72,7 @@ export function DatasourceRowActions({
   onViewSchema,
   onGrants,
   onScope,
+  onSemantic,
   onEdit,
   onDelete,
 }: DatasourceRowActionsProps) {
@@ -176,6 +179,11 @@ export function DatasourceRowActions({
             <MenuItem icon={<SlidersHorizontal />} onSelect={choose(onScope)}>
               行级权限
             </MenuItem>
+            {onSemantic ? (
+              <MenuItem icon={<BookOpen />} onSelect={choose(onSemantic)}>
+                指标与语义层
+              </MenuItem>
+            ) : null}
             <div role="separator" className="my-1 border-t border-line" />
             <MenuItem icon={<Trash2 />} danger onSelect={choose(onDelete)}>
               删除

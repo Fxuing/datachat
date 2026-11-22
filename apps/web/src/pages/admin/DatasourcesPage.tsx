@@ -356,6 +356,9 @@ export default function DatasourcesPage() {
                             onScope={() =>
                               navigate(`/admin/datasources/${datasource.id}/scope`)
                             }
+                            onSemantic={() =>
+                              navigate(`/admin/datasources/${datasource.id}/semantic`)
+                            }
                             onEdit={() => openEditor({ mode: "edit", datasource })}
                             onDelete={() => openDelete(datasource)}
                           />

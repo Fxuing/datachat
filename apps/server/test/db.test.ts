@@ -27,6 +27,8 @@ const APP_TABLES = [
   "conversation_file_tables",
   "conversation_files",
   "conversations",
+  "dashboard_cards",
+  "dashboards",
   "data_scope_policies",
   "data_scope_rules",
   "datasource_grants",
@@ -50,6 +52,8 @@ const APP_TABLES = [
   "runs",
   "scheduled_task_runs",
   "scheduled_tasks",
+  "semantic_metrics",
+  "semantic_relations",
   "settings",
   "shares",
   "skills",
@@ -72,6 +76,8 @@ const INTEGRITY_INDEXES: Record<string, string[]> = {
     "conversation_files_user_idx",
   ],
   conversations: ["conversations_user_last_message_idx"],
+  dashboard_cards: ["dashboard_cards_dashboard_pos_idx"],
+  dashboards: ["dashboards_user_updated_idx"],
   data_scope_policies: [
     "data_scope_policies_table_unique",
     "data_scope_policies_datasource_idx",
@@ -99,6 +105,11 @@ const INTEGRITY_INDEXES: Record<string, string[]> = {
     "query_audit_created_idx",
   ],
   roles: ["roles_name_unique"],
+  semantic_metrics: ["semantic_metrics_ds_name_unique", "semantic_metrics_ds_enabled_idx"],
+  semantic_relations: [
+    "semantic_relations_ds_edge_unique",
+    "semantic_relations_ds_enabled_idx",
+  ],
   user_departments: ["user_departments_department_idx"],
   user_roles: ["user_roles_role_idx"],
   run_events: ["run_events_conversation_seq_idx", "run_events_run_seq_unique"],
@@ -296,8 +307,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(20);
-    expect(migrateDb(handle.db)).toBe(20);
+    expect(migrateDb(handle.db)).toBe(22);
+    expect(migrateDb(handle.db)).toBe(22);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

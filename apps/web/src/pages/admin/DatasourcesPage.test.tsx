@@ -233,9 +233,10 @@ describe("DatasourcesPage", () => {
     expect(screen.queryByRole("button", { name: "查看结构" })).not.toBeInTheDocument();
 
     const menu = await openRowMenu(browser);
-    expect(within(menu).getAllByRole("menuitem")).toHaveLength(5);
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(6);
     expect(within(menu).getByRole("menuitem", { name: "查看结构" })).toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: "行级权限" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "指标与语义层" })).toBeInTheDocument();
   });
 
   it("edits without sending a password when the field is blank", async () => {

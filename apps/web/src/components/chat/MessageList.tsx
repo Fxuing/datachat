@@ -59,6 +59,8 @@ export interface MessageListProps {
   onEditResend?: (content: string, skill?: string | null) => void;
   /** Disables prompt editing while a run is streaming or mutating. */
   editDisabled?: boolean;
+  /** Pins a chart artifact onto a user dashboard. */
+  onPinChart?: (artifact: ChatArtifact, title: string) => void;
   /** Datasources offered on the empty state so a new chat can start in place. */
   datasources?: DatasourceSummary[];
   datasourcesLoading?: boolean;
@@ -416,6 +418,7 @@ export function MessageList({
   onRetry,
   onEditResend,
   editDisabled = false,
+  onPinChart,
   datasources = [],
   datasourcesLoading = false,
   datasourcesError = null,
@@ -680,6 +683,7 @@ export function MessageList({
               onRetry={onRetry}
               onEditResend={onEditResend}
               editDisabled={editDisabled}
+              onPinChart={onPinChart}
             />
           </div>
         ))}
