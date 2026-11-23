@@ -34,9 +34,6 @@ jobs:
   prepare-base:
     name: Ensure datachat-server-base
     runs-on: ubuntu-latest
-    outputs:
-      base_image: ${{ steps.meta.outputs.base_image }}
-      base_tag: ${{ steps.meta.outputs.base_tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -49,8 +46,6 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "base_tag=local" >> "$GITHUB_OUTPUT"
-            echo "base_image=runtime-base" >> "$GITHUB_OUTPUT"
             echo "dockerhub=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -59,19 +54,16 @@ jobs:
           GHCR_REPO="ghcr.io/${OWNER_LOWER}/datachat-server-base"
           DOCKERHUB_ENABLED="false"
           HUB_REPO=""
-          PRIMARY_BASE="${GHCR_REPO}:${BASE_TAG}"
           if [ -n "$DOCKERHUB_USER" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
             DOCKERHUB_ENABLED="true"
             HUB_LOWER=$(echo "$DOCKERHUB_USER" | tr '[:upper:]' '[:lower:]')
             HUB_REPO="docker.io/${HUB_LOWER}/datachat-server-base"
-            PRIMARY_BASE="${HUB_REPO}:${BASE_TAG}"
           fi
           {
             echo "base_tag=${BASE_TAG}"
             echo "ghcr_repo=${GHCR_REPO}"
             echo "hub_repo=${HUB_REPO}"
             echo "dockerhub=${DOCKERHUB_ENABLED}"
-            echo "base_image=${PRIMARY_BASE}"
             echo "tags<<EOF"
             echo "${GHCR_REPO}:${BASE_TAG}"
             echo "${GHCR_REPO}:latest"
@@ -179,8 +171,20 @@ jobs:
           if [ -n "$DOCKERHUB_USER" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
             DOCKERHUB_ENABLED="true"
           fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_IMAGE="runtime-base"
+          else
+            BASE_TAG=$(sh deploy/base-hash.sh)
+            if [ "$DOCKERHUB_ENABLED" = "true" ]; then
+              HUB_LOWER=$(echo "$DOCKERHUB_USER" | tr '[:upper:]' '[:lower:]')
+              BASE_IMAGE="docker.io/${HUB_LOWER}/datachat-server-base:${BASE_TAG}"
+            else
+              BASE_IMAGE="ghcr.io/${OWNER_LOWER}/datachat-server-base:${BASE_TAG}"
+            fi
+          fi
           {
             echo "dockerhub=${DOCKERHUB_ENABLED}"
+            echo "base_image=${BASE_IMAGE}"
             echo "list<<EOF"
             echo "ghcr.io/${OWNER_LOWER}/${IMAGE_NAME}"
             if [ "$DOCKERHUB_ENABLED" = "true" ]; then
@@ -218,7 +222,7 @@ jobs:
           platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/arm64,linux/amd64' }}
           push: ${{ github.event_name != 'pull_request' }}
           build-args: |
-            SERVER_BASE_IMAGE=${{ needs.prepare-base.outputs.base_image }}
+            SERVER_BASE_IMAGE=${{ steps.images.outputs.base_image }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
