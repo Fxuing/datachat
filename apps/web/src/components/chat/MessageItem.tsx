@@ -19,7 +19,12 @@ import {
   reportArtifactIdsFromTools,
 } from "../../lib/report-markdown";
 import { pairQueries } from "../../lib/pair-queries";
-import { ChartCard, chartOptionFromSpec, chartTitleFromSpec } from "./ChartCard";
+import {
+  ChartCard,
+  chartOptionFromSpec,
+  chartTitleFromSpec,
+  type ChartDrillDownPoint,
+} from "./ChartCard";
 import { ResultCard } from "./ResultCard";
 import { ResultLinkGroup } from "./ResultLink";
 import { TurnTrace } from "./TurnTrace";
@@ -211,9 +216,11 @@ export function UserBubble({
 function HistoricalChart({
   artifact,
   onPin,
+  onDrillDown,
 }: {
   artifact: ChatArtifact;
   onPin?: (artifact: ChatArtifact, title: string) => void;
+  onDrillDown?: (point: ChartDrillDownPoint) => void;
 }) {
   const hasSpec = artifact.spec !== null && artifact.spec !== undefined;
   const [spec, setSpec] = useState<unknown>(artifact.spec);
@@ -254,6 +261,7 @@ function HistoricalChart({
       option={chartOptionFromSpec(spec)}
       points={artifact.rowCount}
       onPin={onPin ? () => onPin(artifact, title) : undefined}
+      onDrillDown={onDrillDown}
     />
   );
 }
@@ -266,6 +274,7 @@ function InlineArtifact({
   creatingReport,
   canExport,
   onPinChart,
+  onDrillDownChart,
 }: {
   artifactId: string;
   results: ChatResult[];
@@ -274,6 +283,7 @@ function InlineArtifact({
   creatingReport?: boolean;
   canExport?: boolean;
   onPinChart?: (artifact: ChatArtifact, title: string) => void;
+  onDrillDownChart?: (point: ChartDrillDownPoint) => void;
 }) {
   const result = results.find((item) => item.artifactId === artifactId);
   if (result) {
@@ -288,7 +298,7 @@ function InlineArtifact({
   }
   const chart = charts.find((item) => item.id === artifactId);
   if (chart) {
-    return <HistoricalChart artifact={chart} onPin={onPinChart} />;
+    return <HistoricalChart artifact={chart} onPin={onPinChart} onDrillDown={onDrillDownChart} />;
   }
   return (
     <p className="text-[11px] text-muted">
@@ -330,6 +340,7 @@ export function MessageItem({
   onEditResend,
   editDisabled = false,
   onPinChart,
+  onDrillDownChart,
 }: {
   message: ChatMessage;
   artifacts?: ChatArtifact[];
@@ -342,6 +353,7 @@ export function MessageItem({
   onEditResend?: (content: string, skill?: string | null) => void;
   editDisabled?: boolean;
   onPinChart?: (artifact: ChatArtifact, title: string) => void;
+  onDrillDownChart?: (point: ChartDrillDownPoint) => void;
 }) {
   const assistantText = message.assistant?.content ?? "";
   const allCharts = artifacts.filter((artifact) => artifact.kind === "chart");
@@ -428,7 +440,12 @@ export function MessageItem({
               if (segment.type === "chart") {
                 const chart = allCharts.find((item) => item.id === segment.artifactId);
                 return chart ? (
-                  <HistoricalChart key={`chart-${index}`} artifact={chart} onPin={onPinChart} />
+                  <HistoricalChart
+                    key={`chart-${index}`}
+                    artifact={chart}
+                    onPin={onPinChart}
+                    onDrillDown={onDrillDownChart}
+                  />
                 ) : (
                   <p key={`chart-${index}`} className="text-[11px] text-muted">
                     图表引用不可用
@@ -456,6 +473,7 @@ export function MessageItem({
                   creatingReport={creatingReport}
                   canExport={canExport}
                   onPinChart={onPinChart}
+                  onDrillDownChart={onDrillDownChart}
                 />
               );
             })}
@@ -464,7 +482,12 @@ export function MessageItem({
         {standaloneCharts.length > 0 ? (
           <div className="flex flex-col gap-2">
             {standaloneCharts.map((chart) => (
-              <HistoricalChart key={chart.id} artifact={chart} onPin={onPinChart} />
+              <HistoricalChart
+                key={chart.id}
+                artifact={chart}
+                onPin={onPinChart}
+                onDrillDown={onDrillDownChart}
+              />
             ))}
           </div>
         ) : null}

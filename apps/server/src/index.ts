@@ -13,6 +13,9 @@ import { seedSkills } from "./agent/skills.js";
 import { reconcileInterruptedRuns } from "./services/startup.js";
 import { createRetentionService } from "./services/ops-retention.js";
 import { createScheduledTaskService } from "./services/scheduled-tasks.js";
+import { sweepDueDashboards } from "./services/dashboards.js";
+import { DriverRegistry } from "./drivers/registry.js";
+import { loadPersistedDatasourcePlugins } from "./services/datasource-plugins.js";
 import { startScheduledTaskSweeper } from "./agent/scheduler.js";
 import { failInterruptedScheduledRuns } from "./db/repositories/scheduled-tasks.js";
 
@@ -29,18 +32,30 @@ const appliedMigrations = migrateDb(handle.db);
 let app: FastifyInstance;
 let retention: ReturnType<typeof createRetentionService>;
 let scheduledTasks: ReturnType<typeof createScheduledTaskService>;
+let artifacts: ArtifactStore;
+let pools: PoolRegistry;
+let drivers: DriverRegistry;
 try {
-  const artifacts = new ArtifactStore(
+  drivers = new DriverRegistry();
+  if ((appConfig.datasourcePlugins?.length ?? 0) > 0) {
+    await drivers.loadExternalPlugins(appConfig.datasourcePlugins ?? [], {
+      strict: appConfig.datasourcePluginsStrict,
+    });
+  }
+  await loadPersistedDatasourcePlugins({ db: handle.db, config: appConfig, drivers });
+
+  artifacts = new ArtifactStore(
     handle.db,
     path.join(appConfig.dataDir, "artifacts"),
   );
   await artifacts.init();
-  const pools = new PoolRegistry();
+  pools = new PoolRegistry(drivers);
   const agentRuntime = new RuntimeManager({
     config: appConfig,
     db: handle.db,
     pools,
     artifacts,
+    drivers,
   });
   retention = createRetentionService({
     db: handle.db,
@@ -60,6 +75,7 @@ try {
     db: handle.db,
     artifacts,
     pools,
+    drivers,
     agentRuntime,
     retention,
     scheduledTasks,
@@ -70,7 +86,15 @@ try {
 }
 
 failInterruptedScheduledRuns(handle.db, Date.now());
-const scheduledSweeper = startScheduledTaskSweeper(scheduledTasks, app.log);
+const scheduledSweeper = startScheduledTaskSweeper(scheduledTasks, app.log, async () => {
+  await sweepDueDashboards({
+    db: handle.db,
+    config: appConfig,
+    pools,
+    artifacts,
+    drivers,
+  });
+});
 
 let sweepTimer: NodeJS.Timeout | undefined;
 if (appConfig.retentionSweepHours > 0) {

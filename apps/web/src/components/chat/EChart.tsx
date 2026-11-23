@@ -26,12 +26,20 @@ setupECharts([
 
 export type ChartOption = Record<string, unknown>;
 
+export interface EChartClickPoint {
+  name: string;
+  seriesName?: string;
+  value?: string | number | null;
+}
+
 export interface EChartProps {
   option: ChartOption | null | undefined;
   className?: string;
   ariaLabel?: string;
   /** Receives the instance once it is ready; called with null after disposal. */
   onReady?: (instance: EChartsType | null) => void;
+  /** Called when the user clicks a plotted series data point. */
+  onPointClick?: (point: EChartClickPoint) => void;
 }
 
 function isEmptyOption(option: ChartOption | null | undefined): boolean {
@@ -99,11 +107,52 @@ function withChartTheme(option: ChartOption, theme: Theme): ChartOption {
   };
 }
 
-export function EChart({ option, className, ariaLabel = "图表", onReady }: EChartProps) {
+function extractClickPoint(params: unknown): EChartClickPoint | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (record.componentType && record.componentType !== "series") return null;
+
+  let rawName = record.name;
+  let rawValue = record.value;
+  if (Array.isArray(rawValue)) {
+    if ((rawName === undefined || rawName === "") && rawValue.length >= 1) {
+      rawName = rawValue[0];
+    }
+    rawValue = rawValue.length >= 2 ? rawValue[1] : rawValue[0];
+  } else if (rawValue && typeof rawValue === "object") {
+    const obj = rawValue as Record<string, unknown>;
+    if ((rawName === undefined || rawName === "") && obj.name !== undefined) {
+      rawName = obj.name;
+    }
+    rawValue = obj.value;
+  }
+
+  const name = rawName === undefined || rawName === null ? "" : String(rawName).trim();
+  if (!name) return null;
+
+  const seriesName =
+    typeof record.seriesName === "string" && record.seriesName.trim().length > 0
+      ? record.seriesName.trim()
+      : undefined;
+  const value =
+    typeof rawValue === "number" || typeof rawValue === "string" ? rawValue : null;
+
+  return { name, seriesName, value };
+}
+
+export function EChart({
+  option,
+  className,
+  ariaLabel = "图表",
+  onReady,
+  onPointClick,
+}: EChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<EChartsType | null>(null);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const onPointClickRef = useRef(onPointClick);
+  onPointClickRef.current = onPointClick;
 
   const { theme } = useTheme();
   const empty = isEmptyOption(option);
@@ -151,6 +200,14 @@ export function EChart({ option, className, ariaLabel = "图表", onReady }: ECh
     chartRef.current = instance;
     onReadyRef.current?.(instance);
 
+    const handleClick = (params: unknown) => {
+      const handler = onPointClickRef.current;
+      if (!handler) return;
+      const point = extractClickPoint(params);
+      if (point) handler(point);
+    };
+    instance.on("click", handleClick);
+
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
@@ -165,6 +222,11 @@ export function EChart({ option, className, ariaLabel = "图表", onReady }: ECh
 
     return () => {
       observer?.disconnect();
+      try {
+        instance.off("click", handleClick);
+      } catch {
+        // Ignore teardown errors.
+      }
       onReadyRef.current?.(null);
       try {
         instance.dispose();
@@ -202,7 +264,7 @@ export function EChart({ option, className, ariaLabel = "图表", onReady }: ECh
       ref={containerRef}
       role="img"
       aria-label={ariaLabel}
-      className={cn("h-full min-h-40 w-full", className)}
+      className={cn("h-full min-h-40 w-full", onPointClick && "cursor-pointer", className)}
     />
   );
 }

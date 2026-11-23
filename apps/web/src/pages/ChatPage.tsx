@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Download, FileSpreadsheet, Share2, X } from "lucide-react";
 import { AppShell, type AppShellStatusIndicator } from "../components/AppShell";
 import { Composer } from "../components/chat/Composer";
+import type { ChartDrillDownPoint } from "../components/chat/ChartCard";
 import { QuestionCard } from "../components/chat/QuestionCard";
 import { SuggestedQuestions } from "../components/chat/SuggestedQuestions";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
@@ -57,6 +58,24 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function formatChartDrillDownPrompt(point: ChartDrillDownPoint): string {
+  const seriesPart =
+    point.seriesName &&
+    point.seriesName !== point.title &&
+    !/^series\d+$/i.test(point.seriesName)
+      ? `「${point.seriesName}」`
+      : "";
+  const valuePart =
+    point.value !== undefined && point.value !== null && String(point.value).trim() !== ""
+      ? `（数值：${
+          typeof point.value === "number"
+            ? point.value.toLocaleString("zh-CN", { maximumFractionDigits: 4 })
+            : point.value
+        }）`
+      : "";
+  return `请针对「${point.title}」中的「${point.category}」${seriesPart}${valuePart}进一步下钻分析明细数据和主要构成原因。`;
+}
+
 export default function ChatPage() {
   const { conversationId } = useParams<{ conversationId?: string }>();
   const navigate = useNavigate();
@@ -87,6 +106,8 @@ export default function ChatPage() {
   const [dismissedSuggestionRunId, setDismissedSuggestionRunId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [pinTarget, setPinTarget] = useState<{ artifactId: string; title: string } | null>(null);
+  const [composerDraft, setComposerDraft] = useState<{ id: number; text: string } | null>(null);
+  const draftSeqRef = useRef(0);
   const location = useLocation();
 
   const currentTurn =
@@ -926,6 +947,17 @@ export default function ChatPage() {
             ? (artifact, title) => setPinTarget({ artifactId: artifact.id, title })
             : undefined
         }
+        onDrillDownChart={
+          canUseChat && !active
+            ? (point) => {
+                draftSeqRef.current += 1;
+                setComposerDraft({
+                  id: draftSeqRef.current,
+                  text: formatChartDrillDownPrompt(point),
+                });
+              }
+            : undefined
+        }
         datasources={availableDatasources}
         datasourcesLoading={datasourcesQuery.isPending}
         datasourcesError={
@@ -1053,6 +1085,7 @@ export default function ChatPage() {
           thinkingLevel={currentThinkingLevel}
           skills={canUseSkills ? skillsQuery.data?.skills ?? [] : []}
           readOnlyReason={canUseChat ? undefined : "当前角色没有对话权限，请联系管理员"}
+          externalDraft={composerDraft}
           contextUsage={contextUsage}
           onModelChange={(id) =>
             conversationId

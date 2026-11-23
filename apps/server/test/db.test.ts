@@ -79,7 +79,7 @@ const INTEGRITY_INDEXES: Record<string, string[]> = {
   ],
   conversations: ["conversations_user_last_message_idx"],
   dashboard_cards: ["dashboard_cards_dashboard_pos_idx"],
-  dashboards: ["dashboards_user_updated_idx"],
+  dashboards: ["dashboards_user_updated_idx", "dashboards_next_refresh_idx"],
   data_scope_policies: [
     "data_scope_policies_table_unique",
     "data_scope_policies_datasource_idx",
@@ -310,8 +310,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(24);
-    expect(migrateDb(handle.db)).toBe(24);
+    expect(migrateDb(handle.db)).toBe(25);
+    expect(migrateDb(handle.db)).toBe(25);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

@@ -3,7 +3,11 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import PublicSharePage from "./PublicSharePage";
-import type { PublicConversationShare, PublicReportShare } from "../lib/api";
+import type {
+  PublicConversationShare,
+  PublicDashboardShare,
+  PublicReportShare,
+} from "../lib/api";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -51,6 +55,30 @@ const reportShare: PublicReportShare = {
     },
   ],
   createdAt: 1_760_000_000_000,
+};
+
+const dashboardShare: PublicDashboardShare = {
+  type: "dashboard",
+  title: "经营日看板",
+  description: "每日关注核心营收",
+  cards: [
+    {
+      title: "各区销售额",
+      width: 2,
+      points: 2,
+      spec: {
+        chart: { type: "bar", x: "region", y: "amount", title: "各区销售额" },
+        option: {
+          xAxis: { type: "category", data: ["华东", "华北"] },
+          yAxis: { type: "value" },
+          series: [{ type: "bar", name: "销售额", data: [100, 200] }],
+        },
+      },
+      lastRefreshedAt: 1_760_000_000_000,
+    },
+  ],
+  createdAt: 1_760_000_000_000,
+  updatedAt: 1_760_000_100_000,
 };
 
 function renderPage(token = "tok-1") {
@@ -106,6 +134,19 @@ describe("PublicSharePage", () => {
     expect(screen.getByText("本周数据稳定。")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "amount" })).toBeInTheDocument();
     expect(screen.getByText("alpha")).toBeInTheDocument();
+  });
+
+  it("renders a shared dashboard with read-only charts", async () => {
+    const fetchMock = stubPublicShare(dashboardShare);
+    renderPage("tok-dash");
+
+    expect(await screen.findByRole("heading", { name: "经营日看板" })).toBeInTheDocument();
+    expect(screen.getByText("每日关注核心营收")).toBeInTheDocument();
+    expect(screen.getByText("各区销售额")).toBeInTheDocument();
+    expect(screen.getByText("只读分享")).toBeInTheDocument();
+
+    const urls = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(urls).toEqual(["/api/public/shares/tok-dash"]);
   });
 
   it("shows the expired state for a 410 response", async () => {

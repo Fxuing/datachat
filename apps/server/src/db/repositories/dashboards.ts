@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, lte } from "drizzle-orm";
 import type { Db } from "../client.js";
 import { dashboardCards, dashboards, datasources } from "../schema.js";
 
@@ -11,6 +11,11 @@ export interface DashboardSummaryDto {
   name: string;
   description: string | null;
   cardCount: number;
+  refreshCron: string | null;
+  refreshTimezone: string;
+  nextRefreshAt: number | null;
+  lastAutoRefreshedAt: number | null;
+  lastAutoRefreshError: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -23,6 +28,7 @@ export interface DashboardCardDto {
   sourceArtifactId: string | null;
   datasourceId: string | null;
   datasourceName: string | null;
+  sqlText: string | null;
   refreshable: boolean;
   spec: unknown;
   points: number;
@@ -36,6 +42,25 @@ export interface DashboardCardDto {
 
 export interface DashboardDetailDto extends DashboardSummaryDto {
   cards: DashboardCardDto[];
+}
+
+export function toDashboardSummaryDto(
+  row: DashboardRow,
+  cardCount: number,
+): DashboardSummaryDto {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    cardCount,
+    refreshCron: row.refreshCron ?? null,
+    refreshTimezone: row.refreshTimezone || "Asia/Shanghai",
+    nextRefreshAt: row.nextRefreshAt ?? null,
+    lastAutoRefreshedAt: row.lastAutoRefreshedAt ?? null,
+    lastAutoRefreshError: row.lastAutoRefreshError ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
 }
 
 function safeParseJson(raw: string): unknown {
@@ -58,6 +83,7 @@ export function toDashboardCardDto(
     sourceArtifactId: row.sourceArtifactId,
     datasourceId: row.datasourceId,
     datasourceName,
+    sqlText: row.sqlText ?? null,
     refreshable: Boolean(row.datasourceId && row.sqlText && row.chartConfigJson),
     spec: safeParseJson(row.specJson),
     points: row.points,
@@ -95,14 +121,11 @@ export function listDashboardsByUser(db: Db, userId: string): DashboardSummaryDt
     counts.set(item.dashboardId, (counts.get(item.dashboardId) ?? 0) + 1);
   }
 
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    cardCount: counts.get(row.id) ?? 0,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  }));
+  return rows.map((row) => toDashboardSummaryDto(row, counts.get(row.id) ?? 0));
+}
+
+export function findDashboardById(db: Db, id: string): DashboardRow | undefined {
+  return db.select().from(dashboards).where(eq(dashboards.id, id)).get();
 }
 
 export function findOwnedDashboard(
@@ -134,33 +157,81 @@ export function insertDashboard(
     })
     .returning()
     .get();
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    cardCount: 0,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
+  return toDashboardSummaryDto(row, 0);
 }
 
 export function updateOwnedDashboard(
   db: Db,
   id: string,
   userId: string,
-  patch: { name?: string; description?: string | null },
+  patch: {
+    name?: string;
+    description?: string | null;
+    refreshCron?: string | null;
+    refreshTimezone?: string;
+    nextRefreshAt?: number | null;
+  },
 ): DashboardRow | undefined {
   const values: Partial<typeof dashboards.$inferInsert> = {
     updatedAt: Date.now(),
   };
   if (patch.name !== undefined) values.name = patch.name.trim();
   if (patch.description !== undefined) values.description = patch.description?.trim() || null;
+  if (patch.refreshCron !== undefined) values.refreshCron = patch.refreshCron;
+  if (patch.refreshTimezone !== undefined) values.refreshTimezone = patch.refreshTimezone;
+  if (patch.nextRefreshAt !== undefined) values.nextRefreshAt = patch.nextRefreshAt;
+  if (patch.refreshCron === null) {
+    values.lastAutoRefreshError = null;
+  }
   return db
     .update(dashboards)
     .set(values)
     .where(and(eq(dashboards.id, id), eq(dashboards.userId, userId)))
     .returning()
     .get();
+}
+
+export function listDueDashboards(db: Db, now: number): DashboardRow[] {
+  return db
+    .select()
+    .from(dashboards)
+    .where(
+      and(
+        isNotNull(dashboards.refreshCron),
+        isNotNull(dashboards.nextRefreshAt),
+        lte(dashboards.nextRefreshAt, now),
+      ),
+    )
+    .orderBy(asc(dashboards.nextRefreshAt))
+    .all();
+}
+
+export function claimDashboardRefresh(
+  db: Db,
+  id: string,
+  expectedNextRefreshAt: number,
+  nextRefreshAt: number | null,
+): boolean {
+  const res = db
+    .update(dashboards)
+    .set({ nextRefreshAt })
+    .where(and(eq(dashboards.id, id), eq(dashboards.nextRefreshAt, expectedNextRefreshAt)))
+    .run();
+  return res.changes > 0;
+}
+
+export function recordDashboardAutoRefreshResult(
+  db: Db,
+  id: string,
+  result: { refreshedAt: number; error: string | null },
+): void {
+  db.update(dashboards)
+    .set({
+      lastAutoRefreshedAt: result.refreshedAt,
+      lastAutoRefreshError: result.error,
+    })
+    .where(eq(dashboards.id, id))
+    .run();
 }
 
 export function deleteOwnedDashboard(db: Db, id: string, userId: string): boolean {
@@ -285,6 +356,7 @@ export function updateOwnedDashboardCard(
     width?: 1 | 2;
     position?: number;
     sqlText?: string;
+    sourceArtifactId?: string | null;
     specJson?: string;
     points?: number;
     lastRefreshedAt?: number | null;
@@ -299,6 +371,7 @@ export function updateOwnedDashboardCard(
   if (patch.width !== undefined) values.width = patch.width;
   if (patch.position !== undefined) values.position = patch.position;
   if (patch.sqlText !== undefined) values.sqlText = patch.sqlText;
+  if (patch.sourceArtifactId !== undefined) values.sourceArtifactId = patch.sourceArtifactId;
   if (patch.specJson !== undefined) values.specJson = patch.specJson;
   if (patch.points !== undefined) values.points = patch.points;
   if (patch.lastRefreshedAt !== undefined) values.lastRefreshedAt = patch.lastRefreshedAt;

@@ -1062,6 +1062,11 @@ export interface DashboardSummary {
   name: string;
   description: string | null;
   cardCount: number;
+  refreshCron?: string | null;
+  refreshTimezone?: string;
+  nextRefreshAt?: number | null;
+  lastAutoRefreshedAt?: number | null;
+  lastAutoRefreshError?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -1075,6 +1080,7 @@ export interface DashboardCard {
   datasourceId: string | null;
   datasourceName: string | null;
   refreshable: boolean;
+  sqlText?: string | null;
   spec: unknown;
   points: number;
   width: 1 | 2;
@@ -1109,7 +1115,12 @@ export function getDashboard(id: string): Promise<{ dashboard: DashboardDetail }
 
 export function updateDashboard(
   id: string,
-  input: { name?: string; description?: string | null },
+  input: {
+    name?: string;
+    description?: string | null;
+    refreshCron?: string | null;
+    refreshTimezone?: string;
+  },
 ): Promise<{ dashboard: DashboardDetail }> {
   return apiRequest(`/api/dashboards/${id}`, {
     method: "PATCH",
@@ -1134,7 +1145,7 @@ export function pinChartToDashboard(
 export function updateDashboardCard(
   dashboardId: string,
   cardId: string,
-  input: { title?: string; width?: 1 | 2 },
+  input: { title?: string; width?: 1 | 2; sqlText?: string },
 ): Promise<{ card: DashboardCard }> {
   return apiRequest(`/api/dashboards/${dashboardId}/cards/${cardId}`, {
     method: "PATCH",
@@ -1997,11 +2008,32 @@ export interface PublicReportShare {
   createdAt: number;
 }
 
-export type PublicShare = PublicConversationShare | PublicReportShare;
+export interface PublicDashboardCard {
+  title: string;
+  width: 1 | 2;
+  points: number;
+  spec: unknown;
+  lastRefreshedAt: number | null;
+}
+
+export interface PublicDashboardShare {
+  type: "dashboard";
+  title: string;
+  description: string | null;
+  cards: PublicDashboardCard[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type PublicShare =
+  | PublicConversationShare
+  | PublicReportShare
+  | PublicDashboardShare;
 
 export interface CreateShareInput {
   conversationId?: string;
   reportId?: string;
+  dashboardId?: string;
   expiresInDays?: number;
 }
 

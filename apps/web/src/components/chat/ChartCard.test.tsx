@@ -4,8 +4,18 @@ import userEvent from "@testing-library/user-event";
 import { ChartCard } from "./ChartCard";
 
 vi.mock("./EChart", () => ({
-  EChart: ({ height }: { height?: number }) => (
-    <div data-testid="mock-echart" style={{ height }} />
+  EChart: ({
+    height,
+    onPointClick,
+  }: {
+    height?: number;
+    onPointClick?: (point: { name: string; seriesName?: string; value?: number }) => void;
+  }) => (
+    <div
+      data-testid="mock-echart"
+      style={{ height }}
+      onClick={() => onPointClick?.({ name: "华北", seriesName: "销售额", value: 300 })}
+    />
   ),
 }));
 
@@ -62,5 +72,37 @@ describe("ChartCard interactive switching", () => {
       ["华南", "180"],
       ["华北", "300"],
     ]);
+  });
+
+  it("triggers onDrillDown when clicking a plotted chart point or table row", async () => {
+    const browser = userEvent.setup();
+    const onDrillDown = vi.fn();
+    render(
+      <ChartCard
+        title="各地区销售额"
+        option={sampleOption}
+        points={3}
+        onDrillDown={onDrillDown}
+      />,
+    );
+
+    expect(screen.getByText(/点击数据点下钻追问/)).toBeInTheDocument();
+    await browser.click(await screen.findByTestId("mock-echart"));
+    expect(onDrillDown).toHaveBeenCalledWith({
+      title: "各地区销售额",
+      category: "华北",
+      seriesName: "销售额",
+      value: 300,
+    });
+
+    // Also works in table view by clicking a row.
+    await browser.click(screen.getByRole("button", { name: "明细表" }));
+    await browser.click(screen.getByText("华东"));
+    expect(onDrillDown).toHaveBeenLastCalledWith({
+      title: "各地区销售额",
+      category: "华东",
+      seriesName: "销售额",
+      value: 120,
+    });
   });
 });

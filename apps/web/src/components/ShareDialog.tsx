@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 export interface ShareTarget {
   conversationId?: string;
   reportId?: string;
+  dashboardId?: string;
   label?: string;
 }
 
@@ -45,6 +46,7 @@ export function ShareDialog({ target, onClose }: ShareDialogProps) {
           ? { conversationId: target.conversationId }
           : {}),
         ...(target.reportId !== undefined ? { reportId: target.reportId } : {}),
+        ...(target.dashboardId !== undefined ? { dashboardId: target.dashboardId } : {}),
         expiresInDays,
       }),
     onSuccess: (data) => setCreated(data.share),

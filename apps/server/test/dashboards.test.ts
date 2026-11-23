@@ -15,9 +15,10 @@ import { createConversation } from "../src/db/repositories/conversations.js";
 import { insertDatasource } from "../src/db/repositories/datasources.js";
 import { replaceGrants } from "../src/db/repositories/grants.js";
 import { insertUser } from "../src/db/repositories/users.js";
-import { dashboardCards, runEvents } from "../src/db/schema.js";
+import { dashboardCards, dashboards, datasources, runEvents } from "../src/db/schema.js";
 import { ArtifactStore } from "../src/services/artifacts.js";
 import { recordAudit } from "../src/services/audit.js";
+import { sweepDueDashboards } from "../src/services/dashboards.js";
 import { testConfig } from "./helpers/config.js";
 
 let tmpDir: string;
@@ -33,6 +34,7 @@ let conversationId: string;
 let fakeRows: Array<[string, number]>;
 let lastExecutedSql = "";
 let fakeFields: Array<{ name: string }> = [{ name: "region" }, { name: "total" }];
+let fakePoolsRef: PoolRegistry;
 
 beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "datachat-dashboards-test-"));
@@ -127,6 +129,7 @@ beforeEach(async () => {
     invalidate: vi.fn(async () => undefined),
     closeAll: vi.fn(async () => undefined),
   } as unknown as PoolRegistry;
+  fakePoolsRef = fakePools;
 
   const signer = createSessionSigner(testConfig.appSecret);
   ownerCookie = await signer.sign({ sub: owner.id, username: owner.username, role: owner.role });
@@ -396,5 +399,144 @@ describe("dashboards api", () => {
       .where(eq(dashboardCards.id, cardId))
       .get();
     expect(saved?.sqlText).toBe(monthlySql);
+  });
+
+  it("supports dashboard public sharing (with scope guard), scheduled auto-refresh, and guarded card SQL editing", async () => {
+    const runId = randomUUID();
+    recordAudit(db, {
+      runId,
+      conversationId,
+      userId: ownerId,
+      datasourceId,
+      action: "query",
+      sqlText: "SELECT region, SUM(amount) AS total FROM orders GROUP BY region LIMIT 50",
+      status: "ok",
+    });
+    const chart = store.createChart({
+      conversationId,
+      userId: ownerId,
+      runId,
+      columns: [
+        { name: "region", type: "string" },
+        { name: "total", type: "number" },
+      ],
+      rowCount: 2,
+      spec: {
+        chart: { type: "bar", x: "region", y: "total", title: "区域销售" },
+        option: {
+          xAxis: { type: "category", data: ["华东", "华北"] },
+          yAxis: { type: "value" },
+          series: [{ type: "bar", data: [100, 200] }],
+        },
+      },
+    });
+
+    const createDash = await app.inject({
+      method: "POST",
+      url: "/api/dashboards",
+      cookies: { dc_session: ownerCookie },
+      payload: { name: "经营驾驶舱" },
+    });
+    const dashboardId = (createDash.json() as { dashboard: { id: string } }).dashboard.id;
+
+    const pinRes = await app.inject({
+      method: "POST",
+      url: `/api/dashboards/${dashboardId}/cards/from-artifact`,
+      cookies: { dc_session: ownerCookie },
+      payload: { artifactId: chart.id },
+    });
+    expect(pinRes.statusCode).toBe(201);
+    const cardId = (pinRes.json() as { card: { id: string; sqlText: string } }).card.id;
+
+    // 1. Card SQL edit: rejects unsafe write SQL and accepts valid read-only SELECT.
+    const unsafeSql = await app.inject({
+      method: "PATCH",
+      url: `/api/dashboards/${dashboardId}/cards/${cardId}`,
+      cookies: { dc_session: ownerCookie },
+      payload: { sqlText: "DELETE FROM orders" },
+    });
+    expect(unsafeSql.statusCode).toBe(400);
+    expect((unsafeSql.json() as { error: { code: string } }).error.code).toBe("INVALID_SQL");
+
+    const updatedSql = "SELECT region, SUM(amount) AS total FROM orders WHERE status = 'paid' GROUP BY region LIMIT 20";
+    const okSql = await app.inject({
+      method: "PATCH",
+      url: `/api/dashboards/${dashboardId}/cards/${cardId}`,
+      cookies: { dc_session: ownerCookie },
+      payload: { sqlText: updatedSql },
+    });
+    expect(okSql.statusCode).toBe(200);
+    expect((okSql.json() as { card: { sqlText: string } }).card.sqlText).toBe(updatedSql);
+
+    // 2. Scheduled auto-refresh: configure cron, simulate due timestamp, and run sweepDueDashboards.
+    const schedRes = await app.inject({
+      method: "PATCH",
+      url: `/api/dashboards/${dashboardId}`,
+      cookies: { dc_session: ownerCookie },
+      payload: { refreshCron: "0 8 * * *", refreshTimezone: "Asia/Shanghai" },
+    });
+    expect(schedRes.statusCode).toBe(200);
+    const scheduled = (
+      schedRes.json() as { dashboard: { refreshCron: string; nextRefreshAt: number | null } }
+    ).dashboard;
+    expect(scheduled.refreshCron).toBe("0 8 * * *");
+    expect(scheduled.nextRefreshAt).toBeTypeOf("number");
+
+    const now = Date.now();
+    db.update(dashboards)
+      .set({ nextRefreshAt: now - 1000 })
+      .where(eq(dashboards.id, dashboardId))
+      .run();
+
+    fakeFields = [{ name: "region" }, { name: "total" }];
+    fakeRows = [
+      ["华东", 999],
+      ["华南", 444],
+    ];
+    const sweep = await sweepDueDashboards(
+      { db, config: { ...testConfig, dataDir: tmpDir }, pools: fakePoolsRef, artifacts: store },
+      now,
+    );
+    expect(sweep).toEqual({ processed: 1, succeeded: 1, failed: 0 });
+    expect(lastExecutedSql).toContain("status = 'paid'");
+
+    // 3. Public dashboard sharing: creates public link without leaking SQL, and fails closed when scope is enabled.
+    const shareRes = await app.inject({
+      method: "POST",
+      url: "/api/shares",
+      cookies: { dc_session: ownerCookie },
+      payload: { dashboardId, expiresInDays: 7 },
+    });
+    expect(shareRes.statusCode).toBe(201);
+    const { token } = (shareRes.json() as { share: { token: string } }).share;
+
+    const pubRes = await app.inject({
+      method: "GET",
+      url: `/api/public/shares/${token}`,
+    });
+    expect(pubRes.statusCode).toBe(200);
+    const pubJson = pubRes.json() as {
+      type: string;
+      title: string;
+      cards: Array<{ title: string; sqlText?: string }>;
+    };
+    expect(pubJson.type).toBe("dashboard");
+    expect(pubJson.title).toBe("经营驾驶舱");
+    expect(pubJson.cards).toHaveLength(1);
+    expect(pubJson.cards[0]?.sqlText).toBeUndefined();
+
+    // Once datasource enables data scope, existing dashboard share is immediately refused.
+    db.update(datasources)
+      .set({ dataScopeMode: "enabled" })
+      .where(eq(datasources.id, datasourceId))
+      .run();
+    const blockedPub = await app.inject({
+      method: "GET",
+      url: `/api/public/shares/${token}`,
+    });
+    expect(blockedPub.statusCode).toBe(410);
+    expect((blockedPub.json() as { error: { code: string } }).error.code).toBe(
+      "SHARE_DISABLED_BY_SCOPE",
+    );
   });
 });

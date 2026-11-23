@@ -297,10 +297,19 @@ export const dashboards = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
+    /** Optional 5-field cron expression for scheduled auto-refresh; null = disabled. */
+    refreshCron: text("refresh_cron"),
+    refreshTimezone: text("refresh_timezone").notNull().default("Asia/Shanghai"),
+    nextRefreshAt: integer("next_refresh_at"),
+    lastAutoRefreshedAt: integer("last_auto_refreshed_at"),
+    lastAutoRefreshError: text("last_auto_refresh_error"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (t) => [index("dashboards_user_updated_idx").on(t.userId, t.updatedAt)],
+  (t) => [
+    index("dashboards_user_updated_idx").on(t.userId, t.updatedAt),
+    index("dashboards_next_refresh_idx").on(t.nextRefreshAt),
+  ],
 );
 
 export const dashboardCards = sqliteTable(
@@ -607,16 +616,17 @@ export const shares = sqliteTable(
     tokenHash: text("token_hash").notNull().unique(),
     conversationId: text("conversation_id"),
     reportId: text("report_id"),
+    dashboardId: text("dashboard_id"),
     createdBy: text("created_by").notNull(),
     expiresAt: integer("expires_at").notNull(),
     revokedAt: integer("revoked_at"),
     createdAt: integer("created_at").notNull(),
   },
   (t) => [
-    // A share points at exactly one target.
+    // A share points at exactly one target (conversation, report, or dashboard).
     check(
       "shares_target_check",
-      sql`(${t.conversationId} is null) + (${t.reportId} is null) = 1`,
+      sql`(${t.conversationId} is null) + (${t.reportId} is null) + (${t.dashboardId} is null) = 2`,
     ),
   ],
 );

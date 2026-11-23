@@ -23,6 +23,7 @@ const createBodySchema = z
   .object({
     conversationId: z.string().uuid().optional(),
     reportId: z.string().uuid().optional(),
+    dashboardId: z.string().uuid().optional(),
     expiresInDays: z
       .number()
       .int()
@@ -31,8 +32,12 @@ const createBodySchema = z
       .optional(),
   })
   .refine(
-    (value) => (value.conversationId === undefined) !== (value.reportId === undefined),
-    { message: "必须且只能指定会话或报告" },
+    (value) =>
+      Number(value.conversationId !== undefined) +
+        Number(value.reportId !== undefined) +
+        Number(value.dashboardId !== undefined) ===
+      1,
+    { message: "必须且只能指定会话、报告或看板之一" },
   );
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
@@ -68,6 +73,7 @@ export async function shareRoutes(
           ? { conversationId: body.data.conversationId }
           : {}),
         ...(body.data.reportId !== undefined ? { reportId: body.data.reportId } : {}),
+        ...(body.data.dashboardId !== undefined ? { dashboardId: body.data.dashboardId } : {}),
         ...(body.data.expiresInDays !== undefined
           ? { expiresInDays: body.data.expiresInDays }
           : {}),

@@ -9,20 +9,25 @@ import {
   deleteOwnedDashboard,
   deleteOwnedDashboardCard,
   findOwnedDashboard,
+  findOwnedDashboardCard,
   insertDashboard,
   listDashboardCardRows,
   listDashboardCardsWithDatasourceNames,
   listDashboardsByUser,
   reorderDashboardCards,
   toDashboardCardDto,
+  toDashboardSummaryDto,
   updateOwnedDashboard,
   updateOwnedDashboardCard,
 } from "../db/repositories/dashboards.js";
 import { findDatasource } from "../db/repositories/datasources.js";
+import { guardSql } from "../agent/sql/guard.js";
+import { defaultDriverRegistry } from "../drivers/registry.js";
 import {
   pinChartArtifactToDashboard,
   refreshDashboardCard,
 } from "../services/dashboards.js";
+import { nextScheduleRun, validateSchedule } from "../services/schedule.js";
 
 export interface DashboardRouteOptions {
   config: AppConfig;
@@ -47,10 +52,19 @@ const updateDashboardSchema = z
   .object({
     name: z.string().trim().min(1).max(100).optional(),
     description: z.string().trim().max(500).optional().nullable(),
+    refreshCron: z.string().trim().max(100).optional().nullable(),
+    refreshTimezone: z.string().trim().min(1).max(80).optional(),
   })
-  .refine((d) => d.name !== undefined || d.description !== undefined, {
-    message: "至少提供名称或说明",
-  });
+  .refine(
+    (d) =>
+      d.name !== undefined ||
+      d.description !== undefined ||
+      d.refreshCron !== undefined ||
+      d.refreshTimezone !== undefined,
+    {
+      message: "至少提供一个修改字段",
+    },
+  );
 
 const pinArtifactSchema = z.object({
   artifactId: z.string().uuid(),
@@ -62,9 +76,10 @@ const updateCardSchema = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
     width: z.union([z.literal(1), z.literal(2)]).optional(),
+    sqlText: z.string().trim().min(1).max(20_000).optional(),
   })
-  .refine((d) => d.title !== undefined || d.width !== undefined, {
-    message: "至少提供标题或宽度",
+  .refine((d) => d.title !== undefined || d.width !== undefined || d.sqlText !== undefined, {
+    message: "至少提供标题、宽度或 SQL",
   });
 
 const reorderSchema = z.object({
@@ -113,12 +128,7 @@ export async function dashboardRoutes(
       const cards = listDashboardCardsWithDatasourceNames(opts.db, row.id);
       return {
         dashboard: {
-          id: row.id,
-          name: row.name,
-          description: row.description,
-          cardCount: cards.length,
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt,
+          ...toDashboardSummaryDto(row, cards.length),
           cards,
         },
       };
@@ -134,17 +144,55 @@ export async function dashboardRoutes(
       if (!params.success || !body.success) {
         return reply.code(400).send(errorBody("VALIDATION", "参数不合法"));
       }
-      const updated = updateOwnedDashboard(opts.db, params.data.id, request.user!.sub, body.data);
+      const existing = findOwnedDashboard(opts.db, params.data.id, request.user!.sub);
+      if (!existing) return reply.code(404).send(errorBody("NOT_FOUND", "看板不存在"));
+
+      let nextCron: string | null | undefined = undefined;
+      let nextTimezone: string | undefined = undefined;
+      let nextRefreshAt: number | null | undefined = undefined;
+
+      if (body.data.refreshCron !== undefined || body.data.refreshTimezone !== undefined) {
+        const effectiveCron =
+          body.data.refreshCron === ""
+            ? null
+            : body.data.refreshCron !== undefined
+              ? body.data.refreshCron
+              : existing.refreshCron;
+        const effectiveTz = body.data.refreshTimezone ?? existing.refreshTimezone ?? "Asia/Shanghai";
+
+        if (effectiveCron === null) {
+          nextCron = null;
+          nextTimezone = effectiveTz;
+          nextRefreshAt = null;
+        } else {
+          const check = validateSchedule({
+            cronExpression: effectiveCron,
+            timezone: effectiveTz,
+          });
+          if (check) {
+            return reply.code(400).send(errorBody(check.code, check.message));
+          }
+          nextCron = effectiveCron;
+          nextTimezone = effectiveTz;
+          nextRefreshAt = nextScheduleRun({
+            cronExpression: effectiveCron,
+            timezone: effectiveTz,
+          });
+        }
+      }
+
+      const updated = updateOwnedDashboard(opts.db, params.data.id, request.user!.sub, {
+        ...(body.data.name !== undefined ? { name: body.data.name } : {}),
+        ...(body.data.description !== undefined ? { description: body.data.description } : {}),
+        ...(nextCron !== undefined ? { refreshCron: nextCron } : {}),
+        ...(nextTimezone !== undefined ? { refreshTimezone: nextTimezone } : {}),
+        ...(nextRefreshAt !== undefined ? { nextRefreshAt } : {}),
+      });
       if (!updated) return reply.code(404).send(errorBody("NOT_FOUND", "看板不存在"));
       const cards = listDashboardCardsWithDatasourceNames(opts.db, updated.id);
       return {
         dashboard: {
-          id: updated.id,
-          name: updated.name,
-          description: updated.description,
-          cardCount: cards.length,
-          createdAt: updated.createdAt,
-          updatedAt: updated.updatedAt,
+          ...toDashboardSummaryDto(updated, cards.length),
           cards,
         },
       };
@@ -215,12 +263,49 @@ export async function dashboardRoutes(
       if (!params.success || !body.success) {
         return reply.code(400).send(errorBody("VALIDATION", "参数不合法"));
       }
+      if (body.data.sqlText !== undefined) {
+        const existingCard = findOwnedDashboardCard(
+          opts.db,
+          params.data.id,
+          params.data.cardId,
+          request.user!.sub,
+        );
+        if (!existingCard) return reply.code(404).send(errorBody("NOT_FOUND", "看板卡片不存在"));
+        const ds = existingCard.datasourceId
+          ? findDatasource(opts.db, existingCard.datasourceId)
+          : undefined;
+        if (!ds) {
+          return reply
+            .code(400)
+            .send(errorBody("NOT_REFRESHABLE", "该卡片未绑定数据源，不支持修改 SQL"));
+        }
+        const driver = (opts.drivers ?? defaultDriverRegistry).get(ds.type);
+        if (!driver) {
+          return reply
+            .code(503)
+            .send(errorBody("DRIVER_NOT_INSTALLED", `未安装「${ds.type}」数据源驱动`));
+        }
+        const guard = guardSql({
+          sql: body.data.sqlText,
+          dialect: driver.dialect,
+          maxRows: opts.config.queryMaxRows,
+        });
+        if (!guard.ok) {
+          return reply
+            .code(400)
+            .send(errorBody("INVALID_SQL", `SQL 未通过只读安全校验：${guard.reason}`));
+        }
+      }
       const updated = updateOwnedDashboardCard(
         opts.db,
         params.data.id,
         params.data.cardId,
         request.user!.sub,
-        body.data,
+        {
+          ...body.data,
+          // Once the owner explicitly edits SQL, detach sourceArtifactId so auto-repair won't revert it.
+          ...(body.data.sqlText !== undefined ? { sourceArtifactId: null } : {}),
+        },
       );
       if (!updated) return reply.code(404).send(errorBody("NOT_FOUND", "看板卡片不存在"));
       const dsName = updated.datasourceId

@@ -14,7 +14,7 @@ import type { RunStreamState } from "../../lib/run-events";
 import { PageSpinner } from "../ui/spinner";
 import { Button } from "../ui/button";
 import { BrandMark } from "../BrandMark";
-import { ChartCard, chartOptionFromSpec } from "./ChartCard";
+import { ChartCard, chartOptionFromSpec, type ChartDrillDownPoint } from "./ChartCard";
 import { FileUploadPanel, type FileUploadPanelProps } from "./FileUploadPanel";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
 import { RunStatus } from "./RunStatus";
@@ -62,6 +62,8 @@ export interface MessageListProps {
   editDisabled?: boolean;
   /** Pins a chart artifact onto a user dashboard. */
   onPinChart?: (artifact: ChatArtifact, title: string) => void;
+  /** Pre-fills a drill-down follow-up prompt when clicking a chart point. */
+  onDrillDownChart?: (point: ChartDrillDownPoint) => void;
   /** Datasources offered on the empty state so a new chat can start in place. */
   datasources?: DatasourceSummary[];
   datasourcesLoading?: boolean;
@@ -420,6 +422,7 @@ export function MessageList({
   onEditResend,
   editDisabled = false,
   onPinChart,
+  onDrillDownChart,
   datasources = [],
   datasourcesLoading = false,
   datasourcesError = null,
@@ -685,6 +688,7 @@ export function MessageList({
               onEditResend={onEditResend}
               editDisabled={editDisabled}
               onPinChart={onPinChart}
+              onDrillDownChart={onDrillDownChart}
             />
           </div>
         ))}
@@ -760,6 +764,7 @@ export function MessageList({
                     title={chart.title}
                     option={chartOptionFromSpec(chart.spec)}
                     points={chart.points}
+                    onDrillDown={onDrillDownChart}
                   />
                 ) : null;
               })}
@@ -771,6 +776,7 @@ export function MessageList({
                       title={chart.title}
                       option={chartOptionFromSpec(chart.spec)}
                       points={chart.points}
+                      onDrillDown={onDrillDownChart}
                     />
                   ))}
                 </div>

@@ -21,7 +21,7 @@ import {
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import type { ChartOption } from "./EChart";
+import type { ChartOption, EChartClickPoint } from "./EChart";
 import {
   availableChartModes,
   detectChartBaseMode,
@@ -91,7 +91,17 @@ function compareCells(
   return direction === "asc" ? diff : -diff;
 }
 
-function ChartTableView({ table }: { table: ChartTableData | null }) {
+function ChartTableView({
+  table,
+  onRowDrillDown,
+}: {
+  table: ChartTableData | null;
+  onRowDrillDown?: (point: {
+    category: string;
+    seriesName?: string;
+    value?: string | number | null;
+  }) => void;
+}) {
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -172,25 +182,54 @@ function ChartTableView({ table }: { table: ChartTableData | null }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-line/60 bg-surface text-ink">
-          {sortedRows.map((row, rowIndex) => (
-            <tr key={rowIndex} className="hover:bg-subtle/60">
-              {table.columns.map((column, colIndex) => (
-                <td
-                  key={colIndex}
-                  className={cn(
-                    "whitespace-nowrap px-3 py-1.5",
-                    column.numeric && "text-right tabular-nums",
-                  )}
-                >
-                  {formatTableCell(row[colIndex] ?? null, column)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {sortedRows.map((row, rowIndex) => {
+            const firstCell = row[0];
+            const category =
+              firstCell !== null && firstCell !== undefined ? String(firstCell).trim() : "";
+            const valueColIndex = table.columns.findIndex((col, idx) => idx > 0 && col.numeric);
+            const fallbackColIndex = valueColIndex >= 0 ? valueColIndex : table.columns.length > 1 ? 1 : -1;
+            const valueCell = fallbackColIndex >= 0 ? (row[fallbackColIndex] ?? null) : null;
+            const seriesName =
+              fallbackColIndex >= 0 ? table.columns[fallbackColIndex]?.label : undefined;
+            const clickable = Boolean(onRowDrillDown && category);
+            return (
+              <tr
+                key={rowIndex}
+                onClick={
+                  clickable
+                    ? () => onRowDrillDown?.({ category, seriesName, value: valueCell })
+                    : undefined
+                }
+                className={cn(
+                  "hover:bg-subtle/60",
+                  clickable && "cursor-pointer",
+                )}
+              >
+                {table.columns.map((column, colIndex) => (
+                  <td
+                    key={colIndex}
+                    className={cn(
+                      "whitespace-nowrap px-3 py-1.5",
+                      column.numeric && "text-right tabular-nums",
+                    )}
+                  >
+                    {formatTableCell(row[colIndex] ?? null, column)}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
+}
+
+export interface ChartDrillDownPoint {
+  title: string;
+  category: string;
+  seriesName?: string;
+  value?: string | number | null;
 }
 
 export interface ChartCardProps {
@@ -201,6 +240,8 @@ export interface ChartCardProps {
   className?: string;
   /** Optional handler to pin this chart to a user dashboard. */
   onPin?: () => void;
+  /** Optional handler invoked when the user clicks a plotted point or table row to drill down. */
+  onDrillDown?: (point: ChartDrillDownPoint) => void;
 }
 
 /** Extract the ECharts option from a persisted chart spec (`{option, chart}`). */
@@ -231,7 +272,14 @@ function pngFileName(title: string): string {
   return `${safe || "chart"}.png`;
 }
 
-export function ChartCard({ title, option, points, className, onPin }: ChartCardProps) {
+export function ChartCard({
+  title,
+  option,
+  points,
+  className,
+  onPin,
+  onDrillDown,
+}: ChartCardProps) {
   const inlineRef = useRef<EChartsType | null>(null);
   const fullscreenRef = useRef<EChartsType | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -365,6 +413,33 @@ export function ChartCard({ title, option, points, className, onPin }: ChartCard
     </>
   );
 
+  const handlePointDrillDown = onDrillDown
+    ? (point: EChartClickPoint, fromFullscreen = false) => {
+        if (fromFullscreen) closeFullscreen();
+        onDrillDown({
+          title,
+          category: point.name,
+          seriesName: point.seriesName,
+          value: point.value,
+        });
+      }
+    : undefined;
+
+  const handleRowDrillDown = onDrillDown
+    ? (
+        point: { category: string; seriesName?: string; value?: string | number | null },
+        fromFullscreen = false,
+      ) => {
+        if (fromFullscreen) closeFullscreen();
+        onDrillDown({
+          title,
+          category: point.category,
+          seriesName: point.seriesName,
+          value: point.value,
+        });
+      }
+    : undefined;
+
   return (
     <div
       className={`overflow-hidden rounded-lg border border-line bg-surface ${className ?? ""}`}
@@ -374,6 +449,11 @@ export function ChartCard({ title, option, points, className, onPin }: ChartCard
           <span className="truncate text-xs font-medium text-inksoft">{title}</span>
           {points !== undefined ? (
             <span className="shrink-0 text-[11px] text-muted">{points} 个数据点</span>
+          ) : null}
+          {onDrillDown ? (
+            <span className="hidden shrink-0 text-[11px] text-muted/80 sm:inline">
+              · 点击数据点下钻追问
+            </span>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -422,7 +502,10 @@ export function ChartCard({ title, option, points, className, onPin }: ChartCard
       </div>
       <div className="h-64 px-2 py-2">
         {activeMode === "table" ? (
-          <ChartTableView table={tableData} />
+          <ChartTableView
+            table={tableData}
+            onRowDrillDown={handleRowDrillDown ? (p) => handleRowDrillDown(p, false) : undefined}
+          />
         ) : (
           <Suspense fallback={<ChartLoading />}>
             <LazyEChart
@@ -431,6 +514,9 @@ export function ChartCard({ title, option, points, className, onPin }: ChartCard
               onReady={(instance) => {
                 inlineRef.current = instance;
               }}
+              onPointClick={
+                handlePointDrillDown ? (p) => handlePointDrillDown(p, false) : undefined
+              }
             />
           </Suspense>
         )}
@@ -474,7 +560,10 @@ export function ChartCard({ title, option, points, className, onPin }: ChartCard
           </div>
           <div className="min-h-0 flex-1 p-3">
             {activeMode === "table" ? (
-              <ChartTableView table={tableData} />
+              <ChartTableView
+                table={tableData}
+                onRowDrillDown={handleRowDrillDown ? (p) => handleRowDrillDown(p, true) : undefined}
+              />
             ) : (
               <Suspense fallback={<ChartLoading />}>
                 <LazyEChart
@@ -484,6 +573,9 @@ export function ChartCard({ title, option, points, className, onPin }: ChartCard
                     fullscreenRef.current = instance;
                     setFullscreenReady(instance !== null);
                   }}
+                  onPointClick={
+                    handlePointDrillDown ? (p) => handlePointDrillDown(p, true) : undefined
+                  }
                 />
               </Suspense>
             )}

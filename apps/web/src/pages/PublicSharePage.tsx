@@ -218,6 +218,45 @@ function ReportView({ share }: { share: Extract<PublicShare, { type: "report" }>
   );
 }
 
+function DashboardView({ share }: { share: Extract<PublicShare, { type: "dashboard" }> }) {
+  return (
+    <>
+      <header className="mb-6 border-b border-line pb-4">
+        <h1 className="text-xl font-semibold text-ink">{share.title}</h1>
+        {share.description ? (
+          <p className="mt-1.5 text-sm text-inksoft">{share.description}</p>
+        ) : null}
+        <p className="mt-1 text-xs text-muted">
+          公开看板 · 更新于 {formatTime(share.updatedAt)}
+        </p>
+      </header>
+      {share.cards.length === 0 ? (
+        <p className="text-sm text-muted">这个看板还没有图表卡片。</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {share.cards.map((card, index) => (
+            <div
+              key={`${card.title}-${index}`}
+              className={cn("flex flex-col gap-1", card.width === 2 && "lg:col-span-2")}
+            >
+              <ChartCard
+                title={card.title}
+                option={chartOptionFromSpec(card.spec)}
+                points={card.points}
+              />
+              {card.lastRefreshedAt ? (
+                <p className="px-1 text-[11px] text-muted">
+                  数据更新于 {formatTime(card.lastRefreshedAt)}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function PublicSharePage() {
   const { token } = useParams<{ token: string }>();
   const query = useQuery({
@@ -230,6 +269,7 @@ export default function PublicSharePage() {
 
   const gone =
     query.isError && query.error instanceof ApiError && query.error.status === 410;
+  const isDashboard = query.data?.type === "dashboard";
 
   let content: ReactNode;
   if (!token || query.isPending) {
@@ -243,26 +283,27 @@ export default function PublicSharePage() {
         </p>
       </div>
     );
+  } else if (query.data.type === "conversation") {
+    content = <ConversationView share={query.data} />;
+  } else if (query.data.type === "dashboard") {
+    content = <DashboardView share={query.data} />;
   } else {
-    content =
-      query.data.type === "conversation" ? (
-        <ConversationView share={query.data} />
-      ) : (
-        <ReportView share={query.data} />
-      );
+    content = <ReportView share={query.data} />;
   }
+
+  const maxWidth = isDashboard ? "max-w-5xl" : "max-w-3xl";
 
   return (
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between px-4">
+        <div className={cn("mx-auto flex h-14 w-full items-center justify-between px-4", maxWidth)}>
           <span className="text-sm font-semibold text-ink">DataChat</span>
           <span className="rounded-full bg-subtle px-2 py-0.5 text-xs text-muted">
             只读分享
           </span>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-3xl px-4 py-6">{content}</main>
+      <main className={cn("mx-auto w-full px-4 py-6", maxWidth)}>{content}</main>
     </div>
   );
 }

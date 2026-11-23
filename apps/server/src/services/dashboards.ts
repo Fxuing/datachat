@@ -6,10 +6,13 @@ import type { DriverRegistry } from "../drivers/registry.js";
 import { findConversation } from "../db/repositories/conversations.js";
 import { findDatasource } from "../db/repositories/datasources.js";
 import {
+  claimDashboardRefresh,
   findOwnedDashboard,
   findOwnedDashboardCard,
   insertDashboardCard,
   listDashboardCardRows,
+  listDueDashboards,
+  recordDashboardAutoRefreshResult,
   toDashboardCardDto,
   updateOwnedDashboardCard,
   type DashboardCardDto,
@@ -18,6 +21,7 @@ import { queryAudit, runEvents } from "../db/schema.js";
 import { MAX_CHART_INPUT_ROWS, type ArtifactStore } from "./artifacts.js";
 import { ChartError, buildChartOption, type ChartInput } from "./charts.js";
 import { runGuardedQuery } from "./query-service.js";
+import { nextScheduleRun } from "./schedule.js";
 import { artifactRunVisible } from "./scope-access.js";
 
 export const MAX_CARDS_PER_DASHBOARD = 30;
@@ -429,4 +433,69 @@ export async function refreshDashboardCard(
       card: toDashboardCardDto(updated, dsName),
     };
   }
+}
+
+/**
+ * Finds all dashboards whose scheduled `refresh_cron` is due, atomically advances
+ * `next_refresh_at`, and refreshes every refreshable card through `runGuardedQuery`
+ * under the dashboard owner's current permissions and data scope.
+ */
+export async function sweepDueDashboards(
+  deps: DashboardServiceDeps,
+  now: number = Date.now(),
+): Promise<{ processed: number; succeeded: number; failed: number }> {
+  const due = listDueDashboards(deps.db, now);
+  let processed = 0;
+  let succeeded = 0;
+  let failed = 0;
+
+  for (const dash of due) {
+    if (!dash.refreshCron || dash.nextRefreshAt == null) continue;
+    let nextTick: number | null = null;
+    try {
+      nextTick = nextScheduleRun({
+        cronExpression: dash.refreshCron,
+        timezone: dash.refreshTimezone || "Asia/Shanghai",
+        from: now,
+      });
+    } catch {
+      nextTick = null;
+    }
+    if (!claimDashboardRefresh(deps.db, dash.id, dash.nextRefreshAt, nextTick)) {
+      continue;
+    }
+
+    processed += 1;
+    const cards = listDashboardCardRows(deps.db, dash.id);
+    const errors: string[] = [];
+
+    for (const card of cards) {
+      if (!card.datasourceId || !card.sqlText || !card.chartConfigJson) continue;
+      const res = await refreshDashboardCard(deps, {
+        dashboardId: dash.id,
+        cardId: card.id,
+        userId: dash.userId,
+      });
+      if (!res.ok) {
+        errors.push(`${card.title}：${res.message}`);
+      }
+    }
+
+    const finishedAt = Date.now();
+    if (errors.length === 0) {
+      succeeded += 1;
+      recordDashboardAutoRefreshResult(deps.db, dash.id, {
+        refreshedAt: finishedAt,
+        error: null,
+      });
+    } else {
+      failed += 1;
+      recordDashboardAutoRefreshResult(deps.db, dash.id, {
+        refreshedAt: finishedAt,
+        error: errors.join("；").slice(0, 500),
+      });
+    }
+  }
+
+  return { processed, succeeded, failed };
 }

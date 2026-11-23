@@ -169,6 +169,13 @@
       "when": 1795359059712,
       "tag": "0023_sql_examples",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1795399632080,
+      "tag": "0024_dashboard_sharing_and_schedule",
+      "breakpoints": true
     }
   ]
 }

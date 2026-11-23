@@ -21,6 +21,8 @@ export interface ComposerProps {
   skills: ConversationSkill[];
   /** When set, the composer is locked and shows this placeholder. */
   readOnlyReason?: string;
+  /** External draft injection (e.g. from clicking a chart data point to drill down). */
+  externalDraft?: { id: number; text: string } | null;
   contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null } | null;
   onModelChange: (modelId: string) => void;
   onThinkingChange: (level: string) => void;
@@ -39,6 +41,7 @@ export function Composer({
   thinkingLevel,
   skills,
   readOnlyReason,
+  externalDraft,
   contextUsage,
   onModelChange,
   onThinkingChange,
@@ -52,6 +55,22 @@ export function Composer({
   const [activeIndex, setActiveIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const lastDraftIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!externalDraft || externalDraft.id === lastDraftIdRef.current) return;
+    lastDraftIdRef.current = externalDraft.id;
+    setText(externalDraft.text);
+    setSlashDismissed(false);
+    setActiveIndex(0);
+    requestAnimationFrame(() => {
+      const element = textareaRef.current;
+      if (!element) return;
+      element.focus();
+      const end = element.value.length;
+      element.setSelectionRange(end, end);
+    });
+  }, [externalDraft]);
 
   useLayoutEffect(() => {
     const element = textareaRef.current;

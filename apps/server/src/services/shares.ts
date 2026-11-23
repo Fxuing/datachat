@@ -12,6 +12,12 @@ import {
   parseReportArtifactIds,
   type ReportRow,
 } from "../db/repositories/reports.js";
+import {
+  findDashboardById,
+  findOwnedDashboard,
+  listDashboardCardRows,
+  type DashboardRow,
+} from "../db/repositories/dashboards.js";
 import { listConversationEvents } from "../db/repositories/run-events.js";
 import { findDatasource } from "../db/repositories/datasources.js";
 import type { ArtifactStore, ColumnInfo } from "./artifacts.js";
@@ -64,7 +70,25 @@ export interface PublicReportShare {
   createdAt: number;
 }
 
-export type PublicShare = PublicConversationShare | PublicReportShare;
+export interface PublicDashboardCard {
+  id: string;
+  title: string;
+  width: 1 | 2;
+  spec: unknown;
+  points: number;
+  lastRefreshedAt: number | null;
+}
+
+export interface PublicDashboardShare {
+  type: "dashboard";
+  title: string;
+  description: string | null;
+  cards: PublicDashboardCard[];
+  updatedAt: number;
+  createdAt: number;
+}
+
+export type PublicShare = PublicConversationShare | PublicReportShare | PublicDashboardShare;
 
 export type ShareErrorCode = "VALIDATION" | "NOT_FOUND" | "SHARE_DISABLED_BY_SCOPE";
 
@@ -85,6 +109,7 @@ export interface CreateShareInput {
   userId: string;
   conversationId?: string;
   reportId?: string;
+  dashboardId?: string;
   expiresInDays?: number;
   /** Admin-configured ceiling (`shareMaxDays`); defaults to the built-in maximum. */
   maxExpiresInDays?: number;
@@ -130,13 +155,20 @@ function isTargetFound(
   userId: string,
   conversationId: string | undefined,
   reportId: string | undefined,
+  dashboardId: string | undefined,
 ): boolean {
   if (conversationId) {
     const conversation = findConversation(db, conversationId);
     return Boolean(conversation && conversation.userId === userId);
   }
-  const report = findReport(db, reportId!);
-  return Boolean(report && report.userId === userId);
+  if (reportId) {
+    const report = findReport(db, reportId);
+    return Boolean(report && report.userId === userId);
+  }
+  if (dashboardId) {
+    return Boolean(findOwnedDashboard(db, dashboardId, userId));
+  }
+  return false;
 }
 
 /** Public projection is refused once a datasource enforces department scope. */
@@ -144,7 +176,23 @@ function shareTargetScopeEnforced(
   db: Db,
   conversationId: string | undefined,
   reportId: string | undefined,
+  dashboardId: string | undefined,
 ): boolean {
+  if (dashboardId) {
+    const cards = listDashboardCardRows(db, dashboardId);
+    const dsIds = new Set<string>();
+    for (const card of cards) {
+      if (card.datasourceId) dsIds.add(card.datasourceId);
+      if (card.sourceConversationId) {
+        const conv = findConversation(db, card.sourceConversationId);
+        if (conv?.datasourceId) dsIds.add(conv.datasourceId);
+      }
+    }
+    for (const dsId of dsIds) {
+      if (findDatasource(db, dsId)?.dataScopeMode === "enabled") return true;
+    }
+    return false;
+  }
   const conversation = conversationId
     ? findConversation(db, conversationId)
     : reportId
@@ -157,10 +205,39 @@ function shareTargetScopeEnforced(
   return findDatasource(db, conversation.datasourceId)?.dataScopeMode === "enabled";
 }
 
+function buildDashboardShare(db: Db, dashboard: DashboardRow): PublicDashboardShare {
+  const rows = listDashboardCardRows(db, dashboard.id);
+  const cards: PublicDashboardCard[] = rows.map((row) => {
+    let spec: unknown = null;
+    try {
+      spec = JSON.parse(row.specJson);
+    } catch {
+      spec = null;
+    }
+    return {
+      id: row.id,
+      title: row.title,
+      width: row.width === 2 ? 2 : 1,
+      spec,
+      points: row.points,
+      lastRefreshedAt: row.lastRefreshedAt,
+    };
+  });
+  return {
+    type: "dashboard",
+    title: dashboard.name,
+    description: dashboard.description,
+    cards,
+    updatedAt: dashboard.updatedAt,
+    createdAt: dashboard.createdAt,
+  };
+}
+
 export function createShare(input: CreateShareInput): CreateShareResult {
-  const targetCount = (input.conversationId ? 1 : 0) + (input.reportId ? 1 : 0);
+  const targetCount =
+    (input.conversationId ? 1 : 0) + (input.reportId ? 1 : 0) + (input.dashboardId ? 1 : 0);
   if (targetCount !== 1) {
-    return error("VALIDATION", "必须且只能指定会话或报告");
+    return error("VALIDATION", "必须且只能指定会话、报告或看板之一");
   }
 
   const maxDays = input.maxExpiresInDays ?? SHARE_MAX_EXPIRES_IN_DAYS;
@@ -170,11 +247,26 @@ export function createShare(input: CreateShareInput): CreateShareResult {
     return error("VALIDATION", `有效期必须为 1 到 ${maxDays} 天`);
   }
 
-  if (!isTargetFound(input.db, input.userId, input.conversationId, input.reportId)) {
+  if (
+    !isTargetFound(
+      input.db,
+      input.userId,
+      input.conversationId,
+      input.reportId,
+      input.dashboardId,
+    )
+  ) {
     return error("NOT_FOUND", "分享目标不存在");
   }
 
-  if (shareTargetScopeEnforced(input.db, input.conversationId, input.reportId)) {
+  if (
+    shareTargetScopeEnforced(
+      input.db,
+      input.conversationId,
+      input.reportId,
+      input.dashboardId,
+    )
+  ) {
     return error("SHARE_DISABLED_BY_SCOPE", "该数据源已启用部门数据权限，不能公开分享");
   }
 
@@ -189,6 +281,7 @@ export function createShare(input: CreateShareInput): CreateShareResult {
       tokenHash: hashShareToken(token),
       conversationId: input.conversationId ?? null,
       reportId: input.reportId ?? null,
+      dashboardId: input.dashboardId ?? null,
       createdBy: input.userId,
       expiresAt,
       revokedAt: null,
@@ -226,7 +319,14 @@ export async function resolveShare(input: ResolveShareInput): Promise<ResolveSha
     return { ok: false, code: "SHARE_GONE", message: SHARE_GONE_MESSAGE };
   }
 
-  if (shareTargetScopeEnforced(input.db, share.conversationId ?? undefined, share.reportId ?? undefined)) {
+  if (
+    shareTargetScopeEnforced(
+      input.db,
+      share.conversationId ?? undefined,
+      share.reportId ?? undefined,
+      share.dashboardId ?? undefined,
+    )
+  ) {
     return {
       ok: false,
       code: "SHARE_DISABLED_BY_SCOPE",
@@ -248,6 +348,14 @@ export async function resolveShare(input: ResolveShareInput): Promise<ResolveSha
       return { ok: false, code: "SHARE_GONE", message: SHARE_GONE_MESSAGE };
     }
     return { ok: true, share: await buildReportShare(input.artifacts, report) };
+  }
+
+  if (share.dashboardId) {
+    const dashboard = findDashboardById(input.db, share.dashboardId);
+    if (!dashboard) {
+      return { ok: false, code: "SHARE_GONE", message: SHARE_GONE_MESSAGE };
+    }
+    return { ok: true, share: buildDashboardShare(input.db, dashboard) };
   }
 
   return { ok: false, code: "SHARE_GONE", message: SHARE_GONE_MESSAGE };
