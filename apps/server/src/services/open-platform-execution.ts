@@ -29,7 +29,7 @@ import { createRun, findRun, markRun } from "../db/repositories/runs.js";
 import { findReport } from "../db/repositories/reports.js";
 import { listSemanticMetrics } from "../db/repositories/semantic-layer.js";
 import { resolveConversationPermissions, type RuntimeManager } from "../agent/runtime.js";
-import { resolveChatModel } from "../agent/model-runtime.js";
+import { modelKey, resolveChatModel } from "../agent/model-runtime.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { resolveDefaultModelId } from "./app-settings.js";
 import { enabledProviderIds } from "./llm-catalog.js";
@@ -370,7 +370,9 @@ export class OpenExecutionService {
       if (requestedModelId && !model) {
         throw new OpenPlatformAuthError("MODEL_NOT_FOUND", `模型「${requestedModelId}」不存在或未启用`, 400);
       }
-      return model ? `${model.provider}/${model.id}` : candidate;
+      if (model) return modelKey(model);
+      // Stale app/global default falls back to null so resolveConversationModel picks the first enabled model.
+      return null;
     } catch (error) {
       if (error instanceof OpenPlatformAuthError) throw error;
       return candidate;

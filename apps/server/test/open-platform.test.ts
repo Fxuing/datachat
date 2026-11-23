@@ -21,8 +21,12 @@ import { applyScopeToSql } from "../src/services/data-scope.js";
 import { insertSemanticMetric } from "../src/db/repositories/semantic-layer.js";
 import { insertSqlExample } from "../src/db/repositories/sql-examples.js";
 import { signWebhookPayload } from "../src/services/open-platform-webhook.js";
-import { openApiKeys, runFeedback } from "../src/db/schema.js";
+import { openApiKeys, runFeedback, conversations as conversationsTable } from "../src/db/schema.js";
 import { eq } from "drizzle-orm";
+import { insertLlmProvider } from "../src/db/repositories/llm-providers.js";
+import { saveSettings } from "../src/services/app-settings.js";
+import { createAgentModelRuntime, modelKey, resolveConversationModel } from "../src/agent/model-runtime.js";
+import { enabledProviderIds } from "../src/services/llm-catalog.js";
 import type { AppConfig } from "../src/config.js";
 import { testConfig } from "./helpers/config.js";
 import { FakeAgentSession, asAgentSession } from "./helpers/fake-agent-session.js";
@@ -815,5 +819,53 @@ describe("open platform", () => {
     expect(auditRes.statusCode).toBe(200);
     expect(auditRes.json().stats.totalCalls).toBeGreaterThanOrEqual(4);
     expect(auditRes.json().stats.okCalls).toBeGreaterThanOrEqual(4);
+  });
+
+  it("stores canonical provider::model key (not provider/model) when resolving default model for MCP and Ask", async () => {
+    const providerId = randomUUID();
+    const secretKey = deriveSecretKey(config.appSecret);
+    insertLlmProvider(handle.db, {
+      id: providerId,
+      name: "TestOpenAI",
+      protocol: "openai-completions",
+      baseUrl: "https://api.example.com/v1",
+      apiKeyCipher: encryptSecret("sk-test-key-1234", secretKey),
+      models: [
+        { id: "deepseek-ai/DeepSeek-V3.2", name: "DeepSeek V3.2", contextWindow: 64000, maxTokens: 4096 },
+      ],
+      enabled: true,
+      now: Date.now(),
+    });
+    const canonicalDefault = `${providerId}::deepseek-ai/DeepSeek-V3.2`;
+    saveSettings(handle.db, { defaultModelId: canonicalDefault });
+
+    const { rawKey } = await createAppAndKey();
+    const mcpAsk = await app.inject({
+      method: "POST",
+      url: "/api/open/v1/mcp",
+      headers: { authorization: `Bearer ${rawKey}` },
+      payload: {
+        jsonrpc: "2.0",
+        id: 10,
+        method: "tools/call",
+        params: {
+          name: "ask_data",
+          arguments: { datasourceId, question: "测试默认模型键解析" },
+        },
+      },
+    });
+    expect(mcpAsk.statusCode).toBe(200);
+    const convId = mcpAsk.json().result.structuredContent.conversationId as string;
+    const conv = handle.db
+      .select()
+      .from(conversationsTable)
+      .where(eq(conversationsTable.id, convId))
+      .get();
+    expect(conv?.modelId).toBe(canonicalDefault);
+
+    // Must resolve cleanly via resolveConversationModel (the exact path createConversationSession uses)
+    const modelRuntime = await createAgentModelRuntime(config, handle.db);
+    const resolved = resolveConversationModel(modelRuntime, conv?.modelId ?? null, enabledProviderIds(handle.db));
+    expect(modelKey(resolved)).toBe(canonicalDefault);
   });
 });
