@@ -1,0 +1,127 @@
+name: Docker Base Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "deploy/Dockerfile.base"
+      - "deploy/base-hash.sh"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "apps/server/package.json"
+      - "apps/web/package.json"
+      - "packages/datasource-sdk/package.json"
+      - "packages/shared/package.json"
+      - ".github/workflows/docker-base.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force rebuild even if deps-<hash> tag already exists"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: docker-base-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  base:
+    name: Build & publish datachat-server-base
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute base tag and destinations
+        id: meta
+        env:
+          OWNER: ${{ github.repository_owner }}
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          BASE_TAG=$(sh deploy/base-hash.sh)
+          OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          GHCR_REPO="ghcr.io/${OWNER_LOWER}/datachat-server-base"
+          DOCKERHUB_ENABLED="false"
+          HUB_REPO=""
+          if [ -n "$DOCKERHUB_USER" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            DOCKERHUB_ENABLED="true"
+            HUB_LOWER=$(echo "$DOCKERHUB_USER" | tr '[:upper:]' '[:lower:]')
+            HUB_REPO="docker.io/${HUB_LOWER}/datachat-server-base"
+          fi
+          {
+            echo "base_tag=${BASE_TAG}"
+            echo "ghcr_repo=${GHCR_REPO}"
+            echo "hub_repo=${HUB_REPO}"
+            echo "dockerhub=${DOCKERHUB_ENABLED}"
+            echo "tags<<EOF"
+            echo "${GHCR_REPO}:${BASE_TAG}"
+            echo "${GHCR_REPO}:latest"
+            if [ "$DOCKERHUB_ENABLED" = "true" ]; then
+              echo "${HUB_REPO}:${BASE_TAG}"
+              echo "${HUB_REPO}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub (optional)
+        if: steps.meta.outputs.dockerhub == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Check if base image already exists
+        id: check
+        env:
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          if [ "$FORCE" = "true" ]; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          EXISTS="true"
+          if ! docker buildx imagetools inspect "${{ steps.meta.outputs.ghcr_repo }}:${{ steps.meta.outputs.base_tag }}" >/dev/null 2>&1; then
+            EXISTS="false"
+          fi
+          if [ "${{ steps.meta.outputs.dockerhub }}" = "true" ]; then
+            if ! docker buildx imagetools inspect "${{ steps.meta.outputs.hub_repo }}:${{ steps.meta.outputs.base_tag }}" >/dev/null 2>&1; then
+              EXISTS="false"
+            fi
+          fi
+          echo "exists=${EXISTS}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        if: steps.check.outputs.exists != 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push base image
+        if: steps.check.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.base
+          target: runtime-base
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=server-base
+          cache-to: type=gha,mode=max,scope=server-base

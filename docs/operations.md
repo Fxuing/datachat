@@ -52,13 +52,16 @@ docker compose up -d --build
 
 ### 自动发布多架构镜像（GHCR 与 Docker Hub）
 
-仓库已内置 [`.github/workflows/docker.yml`](../.github/workflows/docker.yml)，支持一键或打版本标签自动构建 `linux/amd64` + `linux/arm64` 双架构镜像（`datachat-server` 与 `datachat-web`）：
+仓库已内置两条镜像发布 workflow，支持 `linux/amd64` + `linux/arm64` 双架构增量分层发布：
 
-- **GitHub Container Registry（GHCR，零配置默认开启）**：推送版本标签（如 `git tag v0.2.0 && git push origin v0.2.0`）或在 GitHub Actions 手动运行 **Docker Images** workflow，即可自动推送至 `ghcr.io/<owner>/datachat-server` 与 `ghcr.io/<owner>/datachat-web`。
+- **服务端生产依赖基础镜像（[`docker-base.yml`](../.github/workflows/docker-base.yml) + [`deploy/Dockerfile.base`](../deploy/Dockerfile.base)）**：仅包含 `@datachat/server` 生产依赖（剔除前端与开发测试依赖，使用 `COPY --chown=node:node` 避免 OverlayFS 双倍拷贝），按 [`deploy/base-hash.sh`](../deploy/base-hash.sh) 生成内容哈希标签 `datachat-server-base:deps-<hash>`。仅在 `pnpm-lock.yaml`、`package.json` 或 `Dockerfile.base` 变更时自动重建。
+- **应用镜像（[`docker.yml`](../.github/workflows/docker.yml) + [`deploy/Dockerfile`](../deploy/Dockerfile)）**：推送版本标签（如 `git tag v0.2.0 && git push origin v0.2.0`）或在 GitHub Actions 手动运行 **Docker Images** workflow 时，`prepare-base` 作业会自动复用（或在缺失时补建）对应 `deps-<hash>` 基础镜像；业务代码变更时 `datachat-server` 只叠加约 2–5 MB 的编译产物层，线上 `docker compose pull` 自动复用底层依赖缓存。
+- **GitHub Container Registry（GHCR，零配置默认开启）**：自动推送至 `ghcr.io/<owner>/datachat-server-base`、`ghcr.io/<owner>/datachat-server` 与 `ghcr.io/<owner>/datachat-web`。
 - **Docker Hub（可选双推）**：在 GitHub 仓库的 `Settings → Secrets and variables → Actions` 中添加两个 Secret：
   - `DOCKERHUB_USERNAME`：你的 Docker Hub 用户名
   - `DOCKERHUB_TOKEN`：在 Docker Hub 账号安全页创建的 Access Token（Read & Write 权限）
-  配置完成后，同一条 workflow 会自动同时推送到 `docker.io/<DOCKERHUB_USERNAME>/datachat-server` 与 `datachat-web`。
+  配置完成后，同一套 workflow 会自动同时推送到 `docker.io/<DOCKERHUB_USERNAME>/datachat-server-base`、`datachat-server` 与 `datachat-web`。
+- **本地源码构建**：执行 `docker compose up -d --build` 无需配置外部基础镜像，`SERVER_BASE_IMAGE` 默认回退到 `deploy/Dockerfile` 内的本地 `runtime-base` 阶段。
 
 ### 使用离线/预构建镜像
 

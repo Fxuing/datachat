@@ -13,6 +13,8 @@ on:
   pull_request:
     paths:
       - "deploy/Dockerfile"
+      - "deploy/Dockerfile.base"
+      - "deploy/base-hash.sh"
       - "deploy/nginx.conf"
       - "docker-compose.yml"
       - "package.json"
@@ -29,8 +31,111 @@ permissions:
   packages: write
 
 jobs:
+  prepare-base:
+    name: Ensure datachat-server-base
+    runs-on: ubuntu-latest
+    outputs:
+      base_image: ${{ steps.meta.outputs.base_image }}
+      base_tag: ${{ steps.meta.outputs.base_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute base image ref
+        id: meta
+        env:
+          OWNER: ${{ github.repository_owner }}
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "base_tag=local" >> "$GITHUB_OUTPUT"
+            echo "base_image=runtime-base" >> "$GITHUB_OUTPUT"
+            echo "dockerhub=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BASE_TAG=$(sh deploy/base-hash.sh)
+          OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          GHCR_REPO="ghcr.io/${OWNER_LOWER}/datachat-server-base"
+          DOCKERHUB_ENABLED="false"
+          HUB_REPO=""
+          PRIMARY_BASE="${GHCR_REPO}:${BASE_TAG}"
+          if [ -n "$DOCKERHUB_USER" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            DOCKERHUB_ENABLED="true"
+            HUB_LOWER=$(echo "$DOCKERHUB_USER" | tr '[:upper:]' '[:lower:]')
+            HUB_REPO="docker.io/${HUB_LOWER}/datachat-server-base"
+            PRIMARY_BASE="${HUB_REPO}:${BASE_TAG}"
+          fi
+          {
+            echo "base_tag=${BASE_TAG}"
+            echo "ghcr_repo=${GHCR_REPO}"
+            echo "hub_repo=${HUB_REPO}"
+            echo "dockerhub=${DOCKERHUB_ENABLED}"
+            echo "base_image=${PRIMARY_BASE}"
+            echo "tags<<EOF"
+            echo "${GHCR_REPO}:${BASE_TAG}"
+            echo "${GHCR_REPO}:latest"
+            if [ "$DOCKERHUB_ENABLED" = "true" ]; then
+              echo "${HUB_REPO}:${BASE_TAG}"
+              echo "${HUB_REPO}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub (optional)
+        if: github.event_name != 'pull_request' && steps.meta.outputs.dockerhub == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Check if base image already exists
+        id: check
+        if: github.event_name != 'pull_request'
+        run: |
+          EXISTS="true"
+          if ! docker buildx imagetools inspect "${{ steps.meta.outputs.ghcr_repo }}:${{ steps.meta.outputs.base_tag }}" >/dev/null 2>&1; then
+            EXISTS="false"
+          fi
+          if [ "${{ steps.meta.outputs.dockerhub }}" = "true" ]; then
+            if ! docker buildx imagetools inspect "${{ steps.meta.outputs.hub_repo }}:${{ steps.meta.outputs.base_tag }}" >/dev/null 2>&1; then
+              EXISTS="false"
+            fi
+          fi
+          echo "exists=${EXISTS}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        if: github.event_name != 'pull_request' && steps.check.outputs.exists != 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: github.event_name != 'pull_request' && steps.check.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push missing base image
+        if: github.event_name != 'pull_request' && steps.check.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.base
+          target: runtime-base
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=server-base
+          cache-to: type=gha,mode=max,scope=server-base
+
   docker:
     name: Build & publish ${{ matrix.name }} image
+    needs: prepare-base
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -110,8 +215,10 @@ jobs:
           context: .
           file: deploy/Dockerfile
           target: ${{ matrix.target }}
-          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/arm64,linux/amd64' }}
           push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            SERVER_BASE_IMAGE=${{ needs.prepare-base.outputs.base_image }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
