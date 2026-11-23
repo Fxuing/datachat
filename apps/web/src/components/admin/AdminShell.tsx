@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Database,
   Gauge,
+  Globe,
   Plug,
   ScrollText,
   Settings,
@@ -38,6 +39,7 @@ const ADMIN_LINKS = [
   { to: "/admin/datasources", label: "数据源", icon: Database },
   { to: "/admin/skills", label: "技能管理", icon: BookOpen },
   { to: "/admin/mcp", label: "MCP 服务器", icon: Plug },
+  { to: "/admin/open-platform", label: "开放平台", icon: Globe },
   { to: "/admin/audit", label: "审计日志", icon: ScrollText },
   { to: "/admin/ops", label: "运维", icon: Activity },
 ];

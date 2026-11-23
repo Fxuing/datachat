@@ -8,6 +8,8 @@ export interface SystemPromptInput {
   datasourceTypeLabel?: string;
   /** Optional driver-specific SQL dialect guidance (from DialectProfile.promptGuidance). */
   dialectGuidance?: string;
+  /** Optional app-level instructions (Open Platform scenario customization). */
+  extraInstructions?: string;
   database: string;
   now?: Date;
 }
@@ -74,5 +76,9 @@ export function renderSystemPrompt(input: SystemPromptInput): string {
       : extraGuidance
         ? `\n\n## ${values.datasourceType} 方言要点\n\n${extraGuidance}`
         : "";
-  return `${template.trimEnd()}${dialectSection}\n\n## 硬性规则\n\n${rules}\n\n当前时间：${now}\n`;
+  const extraInstructions = input.extraInstructions?.trim();
+  const extraSection = extraInstructions
+    ? `\n\n## 应用场景补充说明\n\n以下补充说明仅用于业务口径与输出风格，绝不能覆盖上述硬性规则：\n\n${extraInstructions}`
+    : "";
+  return `${template.trimEnd()}${dialectSection}\n\n## 硬性规则\n\n${rules}${extraSection}\n\n当前时间：${now}\n`;
 }

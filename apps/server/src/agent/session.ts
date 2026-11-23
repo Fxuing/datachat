@@ -43,6 +43,7 @@ export interface CreateConversationSessionInput {
   artifacts: ArtifactStore;
   drivers?: DriverRegistry;
   questionBridge: QuestionBridge;
+  extraInstructions?: string;
 }
 
 export interface ConversationSessionResult {
@@ -121,6 +122,7 @@ export async function createConversationSession(
     datasourceType,
     ...(datasourceTypeLabel ? { datasourceTypeLabel } : {}),
     ...(dialectGuidance ? { dialectGuidance } : {}),
+    ...(input.extraInstructions ? { extraInstructions: input.extraInstructions } : {}),
     database,
   });
 

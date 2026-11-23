@@ -2,6 +2,8 @@ import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AppConfig } from "../../config.js";
 import type { Db } from "../../db/client.js";
 import type { ArtifactStore } from "../../services/artifacts.js";
+import type { ScopeDepartmentOverride } from "../../services/data-scope.js";
+import type { QueryLimitsOverride } from "../../services/query-service.js";
 import type { DriverRegistry } from "../../drivers/registry.js";
 import type { PoolRegistry } from "../datasource/pool.js";
 
@@ -22,6 +24,10 @@ export interface AgentToolContext {
   runId: string;
   /** Per-conversation materialized skills (`data/skills/<conversationId>`). */
   skillsDir: string;
+  /** Per-run department scope override (Open Platform endUser context). */
+  scopeDepartmentOverride?: ScopeDepartmentOverride;
+  /** Per-run tighter query limits override (Open Platform app policy). */
+  queryLimitsOverride?: QueryLimitsOverride;
 }
 
 export function isFileToolContext(ctx: AgentToolContext): boolean {

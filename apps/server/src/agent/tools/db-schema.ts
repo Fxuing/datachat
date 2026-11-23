@@ -301,8 +301,14 @@ export function createDbSchemaTool(ctx: AgentToolContext): ToolDefinition<typeof
       // Scope hides the existence of tables this viewer could never query.
       let visibleSnapshot = snapshot;
       const datasource = findDatasource(ctx.db, datasourceId);
-      if (datasource?.dataScopeMode === "enabled" && findUserById(ctx.db, ctx.userId)?.role !== "admin") {
-        if (userDepartmentScope(ctx.db, ctx.userId).size === 0) {
+      const enforceScope =
+        datasource?.dataScopeMode === "enabled" &&
+        (Boolean(ctx.scopeDepartmentOverride) || findUserById(ctx.db, ctx.userId)?.role !== "admin");
+      if (enforceScope) {
+        const effectiveSize = ctx.scopeDepartmentOverride
+          ? ctx.scopeDepartmentOverride.effectiveIds.length
+          : userDepartmentScope(ctx.db, ctx.userId).size;
+        if (effectiveSize === 0) {
           const message = "当前数据源已启用部门数据权限，但你还没有加入任何部门";
           return errorResult<DbSchemaDetails>("DATA_SCOPE_NO_DEPARTMENT", message, {
             tableCount: 0,

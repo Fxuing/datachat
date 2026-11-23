@@ -2338,3 +2338,179 @@ export function getScopeColumns(id: string): Promise<{
 }> {
   return apiRequest(`/api/admin/datasources/${id}/scope/columns`);
 }
+
+// ---------- Open Platform Admin ----------
+
+import type {
+  OpenApiAuditEntry,
+  OpenApiKeySummary,
+  OpenAppScope,
+  OpenAppSummary,
+  OpenAskResult,
+  OpenEndUserContext,
+  OpenPlatformStats,
+  OpenReportResult,
+  OpenWebhookDeliverySummary,
+} from "@datachat/shared";
+
+export type {
+  OpenApiAuditEntry,
+  OpenApiKeySummary,
+  OpenAppScope,
+  OpenAppSummary,
+  OpenAskResult,
+  OpenEndUserContext,
+  OpenPlatformStats,
+  OpenReportResult,
+  OpenWebhookDeliverySummary,
+};
+
+export interface OpenAppInput {
+  name: string;
+  description?: string | null;
+  status?: "active" | "disabled";
+  serviceUserId: string;
+  allowedDatasourceIds: string[] | null;
+  scopes: OpenAppScope[];
+  allowEndUserOverride?: boolean;
+  exposeSql?: boolean;
+  defaultModelId?: string | null;
+  systemPromptExtra?: string | null;
+  rateLimitRpm?: number;
+  maxRowsOverride?: number | null;
+  timeoutMsOverride?: number | null;
+  webhookUrl?: string | null;
+  webhookSecret?: string | null;
+}
+
+export function listOpenApps(): Promise<{ items: OpenAppSummary[] }> {
+  return apiRequest("/api/admin/open-platform/apps");
+}
+
+export function createOpenApp(input: OpenAppInput): Promise<{ app: OpenAppSummary }> {
+  return apiRequest("/api/admin/open-platform/apps", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateOpenApp(
+  id: string,
+  input: Partial<OpenAppInput>,
+): Promise<{ app: OpenAppSummary }> {
+  return apiRequest(`/api/admin/open-platform/apps/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteOpenApp(id: string): Promise<void> {
+  return apiRequest(`/api/admin/open-platform/apps/${id}`, { method: "DELETE" });
+}
+
+export function listOpenApiKeys(appId: string): Promise<{ items: OpenApiKeySummary[] }> {
+  return apiRequest(`/api/admin/open-platform/apps/${appId}/keys`);
+}
+
+export function createOpenApiKey(
+  appId: string,
+  input: { name: string; expiresInDays?: number | null },
+): Promise<{ key: OpenApiKeySummary; rawKey: string }> {
+  return apiRequest(`/api/admin/open-platform/apps/${appId}/keys`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function revokeOpenApiKey(
+  appId: string,
+  keyId: string,
+): Promise<{ key: OpenApiKeySummary }> {
+  return apiRequest(`/api/admin/open-platform/apps/${appId}/keys/${keyId}/revoke`, {
+    method: "POST",
+  });
+}
+
+export function listOpenApiAudit(
+  filters: {
+    appId?: string;
+    status?: "ok" | "error" | "rejected" | "rate_limited";
+    limit?: number;
+    days?: number;
+  } = {},
+): Promise<{ items: OpenApiAuditEntry[]; stats: OpenPlatformStats }> {
+  const params = new URLSearchParams();
+  if (filters.appId) params.set("appId", filters.appId);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.limit) params.set("limit", String(filters.limit));
+  if (filters.days) params.set("days", String(filters.days));
+  const query = params.toString();
+  return apiRequest(`/api/admin/open-platform/audit${query ? `?${query}` : ""}`);
+}
+
+export function listOpenWebhookDeliveries(
+  filters: { appId?: string; limit?: number } = {},
+): Promise<{ items: OpenWebhookDeliverySummary[] }> {
+  const params = new URLSearchParams();
+  if (filters.appId) params.set("appId", filters.appId);
+  if (filters.limit) params.set("limit", String(filters.limit));
+  const query = params.toString();
+  return apiRequest(`/api/admin/open-platform/webhooks${query ? `?${query}` : ""}`);
+}
+
+export function replayOpenWebhook(
+  deliveryId: string,
+): Promise<{ delivery: OpenWebhookDeliverySummary }> {
+  return apiRequest(`/api/admin/open-platform/webhooks/${deliveryId}/replay`, {
+    method: "POST",
+  });
+}
+
+export function runOpenPlayground(
+  appId: string,
+  input: {
+    action: "ask" | "report";
+    datasourceId: string;
+    prompt: string;
+    title?: string;
+    sections?: string[];
+    endUser?: OpenEndUserContext;
+  },
+): Promise<{ action: "ask"; result: OpenAskResult } | { action: "report"; result: OpenReportResult }> {
+  return apiRequest(`/api/admin/open-platform/apps/${appId}/playground`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Calls `/api/open/v1/*` directly from the public `/open-docs` Try-It-Out runner using the
+ * caller-supplied API Key. Intentionally omits session cookies and never triggers login redirects.
+ */
+export async function openApiTryRequest(
+  path: string,
+  input: { apiKey: string; method?: "GET" | "POST"; body?: unknown },
+): Promise<{ status: number; headers: Record<string, string>; body: unknown }> {
+  const response = await fetch(path, {
+    method: input.method ?? "GET",
+    credentials: "omit",
+    headers: {
+      Authorization: `Bearer ${input.apiKey.trim()}`,
+      ...(input.body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),
+  });
+  const text = await response.text();
+  let parsed: unknown = text;
+  try {
+    parsed = text ? (JSON.parse(text) as unknown) : null;
+  } catch {
+    // Keep plain text when response is not JSON.
+  }
+  const headers: Record<string, string> = {};
+  for (const key of ["x-ratelimit-limit", "x-ratelimit-remaining", "retry-after", "content-type"]) {
+    const val = response.headers.get(key);
+    if (val) headers[key] = val;
+  }
+  return { status: response.status, headers, body: parsed };
+}

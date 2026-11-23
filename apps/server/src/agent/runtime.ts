@@ -13,6 +13,8 @@ import { appendRunEvent } from "../db/repositories/run-events.js";
 import { findRun, markRun } from "../db/repositories/runs.js";
 import { findUserById } from "../db/repositories/users.js";
 import type { ArtifactStore } from "../services/artifacts.js";
+import type { ScopeDepartmentOverride } from "../services/data-scope.js";
+import type { QueryLimitsOverride } from "../services/query-service.js";
 import type { PoolRegistry } from "./datasource/pool.js";
 import type { DriverRegistry } from "../drivers/registry.js";
 import { RunEventBus } from "./event-bus.js";
@@ -39,6 +41,10 @@ export interface QueueJob {
   content: string;
   displayContent?: string;
   skill?: string;
+  /** Per-run department scope override (Open Platform endUser context). */
+  scopeDepartmentOverride?: ScopeDepartmentOverride;
+  /** Per-run tighter query limits override (Open Platform app policy). */
+  queryLimitsOverride?: QueryLimitsOverride;
 }
 
 export interface SessionBundle {
@@ -55,6 +61,8 @@ export type ConversationSessionFactory = (input: {
   permissions: ConversationPermissions;
   /** Memories injected into a turn, forwarded to the run's trace. */
   onMemoryUsed?: (items: MemoryUsageItem[]) => void;
+  /** Optional app-level extra instructions (Open Platform scenario customization). */
+  extraInstructions?: string;
 }) => Promise<SessionBundle>;
 
 export interface ConversationRuntimeOptions {
@@ -65,6 +73,8 @@ export interface ConversationRuntimeOptions {
   createSession: ConversationSessionFactory;
   /** Resolved by the runtime from the owner's roles when omitted. */
   permissions?: ConversationPermissions;
+  /** Optional app-level extra instructions (Open Platform scenario customization). */
+  extraInstructions?: string;
   /** Runs in the background after a successful run; failures are swallowed. */
   onRunComplete?: (runId: string) => void;
   now?: () => number;
@@ -118,6 +128,7 @@ export class ConversationRuntime {
   private readonly onRunComplete: ((runId: string) => void) | undefined;
   private readonly now: () => number;
   private readonly sessionPermissions: ConversationPermissions;
+  private readonly extraInstructions: string | undefined;
 
   private conversation: ConversationRow;
   private readonly queue: QueueJob[] = [];
@@ -146,6 +157,7 @@ export class ConversationRuntime {
     this.now = options.now ?? Date.now;
     this.sessionPermissions =
       options.permissions ?? resolveConversationPermissions(options.db, options.userId);
+    this.extraInstructions = options.extraInstructions;
     this.lastUsed = this.now();
   }
 
@@ -265,7 +277,11 @@ export class ConversationRuntime {
         return;
       }
 
-      if (bundle.toolContext) bundle.toolContext.runId = job.runId;
+      if (bundle.toolContext) {
+        bundle.toolContext.runId = job.runId;
+        bundle.toolContext.scopeDepartmentOverride = job.scopeDepartmentOverride;
+        bundle.toolContext.queryLimitsOverride = job.queryLimitsOverride;
+      }
 
       bridge = bridgeSessionEvents({
         db: this.db,
@@ -334,6 +350,7 @@ export class ConversationRuntime {
         runId,
         questionBridge: this.getQuestionBridge(),
         permissions: this.sessionPermissions,
+        ...(this.extraInstructions ? { extraInstructions: this.extraInstructions } : {}),
         // The memory extension runs inside `session.prompt`, so the job that is
         // active at that moment is the run that should carry the memories.
         onMemoryUsed: (memories) => {
@@ -560,7 +577,7 @@ export class RuntimeManager {
       });
     this.createSession =
       options.createSession ??
-      (async ({ conversation, userId, permissions, questionBridge, onMemoryUsed }) => {
+      (async ({ conversation, userId, permissions, questionBridge, onMemoryUsed, extraInstructions }) => {
         const runtime = await this.getModelRuntime();
         const skillsDir = await materializeSkillsForPermissions(
           this.db,
@@ -587,6 +604,7 @@ export class RuntimeManager {
           artifacts: this.artifacts,
           ...(this.drivers ? { drivers: this.drivers } : {}),
           questionBridge,
+          ...(extraInstructions ? { extraInstructions } : {}),
         });
       });
     this.maxRuntimes = options.maxRuntimes ?? 20;
@@ -618,7 +636,14 @@ export class RuntimeManager {
     });
   }
 
-  async getOrCreate(conversation: ConversationRow, userId: string): Promise<ConversationRuntime> {
+  async getOrCreate(
+    conversation: ConversationRow,
+    userId: string,
+    options?: {
+      permissions?: ConversationPermissions;
+      extraInstructions?: string;
+    },
+  ): Promise<ConversationRuntime> {
     const existing = this.runtimes.get(conversation.id);
     if (existing) {
       existing.touch();
@@ -643,6 +668,8 @@ export class RuntimeManager {
       userId,
       bus: this.bus,
       createSession: this.createSession,
+      ...(options?.permissions ? { permissions: options.permissions } : {}),
+      ...(options?.extraInstructions ? { extraInstructions: options.extraInstructions } : {}),
       onRunComplete: this.onRunComplete,
       now: this.now,
     });

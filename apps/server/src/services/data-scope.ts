@@ -59,6 +59,11 @@ export interface ScopeSnapshot {
   policyHash: string;
 }
 
+export interface ScopeDepartmentOverride {
+  rootIds: string[];
+  effectiveIds: string[];
+}
+
 export interface ResolveScopeInput {
   db: Db;
   datasourceId: string;
@@ -66,6 +71,8 @@ export interface ResolveScopeInput {
   userId: string;
   isAdmin: boolean;
   tableNames: string[];
+  /** Explicit department scope override (e.g. Open Platform endUser context); forces scoped mode even for admin. */
+  departmentOverride?: ScopeDepartmentOverride;
 }
 
 export interface ResolvedScope {
@@ -218,7 +225,7 @@ export function resolveScope(input: ResolveScopeInput): ResolvedScope {
 
   const schemaSnapshot = loadSchema(db, datasourceId);
 
-  if (isAdmin) {
+  if (isAdmin && !input.departmentOverride) {
     // Admins are exempt from department scoping, but literal rules are global
     // row constraints (for example is_deleted = 0) and still apply.
     const tables = new Map<string, ScopeTable>();
@@ -252,8 +259,12 @@ export function resolveScope(input: ResolveScopeInput): ResolvedScope {
       : { plan: null, snapshot: { v: 1, datasourceId, departments: [], policyHash } };
   }
 
-  const roots = listUserDepartments(db, userId);
-  const effective = effectiveDepartmentIds(db, roots);
+  const roots = input.departmentOverride
+    ? input.departmentOverride.rootIds
+    : listUserDepartments(db, userId);
+  const effective = input.departmentOverride
+    ? new Set(input.departmentOverride.effectiveIds)
+    : effectiveDepartmentIds(db, roots);
   if (effective.size === 0) {
     throw new ScopeResolveError(
       "DATA_SCOPE_NO_DEPARTMENT",
@@ -354,6 +365,7 @@ export function applyScopeToSql(input: {
   userId: string;
   sql: string;
   dialect: ScopeDialect;
+  departmentOverride?: ScopeDepartmentOverride;
 }): AppliedScope {
   if (input.mode !== "enabled") {
     const policyHash = datasourcePolicyHashFrom(input.db, input.datasourceId);
@@ -365,7 +377,7 @@ export function applyScopeToSql(input: {
     };
   }
   const user = findUserById(input.db, input.userId);
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" && !input.departmentOverride;
   if (!isAdmin) {
     assertScopableSql(input.sql, input.dialect);
   }
@@ -376,6 +388,7 @@ export function applyScopeToSql(input: {
     userId: input.userId,
     isAdmin,
     tableNames: collectTableNames(input.sql, input.dialect),
+    ...(input.departmentOverride ? { departmentOverride: input.departmentOverride } : {}),
   });
   if (!scope.plan) {
     return { sql: input.sql, params: [], appliedTables: [], snapshot: scope.snapshot };

@@ -17,6 +17,7 @@ import { BrandingProvider } from "./components/BrandingProvider";
 const ChatPage = lazy(() => import("./pages/ChatPage"));
 const ReportPage = lazy(() => import("./pages/ReportPage"));
 const PublicSharePage = lazy(() => import("./pages/PublicSharePage"));
+const OpenDocsPage = lazy(() => import("./pages/OpenDocsPage"));
 const RolesPage = lazy(() => import("./pages/admin/RolesPage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
 const DepartmentsPage = lazy(() => import("./pages/admin/DepartmentsPage"));
@@ -24,6 +25,7 @@ const DatasourceScopePage = lazy(() => import("./pages/admin/DatasourceScopePage
 const DatasourceSemanticPage = lazy(() => import("./pages/admin/DatasourceSemanticPage"));
 const SkillsPage = lazy(() => import("./pages/admin/SkillsPage"));
 const McpPage = lazy(() => import("./pages/admin/McpPage"));
+const OpenPlatformPage = lazy(() => import("./pages/admin/OpenPlatformPage"));
 const DatasourcesPage = lazy(() => import("./pages/admin/DatasourcesPage"));
 const AuditPage = lazy(() => import("./pages/admin/AuditPage"));
 const SettingsPage = lazy(() => import("./pages/admin/SettingsPage"));
@@ -83,6 +85,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/s/:token" element={<PublicSharePage />} />
+        <Route path="/open-docs" element={<OpenDocsPage />} />
         <Route
           path="/chat"
           element={
@@ -176,6 +179,14 @@ function AppRoutes() {
           element={
             <RequireAdmin>
               <McpPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/open-platform"
+          element={
+            <RequireAdmin>
+              <OpenPlatformPage />
             </RequireAdmin>
           }
         />

@@ -55,6 +55,7 @@ query/explain
 - `nullVisible` 当前只生成 `IS NULL` 分支；不要假设它还会匹配空字符串。空字符串需要单独写 `eq ''` 规则（注意数值列在 PostgreSQL 上会报类型错误）。
 - 未分类、拒绝、映射缺失和策略过期都发生在**建立连接之前**，并写 `rejected` 审计与 `scope_reason`（`db_query` 与 `db_explain` 均如此）。
 - 管理员只有在存在 `literal` 规则时才会被改写；此时快照仍是 `departments: []`，查询会被标记为已过滤，但不会显示部门范围条。
+- 开放平台调用传入经服务端校验后的 `departmentOverride` 时，`applyScopeToSql` 与 `db_schema` 会强制按指定部门集合执行非管理员受控过滤（即使绑定的服务账号是管理员也不绕过）；详情见 [开放平台](open-platform.md)。
 - `db_schema` 对受控数据源只暴露已分类且非 `denied` 的表；无部门时直接返回 `DATA_SCOPE_NO_DEPARTMENT`。`db_explain` 与查询走同一套改写，且在获取连接池之前完成范围解析。
 - 启用受控时撤销该数据源下所有未撤销分享；之后新建分享返回 `SHARE_DISABLED_BY_SCOPE`，已有链接解析同样失败。
 

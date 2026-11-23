@@ -100,6 +100,10 @@ export function createDbQueryTool(
               runId: ctx.runId,
               sql,
               signal,
+              ...(ctx.scopeDepartmentOverride
+                ? { scopeDepartmentOverride: ctx.scopeDepartmentOverride }
+                : {}),
+              ...(ctx.queryLimitsOverride ? { limitsOverride: ctx.queryLimitsOverride } : {}),
             },
           );
         }

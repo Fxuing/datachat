@@ -65,6 +65,10 @@ export const queryKeys = {
   skill: (id: string) => ["skill", id] as const,
   mcpServers: ["mcpServers"] as const,
   mcpServer: (id: string) => ["mcpServer", id] as const,
+  openApps: ["openApps"] as const,
+  openAppKeys: (appId: string) => ["openAppKeys", appId] as const,
+  openAudit: (filters: Record<string, unknown>) => ["openAudit", filters] as const,
+  openWebhooks: (appId: string) => ["openWebhooks", appId] as const,
 };
 
 /**

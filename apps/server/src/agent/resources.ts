@@ -42,6 +42,7 @@ export interface ConversationResourcesInput {
   datasourceType: string;
   datasourceTypeLabel?: string;
   dialectGuidance?: string;
+  extraInstructions?: string;
   database: string;
 }
 
@@ -168,6 +169,7 @@ export async function createConversationResources(
       datasourceType: input.datasourceType,
       ...(input.datasourceTypeLabel ? { datasourceTypeLabel: input.datasourceTypeLabel } : {}),
       ...(input.dialectGuidance ? { dialectGuidance: input.dialectGuidance } : {}),
+      ...(input.extraInstructions ? { extraInstructions: input.extraInstructions } : {}),
       database: input.database,
     }),
     ...(extensionFactories.length > 0 ? { extensionFactories } : {}),

@@ -176,6 +176,13 @@
       "when": 1795399632080,
       "tag": "0024_dashboard_sharing_and_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1795450000000,
+      "tag": "0025_open_platform",
+      "breakpoints": true
     }
   ]
 }

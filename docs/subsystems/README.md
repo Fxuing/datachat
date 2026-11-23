@@ -13,6 +13,7 @@
 | 记忆召回、`memory_save`、提取、用户/管理员设置 | [记忆](memory.md) |
 | 定时任务、扫描、通知、隐藏会话 | [定时任务](scheduled-tasks.md) |
 | 报告与公开分享投影 | [报告与分享](reports-shares.md) |
+| 开放平台、API Key、行级身份透传、远程 MCP 与 Webhook | [开放平台](open-platform.md) |
 
 ## 维护参考
 

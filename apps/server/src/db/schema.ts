@@ -867,3 +867,146 @@ export const sqlExamples = sqliteTable(
     index("sql_examples_source_run_idx").on(t.sourceRunId),
   ],
 );
+
+/** Open Platform external applications. */
+export const openApps = sqliteTable(
+  "open_apps",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
+    serviceUserId: text("service_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** JSON array of allowed datasource IDs; null inherits the service user's datasources. */
+    allowedDatasourceIdsJson: text("allowed_datasource_ids_json"),
+    /** JSON array of OpenAppScope values. */
+    scopesJson: text("scopes_json").notNull().default('["ask","report","semantic","mcp","feedback"]'),
+    allowEndUserOverride: integer("allow_end_user_override").notNull().default(0),
+    exposeSql: integer("expose_sql").notNull().default(1),
+    defaultModelId: text("default_model_id"),
+    systemPromptExtra: text("system_prompt_extra"),
+    rateLimitRpm: integer("rate_limit_rpm").notNull().default(60),
+    maxRowsOverride: integer("max_rows_override"),
+    timeoutMsOverride: integer("timeout_ms_override"),
+    webhookUrl: text("webhook_url"),
+    webhookSecretCipher: text("webhook_secret_cipher"),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("open_apps_name_nocase_unique").on(t.name),
+    index("open_apps_service_user_idx").on(t.serviceUserId),
+    check("open_apps_status_check", sql`${t.status} in ('active', 'disabled')`),
+    check("open_apps_override_check", sql`${t.allowEndUserOverride} in (0, 1)`),
+    check("open_apps_expose_sql_check", sql`${t.exposeSql} in (0, 1)`),
+  ],
+);
+
+/** Hashed API keys issued for Open Platform apps; raw secret is returned once at creation. */
+export const openApiKeys = sqliteTable(
+  "open_api_keys",
+  {
+    id: text("id").primaryKey(),
+    appId: text("app_id")
+      .notNull()
+      .references(() => openApps.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    keyPrefix: text("key_prefix").notNull(),
+    keyHash: text("key_hash").notNull(),
+    expiresAt: integer("expires_at"),
+    revokedAt: integer("revoked_at"),
+    lastUsedAt: integer("last_used_at"),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("open_api_keys_hash_unique").on(t.keyHash),
+    index("open_api_keys_app_idx").on(t.appId, t.createdAt),
+  ],
+);
+
+/** Maps Open Platform apps and optional externalSessionId to DataChat conversations. */
+export const openAppSessions = sqliteTable(
+  "open_app_sessions",
+  {
+    id: text("id").primaryKey(),
+    appId: text("app_id")
+      .notNull()
+      .references(() => openApps.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    datasourceId: text("datasource_id").notNull(),
+    externalSessionId: text("external_session_id"),
+    externalUserId: text("external_user_id"),
+    effectiveUserId: text("effective_user_id").notNull(),
+    scopeDepartmentIdsJson: text("scope_department_ids_json"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("open_app_sessions_conversation_unique").on(t.conversationId),
+    index("open_app_sessions_app_ext_idx").on(t.appId, t.externalSessionId),
+    index("open_app_sessions_app_created_idx").on(t.appId, t.createdAt),
+  ],
+);
+
+/** Request-level audit trail and token usage for Open Platform API & MCP calls. */
+export const openApiAudit = sqliteTable(
+  "open_api_audit",
+  {
+    id: text("id").primaryKey(),
+    appId: text("app_id")
+      .notNull()
+      .references(() => openApps.id, { onDelete: "cascade" }),
+    keyId: text("key_id"),
+    endpoint: text("endpoint").notNull(),
+    datasourceId: text("datasource_id"),
+    conversationId: text("conversation_id"),
+    runId: text("run_id"),
+    reportId: text("report_id"),
+    externalUserId: text("external_user_id"),
+    effectiveUserId: text("effective_user_id"),
+    status: text("status", { enum: ["ok", "error", "rejected", "rate_limited"] }).notNull(),
+    httpStatus: integer("http_status").notNull(),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    durationMs: integer("duration_ms").notNull().default(0),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("open_api_audit_app_created_idx").on(t.appId, t.createdAt),
+    index("open_api_audit_created_idx").on(t.createdAt),
+    check("open_api_audit_status_check", sql`${t.status} in ('ok', 'error', 'rejected', 'rate_limited')`),
+  ],
+);
+
+/** Outbound webhook delivery log for async Open Platform tasks. */
+export const openWebhookDeliveries = sqliteTable(
+  "open_webhook_deliveries",
+  {
+    id: text("id").primaryKey(),
+    appId: text("app_id")
+      .notNull()
+      .references(() => openApps.id, { onDelete: "cascade" }),
+    event: text("event").notNull(),
+    targetUrl: text("target_url").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    status: text("status", { enum: ["pending", "ok", "failed"] }).notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    httpStatus: integer("http_status"),
+    responseSnippet: text("response_snippet"),
+    error: text("error"),
+    createdAt: integer("created_at").notNull(),
+    lastAttemptAt: integer("last_attempt_at"),
+  },
+  (t) => [
+    index("open_webhook_deliveries_app_created_idx").on(t.appId, t.createdAt),
+    check("open_webhook_deliveries_status_check", sql`${t.status} in ('pending', 'ok', 'failed')`),
+  ],
+);

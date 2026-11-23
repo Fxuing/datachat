@@ -41,9 +41,14 @@ import { createRetentionService, type RetentionService } from "./services/ops-re
 import { scheduledTaskRoutes } from "./routes/scheduled-tasks.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { memoryRoutes } from "./routes/memories.js";
+import { openV1Routes } from "./routes/open-v1.js";
+import { adminOpenPlatformRoutes } from "./routes/admin-open-platform.js";
 import { createScheduledTaskService, type ScheduledTaskService } from "./services/scheduled-tasks.js";
 import { ArtifactStore } from "./services/artifacts.js";
 import { createRunSuggestionsService } from "./services/suggestions.js";
+import { OpenRateLimiter } from "./services/open-platform-auth.js";
+import { OpenWebhookService } from "./services/open-platform-webhook.js";
+import { OpenExecutionService } from "./services/open-platform-execution.js";
 import type { AppConfig } from "./config.js";
 import type { Db } from "./db/client.js";
 
@@ -67,6 +72,10 @@ export interface BuildAppOptions {
   scheduledTasks?: ScheduledTaskService;
   /** Test seam for post-reply follow-up suggestion generation. */
   suggestionsGenerator?: (prompt: string) => Promise<string>;
+  /** Test seam for Open Platform outbound webhook HTTP calls. */
+  openWebhookFetch?: typeof fetch;
+  /** Test seam for Open Platform sync execution timeout. */
+  openSyncTimeoutMs?: number;
 }
 
 export function normalizeOrigin(value: string): string | null {
@@ -107,6 +116,8 @@ export async function buildApp({
   retention: injectedRetention,
   scheduledTasks: injectedScheduledTasks,
   suggestionsGenerator,
+  openWebhookFetch,
+  openSyncTimeoutMs,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: config.logLevel },
@@ -138,6 +149,8 @@ export async function buildApp({
   );
   app.addHook("preHandler", async (request, reply) => {
     if (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") return;
+    // Open Platform endpoints authenticate strictly via Bearer / X-API-Key, never session cookies.
+    if (request.url.startsWith("/api/open/")) return;
     const candidate = request.headers.origin ?? request.headers.referer;
     if (!candidate) return;
     const origin = normalizeOrigin(candidate);
@@ -251,7 +264,39 @@ export async function buildApp({
   await app.register(scheduledTaskRoutes, { db, scheduledTasks });
   await app.register(notificationRoutes, { db });
   await app.register(memoryRoutes, { db });
+
+  const openRateLimiter = new OpenRateLimiter();
+  const openWebhooks = new OpenWebhookService({
+    db,
+    config,
+    ...(openWebhookFetch ? { fetchImpl: openWebhookFetch, retryDelaysMs: [10] } : {}),
+  });
+  const openExecution = new OpenExecutionService({
+    db,
+    config,
+    artifacts,
+    runtime: agentRuntime,
+    webhooks: openWebhooks,
+    getModelRuntime: () => modelRuntime.get(),
+    ...(openSyncTimeoutMs !== undefined ? { syncTimeoutMs: openSyncTimeoutMs } : {}),
+  });
+  await app.register(openV1Routes, {
+    db,
+    artifacts,
+    runtime: agentRuntime,
+    execution: openExecution,
+    rateLimiter: openRateLimiter,
+  });
+  await app.register(adminOpenPlatformRoutes, {
+    db,
+    config,
+    execution: openExecution,
+    webhooks: openWebhooks,
+  });
+
   app.addHook("onClose", async () => {
+    await openExecution.shutdown();
+    await openWebhooks.shutdown();
     await scheduledTasks.shutdown();
     await agentRuntime.shutdown();
     await artifacts.close();

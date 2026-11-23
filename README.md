@@ -163,6 +163,7 @@ pnpm ops:backup                   # 备份本地 SQLite、artifact、会话与�
 ## 文档导航
 
 - [部署、配置与运维指南](docs/operations.md)：环境变量全表、Docker 部署与自动发版、权限与数据范围、记忆/定时任务、备份恢复、NL2SQL 评测
+- [开放平台接入指南](docs/open-platform-guide.md)：API Key、结构化问答/报告 API、行级权限透传、远程 MCP Server、Webhook 验签与在线文档 `/open-docs`
 - [数据源驱动插件开发指南](docs/datasource-plugin-guide.md)：`@datachat/datasource-sdk` 协议、一致性测试、离线上传与环境变量加载
 - [子系统设计参考](docs/subsystems/README.md)：运行时、SQL 与 Artifact、认证权限、行级数据范围、聊天界面等模块契约
 - [编码规范](docs/code-standards.md) · [开发入口](AGENTS.md) · [事故教训记录](LESSONS.md)

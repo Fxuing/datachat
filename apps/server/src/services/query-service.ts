@@ -9,7 +9,12 @@ import { decryptSecret, deriveSecretKey } from "../agent/datasource/crypto.js";
 import type { PoolRegistry } from "../agent/datasource/pool.js";
 import { guardSql, type GuardErrorCode } from "../agent/sql/guard.js";
 import { ScopeRewriteError } from "../agent/sql/scope.js";
-import { ScopeResolveError, applyScopeToSql, type ScopeResolveCode } from "./data-scope.js";
+import {
+  ScopeResolveError,
+  applyScopeToSql,
+  type ScopeDepartmentOverride,
+  type ScopeResolveCode,
+} from "./data-scope.js";
 import { saveRunScopeSnapshot } from "../db/repositories/runs.js";
 import { SqlAbortedError, SqlTimeoutError, executeReadOnly } from "../agent/sql/executor.js";
 import type { ArtifactStore, ColumnInfo } from "./artifacts.js";
@@ -17,6 +22,11 @@ import { resolveQueryLimits } from "./app-settings.js";
 import { recordAudit } from "./audit.js";
 import { resolveDatasourceOptions } from "../drivers/options.js";
 import { defaultDriverRegistry, type DriverRegistry } from "../drivers/registry.js";
+
+export interface QueryLimitsOverride {
+  maxRows?: number | null;
+  timeoutMs?: number | null;
+}
 
 export interface RunQueryInput {
   datasource: DatasourceRow;
@@ -26,6 +36,10 @@ export interface RunQueryInput {
   sql: string;
   action?: "query" | "explain";
   signal?: AbortSignal;
+  /** Optional department scope override for Open Platform endUser calls. */
+  scopeDepartmentOverride?: ScopeDepartmentOverride;
+  /** Optional tighter query limits for Open Platform apps (clamped <= system limits). */
+  limitsOverride?: QueryLimitsOverride;
 }
 
 export interface RunFileQueryInput {
@@ -117,7 +131,18 @@ export async function runGuardedQuery(
   const action = input.action ?? "query";
   // Read once so the guard, the executor and the returned SQL all agree, and
   // admin changes take effect on the next run without a restart.
-  const limits = resolveQueryLimits(db, config);
+  const baseLimits = resolveQueryLimits(db, config);
+  const limits = {
+    maxRows:
+      input.limitsOverride?.maxRows && input.limitsOverride.maxRows > 0
+        ? Math.min(baseLimits.maxRows, input.limitsOverride.maxRows)
+        : baseLimits.maxRows,
+    previewRows: baseLimits.previewRows,
+    timeoutMs:
+      input.limitsOverride?.timeoutMs && input.limitsOverride.timeoutMs > 0
+        ? Math.min(baseLimits.timeoutMs, input.limitsOverride.timeoutMs)
+        : baseLimits.timeoutMs,
+  };
 
   const driver = drivers.get(input.datasource.type);
   if (!driver) {
@@ -216,6 +241,9 @@ export async function runGuardedQuery(
       userId: input.userId,
       sql: guard.sql,
       dialect: driver.dialect,
+      ...(input.scopeDepartmentOverride
+        ? { departmentOverride: input.scopeDepartmentOverride }
+        : {}),
     });
     executableSql = scoped.sql;
     params = scoped.params.length > 0 ? scoped.params : undefined;

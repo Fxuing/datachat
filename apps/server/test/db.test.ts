@@ -44,6 +44,11 @@ const APP_TABLES = [
   "llm_providers",
   "mcp_servers",
   "notifications",
+  "open_api_audit",
+  "open_api_keys",
+  "open_app_sessions",
+  "open_apps",
+  "open_webhook_deliveries",
   "query_audit",
   "reports",
   "role_permissions",
@@ -102,6 +107,15 @@ const INTEGRITY_INDEXES: Record<string, string[]> = {
     "file_dataset_tables_dataset_idx",
   ],
   file_datasets: ["file_datasets_user_updated_idx"],
+  open_api_audit: ["open_api_audit_app_created_idx", "open_api_audit_created_idx"],
+  open_api_keys: ["open_api_keys_hash_unique", "open_api_keys_app_idx"],
+  open_app_sessions: [
+    "open_app_sessions_conversation_unique",
+    "open_app_sessions_app_ext_idx",
+    "open_app_sessions_app_created_idx",
+  ],
+  open_apps: ["open_apps_name_nocase_unique", "open_apps_service_user_idx"],
+  open_webhook_deliveries: ["open_webhook_deliveries_app_created_idx"],
   query_audit: [
     "query_audit_datasource_created_idx",
     "query_audit_created_idx",
@@ -310,8 +324,8 @@ describe("database lifecycle", () => {
     expect(migrateDb(handle.db, { migrationsFolder: v0Dir })).toBe(1);
     insertRawUser(handle.sqlite, { id: "legacy-admin", username: "legacy", role: "admin" });
 
-    expect(migrateDb(handle.db)).toBe(25);
-    expect(migrateDb(handle.db)).toBe(25);
+    expect(migrateDb(handle.db)).toBe(26);
+    expect(migrateDb(handle.db)).toBe(26);
 
     expect(findUserByUsername(handle.db, "legacy")?.id).toBe("legacy-admin");
     expect(indexNames(handle.sqlite)).toContain("users_username_nocase_unique");

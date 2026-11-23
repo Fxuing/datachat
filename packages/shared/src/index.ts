@@ -79,6 +79,7 @@ export type ApiError = z.infer<typeof apiErrorSchema>;
 
 export * from "./events.js";
 export * from "./permissions.js";
+export * from "./open-platform.js";
 export type {
   ConnectionMode,
   DatasourceDriverCapabilities,

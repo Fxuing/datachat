@@ -36,7 +36,7 @@
 
 ## CSRF、cookie 与部署
 
-- 浏览器写操作要求配置的 `APP_ORIGIN`（包含公开端口）；origin 不匹配会在进入路由前被拒绝。
+- 浏览器写操作要求配置的 `APP_ORIGIN`（包含公开端口）；origin 不匹配会在进入路由前被拒绝。开放平台路由 `/api/open/*` 仅使用 `Authorization: Bearer` / `X-API-Key` 认证而不读取会话 cookie，因此豁免该 cookie CSRF 检查；管理端 `/api/admin/open-platform/*` 仍受会话 cookie、CSRF 和 `admin.open_platform` 权限约束。见 [开放平台](open-platform.md)。
 - `COOKIE_SECURE` 可以显式设置，也可以从 `APP_ORIGIN` 协议推导。HTTP + IP 部署需要 `Secure=false`；HTTPS 需要 `Secure=true`。
 - `TRUST_PROXY` 只用于可信反向代理；不要盲目开启。
 - 会话 cookie 默认 HttpOnly/SameSite；绝不要暴露给 JS。

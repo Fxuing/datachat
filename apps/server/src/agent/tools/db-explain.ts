@@ -203,6 +203,9 @@ export function createDbExplainTool(
             userId: ctx.userId,
             sql: guarded.sql,
             dialect: driver.dialect,
+            ...(ctx.scopeDepartmentOverride
+              ? { departmentOverride: ctx.scopeDepartmentOverride }
+              : {}),
           });
         } catch (error) {
           if (error instanceof ScopeResolveError || error instanceof ScopeRewriteError) {
@@ -243,9 +246,15 @@ export function createDbExplainTool(
               : { driverPool: handle.custom, classifyError: driver.classifyError }),
             sql: scoped.sql,
             params: scoped.params.length > 0 ? scoped.params : undefined,
-            maxRows: ctx.config.queryMaxRows,
+            maxRows:
+              ctx.queryLimitsOverride?.maxRows && ctx.queryLimitsOverride.maxRows > 0
+                ? Math.min(ctx.config.queryMaxRows, ctx.queryLimitsOverride.maxRows)
+                : ctx.config.queryMaxRows,
             previewRows: ctx.config.queryPreviewRows,
-            timeoutMs: ctx.config.queryTimeoutMs,
+            timeoutMs:
+              ctx.queryLimitsOverride?.timeoutMs && ctx.queryLimitsOverride.timeoutMs > 0
+                ? Math.min(ctx.config.queryTimeoutMs, ctx.queryLimitsOverride.timeoutMs)
+                : ctx.config.queryTimeoutMs,
             signal,
           },
           async () => undefined,
