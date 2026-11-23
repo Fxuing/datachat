@@ -98,6 +98,11 @@ const envSchema = z
         .default("true")
         .transform((value) => value === "true" || value === "1"),
     ),
+    /** Optional white-label branding overrides (runtime env; defaults keep DataChat branding). */
+    APP_TITLE: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(80).optional()),
+    APP_SUBTITLE: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(120).optional()),
+    APP_ICON: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(500).optional()),
+    APP_FAVICON: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(500).optional()),
   })
   .superRefine((env, ctx) => {
     if (PLACEHOLDER_SECRETS.has(env.APP_SECRET.trim())) {
@@ -151,6 +156,14 @@ export interface AppConfig {
   datasourcePluginsStrict?: boolean;
   /** Allow admins to upload offline datasource driver plugins via the UI (default true). */
   allowPluginUpload?: boolean;
+  /** Optional custom app title (default "DataChat"). */
+  appTitle?: string;
+  /** Optional custom sidebar subtitle (default "数据工作台"). */
+  appSubtitle?: string;
+  /** Optional custom logo URL, web path, or local file path (default "/logo.svg"). */
+  appIcon?: string;
+  /** Optional custom favicon URL, web path, or local file path (defaults to appIcon or "/favicon.svg"). */
+  appFavicon?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -203,5 +216,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       .filter(Boolean),
     datasourcePluginsStrict: parsed.DATASOURCE_PLUGINS_STRICT,
     allowPluginUpload: parsed.ALLOW_PLUGIN_UPLOAD,
+    appTitle: parsed.APP_TITLE,
+    appSubtitle: parsed.APP_SUBTITLE,
+    appIcon: parsed.APP_ICON,
+    appFavicon: parsed.APP_FAVICON,
   };
 }

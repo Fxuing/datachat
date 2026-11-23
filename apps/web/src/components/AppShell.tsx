@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { logout, type SessionUser } from "../lib/api";
+import { useBranding } from "../lib/branding";
 import { cn } from "../lib/utils";
 import { BrandMark } from "./BrandMark";
 import { ThemeToggle } from "./ThemeToggle";
@@ -74,6 +75,7 @@ export function AppShell({
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const branding = useBranding();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readSidebarCollapsed);
 
@@ -106,11 +108,11 @@ export function AppShell({
         >
           <BrandMark size={34} />
           <span className="min-w-0">
-            <span className="block text-[15px] font-semibold leading-tight tracking-tight text-ink">
-              DataChat
+            <span className="block truncate text-[15px] font-semibold leading-tight tracking-tight text-ink">
+              {branding.title}
             </span>
-            <span className="block text-[10px] font-medium uppercase tracking-[0.16em] text-muted">
-              数据工作台
+            <span className="block truncate text-[10px] font-medium uppercase tracking-[0.16em] text-muted">
+              {branding.subtitle}
             </span>
           </span>
         </Link>
@@ -325,7 +327,7 @@ export function AppShell({
                 >
                   <Menu className="h-4 w-4" />
                 </Button>
-                <span className="text-sm font-semibold text-ink">DataChat</span>
+                <span className="text-sm font-semibold text-ink">{branding.title}</span>
               </div>
               <ThemeToggle />
             </header>
@@ -344,7 +346,7 @@ export function AppShell({
                   </TooltipTrigger>
                   <TooltipContent side="bottom">展开侧边栏</TooltipContent>
                 </Tooltip>
-                <span className="text-sm font-semibold text-ink">DataChat</span>
+                <span className="text-sm font-semibold text-ink">{branding.title}</span>
               </header>
             ) : null}
           </>

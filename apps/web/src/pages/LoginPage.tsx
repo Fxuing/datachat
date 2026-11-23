@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Eye, EyeOff, Lock, User } from "lucide-react";
 import { ApiError, fetchMe, login } from "../lib/api";
+import { useBranding } from "../lib/branding";
 import { queryKeys } from "../lib/query";
 import { useTheme } from "../lib/theme";
 import { BrandMark } from "../components/BrandMark";
@@ -88,6 +89,7 @@ const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA
 export default function LoginPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const branding = useBranding();
   const { theme } = useTheme();
   const dark = theme === "dark";
   const [username, setUsername] = useState("");
@@ -206,7 +208,7 @@ export default function LoginPage() {
               className="h-[calc(2.625*var(--u))] w-[calc(2.625*var(--u))] rounded-[calc(0.75*var(--u))] shadow-md shadow-indigo-950/30"
             />
             <span className="text-[length:calc(1.25*var(--u))] font-semibold tracking-tight text-white">
-              DataChat
+              {branding.title}
             </span>
           </div>
 
@@ -261,7 +263,7 @@ export default function LoginPage() {
           <div className="w-full max-w-[clamp(340px,20.85vw,440px)] animate-fade-in rounded-2xl border border-white/80 bg-white/95 p-8 shadow-[0_24px_64px_-16px_rgba(30,58,138,0.18)] backdrop-blur-md transition-[background-color,border-color,color,box-shadow] duration-500 dark:border-white/10 dark:bg-surface/95 dark:shadow-[0_24px_64px_-16px_rgba(2,6,23,0.75)] sm:p-9">
             <div className="flex flex-col items-center text-center">
               <BrandMark size={52} className="rounded-2xl shadow-md shadow-indigo-500/20" />
-              <h2 className="mt-4 text-2xl font-bold tracking-tight text-ink">DataChat</h2>
+              <h2 className="mt-4 text-2xl font-bold tracking-tight text-ink">{branding.title}</h2>
               <p className="mt-1.5 text-sm text-muted">开启你的数据对话之旅</p>
             </div>
 

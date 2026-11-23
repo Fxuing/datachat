@@ -12,6 +12,7 @@ import { fetchMe } from "./lib/api";
 import { installUnauthorizedHandler, queryClient, queryKeys } from "./lib/query";
 import LoginPage from "./pages/LoginPage";
 import { PageSpinner } from "./components/ui/spinner";
+import { BrandingProvider } from "./components/BrandingProvider";
 
 const ChatPage = lazy(() => import("./pages/ChatPage"));
 const ReportPage = lazy(() => import("./pages/ReportPage"));
@@ -235,10 +236,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </QueryClientProvider>
+    <BrandingProvider>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </BrandingProvider>
   );
 }

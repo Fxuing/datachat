@@ -32,6 +32,7 @@
 - Admin 绕过依据是 `admin` 标志，不是角色名。管理员可以管理用户、角色、部门、数据源、设置和审计；但不会自动读取其他用户的记忆内容。行级数据权限同样对管理员放行。
 - `admin.departments` 控制部门管理 API 与 `/admin/departments` 页面；它不改变任何数据可见范围。
 - 公开分享不是绕过其他 API 登录的通道。它只解析分享 token，返回受过期/撤销约束的只读投影（支持会话、报告与个人数据看板；看板分享仅返回图表渲染 spec 与刷新时间，绝不暴露 SQL 或数据源凭据）。如果目标会话、报告或看板中任一卡片引用了启用行级数据权限的数据源，创建与访问都会直接拒绝（`403`/`410 SHARE_DISABLED_BY_SCOPE`），且启用数据权限时自动撤销已有分享。
+- `GET /api/public/branding`（及本地图标托管 `/api/public/branding/icon`、`/api/public/branding/favicon`）是免登录的只读品牌配置端点，用于登录页和公开分享页读取运行时环境变量 `APP_TITLE` / `APP_SUBTITLE` / `APP_ICON` / `APP_FAVICON`；它仅输出 `{ title, subtitle, iconUrl, faviconUrl }` 和配置的图片字节，绝不接受用户输入路径，也不暴露宿主机路径或任何密钥。
 
 ## CSRF、cookie 与部署
 

@@ -31,6 +31,10 @@
 | `DATASOURCE_PLUGINS` | 否 | 逗号分隔的数据源驱动插件模块名或 ESM 文件路径白名单（详见 [插件开发指南](datasource-plugin-guide.md)） |
 | `DATASOURCE_PLUGINS_STRICT` | 否 | 设为 `true` 时，任一配置的数据源插件加载失败会直接阻止服务启动，默认 `false` |
 | `ALLOW_PLUGIN_UPLOAD` | 否 | 是否允许管理员在「管理 → 数据源 → 驱动插件」界面离线上传驱动包，默认 `true`（高安全环境可设 `false`） |
+| `APP_TITLE` | 否 | 自定义应用标题（留空默认 `DataChat`），运行时生效，无需重新构建镜像 |
+| `APP_SUBTITLE` | 否 | 自定义侧边栏副标题（留空默认 `数据工作台`） |
+| `APP_ICON` | 否 | 自定义品牌图标，支持 `http(s)://` URL、站点相对路径（如 `/custom/logo.svg`）或服务端容器/本地图片文件路径（如 `/data/branding/logo.png`，支持 `.svg`/`.png`/`.jpg`/`.webp`/`.ico`/`.gif`，≤ 5 MB）；留空默认 `/logo.svg` |
+| `APP_FAVICON` | 否 | 自定义浏览器标签页图标，规则同 `APP_ICON`；留空时若已配 `APP_ICON` 则自动复用，均未配时默认 `/favicon.svg` |
 | `BILI_NATIVE_PI` | 否 | 设为 `0` 可关闭内置 `billion-context` 上下文压缩插件 |
 
 ---

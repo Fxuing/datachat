@@ -1,6 +1,7 @@
 import path from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import { healthRoutes } from "./routes/health.js";
+import { brandingRoutes } from "./routes/branding.js";
 import { authRoutes } from "./routes/auth.js";
 import { registerAuthGuards } from "./auth/guard.js";
 import { createSessionSigner } from "./auth/jwt.js";
@@ -156,6 +157,7 @@ export async function buildApp({
 
   registerAuthGuards(app, { signer, db });
   await app.register(healthRoutes, { db });
+  await app.register(brandingRoutes, { config });
   await app.register(authRoutes, { config, db, signer });
   await app.register(adminUserRoutes, { db });
   await app.register(adminDepartmentRoutes, { db });

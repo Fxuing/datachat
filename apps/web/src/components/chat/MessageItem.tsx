@@ -19,6 +19,7 @@ import {
   reportArtifactIdsFromTools,
 } from "../../lib/report-markdown";
 import { pairQueries } from "../../lib/pair-queries";
+import { useBranding } from "../../lib/branding";
 import {
   ChartCard,
   chartOptionFromSpec,
@@ -355,6 +356,7 @@ export function MessageItem({
   onPinChart?: (artifact: ChatArtifact, title: string) => void;
   onDrillDownChart?: (point: ChartDrillDownPoint) => void;
 }) {
+  const branding = useBranding();
   const assistantText = message.assistant?.content ?? "";
   const allCharts = artifacts.filter((artifact) => artifact.kind === "chart");
   const charts = allCharts.filter((artifact) => artifact.runId === message.runId);
@@ -400,7 +402,7 @@ export function MessageItem({
           <span className="flex h-5 w-5 items-center justify-center rounded bg-line text-muted">
             <Bot className="h-3.5 w-3.5" />
           </span>
-          DataChat
+          {branding.title}
         </div>
         <TurnTrace
           status={message.status}

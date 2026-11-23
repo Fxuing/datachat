@@ -30,6 +30,7 @@ import {
   reportArtifactIdsFromTools,
 } from "../../lib/report-markdown";
 import { pairQueries } from "../../lib/pair-queries";
+import { useBranding } from "../../lib/branding";
 import type { ModelPickerStatus } from "./ModelPicker";
 import { cn } from "../../lib/utils";
 import { isNearBottom, readScrollPosition, writeScrollPosition, type StoredScrollPosition } from "../../lib/message-scroll";
@@ -93,12 +94,13 @@ export interface MessageListProps {
 }
 
 function AssistantHeader() {
+  const branding = useBranding();
   return (
     <div className="flex items-center gap-2 text-[11px] font-medium text-muted">
       <span className="flex h-5 w-5 items-center justify-center rounded bg-line text-muted">
         <Bot className="h-3.5 w-3.5" />
       </span>
-      DataChat
+      {branding.title}
     </div>
   );
 }

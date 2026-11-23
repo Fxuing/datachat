@@ -22,6 +22,7 @@ import {
   type PublicShareMessage,
 } from "../lib/api";
 import { parseReportMarkdown } from "../lib/report-markdown";
+import { useBranding } from "../lib/branding";
 import { cn } from "../lib/utils";
 
 function formatTime(timestamp: number): string {
@@ -259,6 +260,7 @@ function DashboardView({ share }: { share: Extract<PublicShare, { type: "dashboa
 
 export default function PublicSharePage() {
   const { token } = useParams<{ token: string }>();
+  const branding = useBranding();
   const query = useQuery({
     queryKey: ["public-share", token ?? ""],
     queryFn: () => getPublicShare(token as string),
@@ -297,7 +299,7 @@ export default function PublicSharePage() {
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-line bg-surface">
         <div className={cn("mx-auto flex h-14 w-full items-center justify-between px-4", maxWidth)}>
-          <span className="text-sm font-semibold text-ink">DataChat</span>
+          <span className="text-sm font-semibold text-ink">{branding.title}</span>
           <span className="rounded-full bg-subtle px-2 py-0.5 text-xs text-muted">
             只读分享
           </span>
