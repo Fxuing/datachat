@@ -89,9 +89,8 @@ export function buildConversationMarkdown(input: ConversationExportInput): strin
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
-/** Trigger a client-side file download with UTF-8 content. */
-export function downloadTextFile(filename: string, content: string, mimeType: string): void {
-  const blob = new Blob([content], { type: mimeType });
+/** Trigger a client-side file download from a Blob. */
+export function downloadBlobFile(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -101,4 +100,9 @@ export function downloadTextFile(filename: string, content: string, mimeType: st
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+/** Trigger a client-side file download with UTF-8 content. */
+export function downloadTextFile(filename: string, content: string, mimeType: string): void {
+  downloadBlobFile(filename, new Blob([content], { type: mimeType }));
 }

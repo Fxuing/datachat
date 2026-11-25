@@ -4,9 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
-  Download,
   Eye,
-  FileCode2,
   FileWarning,
   Pencil,
   Printer,
@@ -22,6 +20,7 @@ import { AppShell } from "../components/AppShell";
 import { ConfirmDialog } from "../components/admin/ConfirmDialog";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { ShareDialog } from "../components/ShareDialog";
+import { ReportExportFab } from "../components/report/ReportExportFab";
 import { ReportToc, useReportTocActive } from "../components/report/ReportToc";
 import { MermaidDiagram } from "../components/markdown/MermaidDiagram";
 import { mermaidSourceOf } from "../components/markdown/mermaid-source";
@@ -42,8 +41,13 @@ import { queryKeys } from "../lib/query";
 import { useCan } from "../hooks/use-access";
 import { parseReportMarkdown } from "../lib/report-markdown";
 import { extractReportHeadings, headingId } from "../lib/report-toc";
-import { buildReportExportHtml, buildReportExportMarkdown } from "../lib/report-export";
-import { downloadTextFile, sanitizeFileName } from "../lib/conversation-export";
+import {
+  buildReportExportDocx,
+  buildReportExportHtml,
+  buildReportExportMarkdown,
+  collectLightMermaidSvgs,
+} from "../lib/report-export";
+import { downloadBlobFile, downloadTextFile, sanitizeFileName } from "../lib/conversation-export";
 import { cn, formatCount } from "../lib/utils";
 
 const LazyChartCard = lazy(() =>
@@ -272,6 +276,8 @@ export default function ReportPage() {
   const [draftMarkdown, setDraftMarkdown] = useState("");
   const [showPreview, setShowPreview] = useState(true);
   const [editError, setEditError] = useState<string | null>(null);
+  const [exportingWord, setExportingWord] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const canShare = useCan("share.create");
   const canEdit = useCan("report.create");
 
@@ -339,6 +345,7 @@ export default function ReportPage() {
     setDraftTitle(report.title);
     setDraftMarkdown(report.markdown);
     setEditError(null);
+    setExportError(null);
     setEditing(true);
   };
 
@@ -368,6 +375,7 @@ export default function ReportPage() {
 
   const handleExportMarkdown = () => {
     if (!report) return;
+    setExportError(null);
     const content = buildReportExportMarkdown(report);
     downloadTextFile(
       sanitizeFileName(report.title, "datachat-report", "md"),
@@ -376,14 +384,36 @@ export default function ReportPage() {
     );
   };
 
-  const handleExportHtml = () => {
+  const handleExportHtml = async () => {
     if (!report || !articleRef.current) return;
-    const html = buildReportExportHtml(report.title, articleRef.current);
+    setExportError(null);
+    const article = articleRef.current;
+    const isDarkWithMermaid =
+      document.documentElement.classList.contains("dark") &&
+      article.querySelector("figure[data-mermaid-source] svg") !== null;
+    const mermaidLightSvgs = isDarkWithMermaid
+      ? await collectLightMermaidSvgs(article)
+      : undefined;
+    const html = buildReportExportHtml(report.title, article, { mermaidLightSvgs });
     downloadTextFile(
       sanitizeFileName(report.title, "datachat-report", "html"),
       html,
       "text/html;charset=utf-8",
     );
+  };
+
+  const handleExportWord = async () => {
+    if (!report || !articleRef.current || exportingWord) return;
+    setExportError(null);
+    setExportingWord(true);
+    try {
+      const blob = await buildReportExportDocx(report.title, articleRef.current);
+      downloadBlobFile(sanitizeFileName(report.title, "datachat-report", "docx"), blob);
+    } catch {
+      setExportError("导出 Word 失败，请稍后重试。");
+    } finally {
+      setExportingWord(false);
+    }
   };
 
   const handleDelete = () => {
@@ -444,24 +474,6 @@ export default function ReportPage() {
                 编辑
               </Button>
             ) : null}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportMarkdown}
-              disabled={!report}
-            >
-              <Download className="h-3.5 w-3.5" />
-              导出 MD
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportHtml}
-              disabled={!report}
-            >
-              <FileCode2 className="h-3.5 w-3.5" />
-              导出 HTML
-            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -595,7 +607,7 @@ export default function ReportPage() {
         <div ref={reportScrollRef} className="report-page h-full overflow-y-auto bg-surface">
           <article
             ref={articleRef}
-            className="mx-auto w-full max-w-[44rem] px-6 py-8 print:max-w-none print:px-0 print:py-0"
+            className="mx-auto w-full max-w-[44rem] px-6 pt-8 pb-24 print:max-w-none print:px-0 print:py-0"
           >
             <header className="mb-6 border-b border-line pb-4">
               <h1 className="text-xl font-semibold text-ink">{report.title}</h1>
@@ -629,6 +641,14 @@ export default function ReportPage() {
           onSelect={(heading) =>
             document.getElementById(heading)?.scrollIntoView({ behavior: "smooth", block: "start" })
           }
+        />
+        <ReportExportFab
+          disabled={!report}
+          exportingWord={exportingWord}
+          exportError={exportError}
+          onExportMarkdown={handleExportMarkdown}
+          onExportHtml={() => void handleExportHtml()}
+          onExportWord={() => void handleExportWord()}
         />
       </div>
     );

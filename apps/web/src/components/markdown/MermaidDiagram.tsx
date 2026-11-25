@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Code2, Loader2 } from "lucide-react";
-import { cacheKeyFor, readCachedSvg, writeCachedSvg } from "./mermaid-cache";
+import { cacheKeyFor, readCachedSvg } from "./mermaid-cache";
+import { renderMermaidSvg } from "./mermaid-render";
 
 /**
  * Wait for the source to stop changing before rendering. Chat answers stream in
@@ -8,85 +9,7 @@ import { cacheKeyFor, readCachedSvg, writeCachedSvg } from "./mermaid-cache";
  */
 const RENDER_DELAY_MS = 400;
 
-/** The slice of mermaid's API this component needs. */
-interface MermaidApi {
-  initialize: (config: Record<string, unknown>) => void;
-  render: (id: string, text: string) => Promise<{ svg: string }>;
-}
-
-let configuredFor: boolean | null = null;
 let sequence = 0;
-
-function cssColor(name: string, fallback: string): string {
-  if (typeof window === "undefined") return fallback;
-  const raw = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  // Tokens are stored as "24 24 27" triples so Tailwind can add alpha.
-  return raw ? `rgb(${raw.split(/\s+/).join(", ")})` : fallback;
-}
-
-/** Map the app's design tokens onto mermaid's theme variables so both themes match. */
-function themeVariables(): Record<string, string> {
-  const surface = cssColor("--surface", "rgb(255, 255, 255)");
-  const subtle = cssColor("--subtle", "rgb(244, 244, 245)");
-  const ink = cssColor("--ink", "rgb(24, 24, 27)");
-  const line = cssColor("--line", "rgb(228, 228, 231)");
-  const lineStrong = cssColor("--line-strong", "rgb(212, 212, 216)");
-  const muted = cssColor("--muted", "rgb(113, 113, 122)");
-  const brandSoft = cssColor("--brand-soft", "rgb(238, 242, 255)");
-
-  return {
-    fontFamily: window.getComputedStyle(document.body).fontFamily || "sans-serif",
-    fontSize: "13px",
-    background: surface,
-    mainBkg: brandSoft,
-    primaryColor: brandSoft,
-    primaryTextColor: ink,
-    primaryBorderColor: lineStrong,
-    secondaryColor: subtle,
-    secondaryTextColor: ink,
-    secondaryBorderColor: line,
-    tertiaryColor: surface,
-    tertiaryTextColor: ink,
-    tertiaryBorderColor: line,
-    lineColor: lineStrong,
-    textColor: ink,
-    nodeBorder: lineStrong,
-    nodeTextColor: ink,
-    clusterBkg: subtle,
-    clusterBorder: line,
-    edgeLabelBackground: surface,
-    titleColor: ink,
-    // sequence diagrams
-    actorBkg: brandSoft,
-    actorBorder: lineStrong,
-    actorTextColor: ink,
-    signalColor: muted,
-    signalTextColor: ink,
-    labelBoxBkgColor: brandSoft,
-    labelBoxBorderColor: line,
-    labelTextColor: ink,
-    noteBkgColor: subtle,
-    noteBorderColor: line,
-    noteTextColor: ink,
-  };
-}
-
-/** Mermaid is ~1 MB, so it is fetched the first time a diagram actually shows up. */
-async function loadMermaid(dark: boolean): Promise<MermaidApi> {
-  const { default: mermaid } = (await import("mermaid")) as { default: MermaidApi };
-  if (configuredFor !== dark) {
-    mermaid.initialize({
-      startOnLoad: false,
-      // Sanitise labels, no click handlers or raw HTML from model output.
-      securityLevel: "strict",
-      theme: "base",
-      darkMode: dark,
-      themeVariables: themeVariables(),
-    });
-    configuredFor = dark;
-  }
-  return mermaid;
-}
 
 function useIsDark(): boolean {
   const [dark, setDark] = useState(
@@ -133,16 +56,12 @@ export const MermaidDiagram = memo(function MermaidDiagram({ source }: { source:
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const mermaid = await loadMermaid(dark);
-          const { svg: rendered } = await mermaid.render(idRef.current, source);
+          const rendered = await renderMermaidSvg(source, { dark, id: idRef.current });
           if (cancelled) return;
-          writeCachedSvg(key, rendered);
           setSvg(rendered);
           setFailed(false);
         } catch (error) {
           if (cancelled) return;
-          // Mermaid leaves its measuring node behind when the grammar is wrong.
-          document.getElementById(`d${idRef.current}`)?.remove();
           console.warn("mermaid diagram could not be rendered", error);
           setFailed(true);
         }
@@ -159,7 +78,10 @@ export const MermaidDiagram = memo(function MermaidDiagram({ source }: { source:
   const showsSource = showSource || (failed && svg === null);
 
   return (
-    <figure className="group/mermaid relative my-3 overflow-hidden rounded-lg border border-line bg-surface">
+    <figure
+      data-mermaid-source={source}
+      className="group/mermaid relative my-3 overflow-hidden rounded-lg border border-line bg-surface"
+    >
       <button
         type="button"
         onClick={() => setShowSource((value) => !value)}

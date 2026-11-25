@@ -423,9 +423,14 @@ describe("reports api", () => {
 });
 
 describe("create_report tool", () => {
-  it("is registered in buildAgentTools", () => {
-    const names = buildAgentTools(toolContext(), { canCreateReports: true }).map((tool) => tool.name);
+  it("is registered in buildAgentTools and documents report page export formats", () => {
+    const tools = buildAgentTools(toolContext(), { canCreateReports: true });
+    const names = tools.map((tool) => tool.name);
     expect(names).toContain("create_report");
+    const reportTool = tools.find((item) => item.name === "create_report")!;
+    expect(reportTool.description).toContain("Word .docx");
+    expect(reportTool.description).toContain("Markdown");
+    expect(reportTool.description).toContain("HTML");
   });
 
   it("creates a report from model-authored markdown", async () => {
@@ -448,6 +453,9 @@ describe("create_report tool", () => {
     const details = result.details as { reportId: string; title: string; url: string };
     expect(details.title).toBe("销售分析");
     expect(details.url).toBe(`/reports/${details.reportId}`);
+    const textContent = result.content.find((item) => item.type === "text");
+    expect(textContent?.text).toContain(`[查看完整报告](/reports/${details.reportId})`);
+    expect(textContent?.text).toContain("Word（.docx）");
 
     const fetched = await app.inject({
       method: "GET",

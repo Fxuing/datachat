@@ -11,20 +11,20 @@
 | 报告工具 | 面向模型的 `create_report`、权限门禁 | [`create-report.ts`](../../apps/server/src/agent/tools/create-report.ts) |
 | 路由 | 报告列表/详情/编辑/删除；分享创建/撤销 | [`reports.ts` 路由](../../apps/server/src/routes/reports.ts)、[`shares.ts` 路由](../../apps/server/src/routes/shares.ts) |
 | 公开解析 | token 查找、过期/撤销、投影 | [`shares.ts`](../../apps/server/src/services/shares.ts) |
-| 报告 UI | Markdown、artifact、在线编辑、分享/导出（MD/HTML/打印） | [`ReportPage.tsx`](../../apps/web/src/pages/ReportPage.tsx)、[`report-export.ts`](../../apps/web/src/lib/report-export.ts) |
+| 报告 UI | Markdown、artifact、在线编辑、分享/打印与悬浮导出（MD/HTML/Word） | [`ReportPage.tsx`](../../apps/web/src/pages/ReportPage.tsx)、[`ReportExportFab.tsx`](../../apps/web/src/components/report/ReportExportFab.tsx)、[`report-export.ts`](../../apps/web/src/lib/report-export.ts)、[`report-docx.ts`](../../apps/web/src/lib/report-docx.ts)、[`mermaid-render.ts`](../../apps/web/src/components/markdown/mermaid-render.ts) |
 | 公开 UI | 匿名报告/会话视图 | [`PublicSharePage.tsx`](../../apps/web/src/pages/PublicSharePage.tsx) |
 
 常量：`REPORT_MAX_ARTIFACTS = 20`、`REPORT_MAX_MARKDOWN_LENGTH = 50_000`、`SHARE_MAX_ROWS = 100`，有效期 1–365 天（默认 7 天）。
 
 ## 报告路径
 
-1. `create_report` 需要 `report.create`，检查会话属于当前用户，并校验每个 artifact id：属于该用户、同一会话、不重复。缺失/他人的 artifact 一律拒绝。
+1. `create_report` 需要 `report.create`，检查会话属于当前用户，并校验每个 artifact id：属于该用户、同一会话、不重复。缺失/他人的 artifact 一律拒绝。`create_report` 工具说明及 [`system.md`](../../agent/prompts/system.md) 明确告知模型报告详情页原生支持导出 Word（`.docx`）、HTML、Markdown 与打印 PDF，引导用户前往报告详情页导出，不在聊天中伪造导出文件。
 2. 未提供 Markdown 时，服务根据引用的 artifact（列 + 预览行）生成；提供的 Markdown 要校验长度/数量。
 3. 报告保存 `markdown` 和 `artifact_ids`（JSON），不复制行数据；渲染报告时解析当前 artifact 内容。
 4. 报告详情可由属主或管理员读取。缺失和他人报告返回相同的 not-found 形状。
 5. `PATCH /api/reports/:id` 需要 `report.create` 权限与可读/范围内归属校验，只允许修改 `title` 与 `markdown`（更新 `updated_at`），不允许修改 `artifact_ids`（防止引用越权 artifact）；缺失/他人/越范围报告返回相同 `404`。
 6. 删除报告不删除底层 artifact；删除会话/artifact 可能让报告里的结果卡片不可用。
-7. 报告页支持导出 `.md` 与离线自包含 `.html`（将 ECharts `<canvas>` 转为内嵌 PNG 并移除交互按钮），以及浏览器打印 PDF。
+7. 报告页在阅读区右下角提供悬浮导出按钮（编辑态和打印时自动隐藏），点击弹出 3 个导出选项：`.md`、离线自包含 `.html`（将 ECharts `<canvas>` 转为内嵌 PNG 并移除交互按钮），以及按需懒加载生成的标准 `.docx` Word 文档（保留标题/正文/列表/引用/代码块与原生表格，将 ECharts 与 Mermaid SVG 栅格化为 PNG 嵌入，受限环境下的 Mermaid 降级为源码代码块）；在暗色模式下，HTML 与 Word 导出均会将 ECharts 和 Mermaid 重新按亮色白底主题渲染后再导出；浏览器打印保留在顶栏。
 
 报告用 `[[artifact:<id>]]` 渲染结果卡片，可以包含 Mermaid 代码块。`[[result:<id>]]` 是聊天专用的，在报告 Markdown 中保持字面量。
 

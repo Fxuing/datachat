@@ -1,4 +1,8 @@
 import type { ReportDetail } from "@datachat/shared";
+import { renderMermaidSvg } from "../components/markdown/mermaid-render";
+import { captureRegisteredChart } from "./chart-export-registry";
+
+export { buildReportExportDocx } from "./report-docx";
 
 function escapeHtml(text: string): string {
   return text
@@ -88,11 +92,41 @@ svg { max-width: 100%; height: auto; }
 `;
 
 /**
+ * Re-render rendered Mermaid diagrams in light theme so dark-mode HTML exports
+ * stay crisp on the exported white paper layout.
+ */
+export async function collectLightMermaidSvgs(
+  articleElement: HTMLElement,
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const figures = articleElement.querySelectorAll("figure[data-mermaid-source]");
+  for (const figure of figures) {
+    const source = figure.getAttribute("data-mermaid-source")?.trim();
+    if (!source || result.has(source)) continue;
+    const hasRenderedSvg = Array.from(figure.querySelectorAll("svg")).some(
+      (svg) => !svg.closest("button") && !svg.hasAttribute("aria-hidden"),
+    );
+    if (!hasRenderedSvg) continue;
+    try {
+      const svg = await renderMermaidSvg(source, { dark: false });
+      result.set(source, svg);
+    } catch {
+      // Keep original rendered SVG if light re-rendering fails.
+    }
+  }
+  return result;
+}
+
+/**
  * Snapshot the rendered report article DOM into a self-contained HTML file.
  * Live ECharts `<canvas>` nodes are rasterized to inline PNG images and
  * interactive toolbar buttons are stripped so the file opens cleanly offline.
  */
-export function buildReportExportHtml(title: string, articleElement: HTMLElement): string {
+export function buildReportExportHtml(
+  title: string,
+  articleElement: HTMLElement,
+  options?: { mermaidLightSvgs?: ReadonlyMap<string, string> },
+): string {
   const clone = articleElement.cloneNode(true) as HTMLElement;
 
   const liveCanvases = articleElement.querySelectorAll("canvas");
@@ -101,7 +135,8 @@ export function buildReportExportHtml(title: string, articleElement: HTMLElement
     const clonedCanvas = clonedCanvases[index];
     if (!clonedCanvas) return;
     try {
-      const dataUrl = liveCanvas.toDataURL("image/png");
+      const registered = captureRegisteredChart(liveCanvas.closest("[role='img']") ?? liveCanvas);
+      const dataUrl = registered?.dataUrl ?? liveCanvas.toDataURL("image/png");
       if (dataUrl && dataUrl !== "data:,") {
         const img = document.createElement("img");
         img.src = dataUrl;
@@ -114,6 +149,25 @@ export function buildReportExportHtml(title: string, articleElement: HTMLElement
     }
     clonedCanvas.remove();
   });
+
+  if (options?.mermaidLightSvgs && options.mermaidLightSvgs.size > 0) {
+    clone.querySelectorAll("figure[data-mermaid-source]").forEach((figure) => {
+      const source = figure.getAttribute("data-mermaid-source")?.trim();
+      if (!source) return;
+      const lightSvg = options.mermaidLightSvgs?.get(source);
+      if (!lightSvg) return;
+      const diagramSvg = Array.from(figure.querySelectorAll("svg")).find(
+        (svg) => !svg.closest("button") && !svg.hasAttribute("aria-hidden"),
+      );
+      if (!diagramSvg) return;
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = lightSvg;
+      const replacement = wrapper.querySelector("svg");
+      if (replacement) {
+        diagramSvg.replaceWith(replacement);
+      }
+    });
+  }
 
   // Remove interactive toolbar controls (chart switchers, fullscreen/download buttons).
   clone.querySelectorAll("button, [role='group']").forEach((el) => el.remove());

@@ -61,4 +61,10 @@ describe("renderSystemPrompt", () => {
   it("leaves no unresolved placeholders", () => {
     expect(prompt).not.toMatch(/\{\{\w+\}\}/);
   });
+
+  it("guides report export requests including Word (.docx) to the report detail page", () => {
+    expect(prompt).toContain("Word `.docx`");
+    expect(prompt).toContain("报告详情页");
+    expect(prompt).toContain("create_report");
+  });
 });

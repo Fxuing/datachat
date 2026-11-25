@@ -8,6 +8,7 @@ import {
   TooltipComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
+import { registerChartExporter } from "../../lib/chart-export-registry";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
 
@@ -155,6 +156,10 @@ export function EChart({
   onPointClickRef.current = onPointClick;
 
   const { theme } = useTheme();
+  const optionRef = useRef(option);
+  optionRef.current = option;
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
   const empty = isEmptyOption(option);
   const themedOption = useMemo(
     () => (option ? withChartTheme(option, theme) : option),
@@ -200,6 +205,45 @@ export function EChart({
     chartRef.current = instance;
     onReadyRef.current?.(instance);
 
+    const unregisterExporter = registerChartExporter(element, () => {
+      const width = element.clientWidth || 640;
+      const height = element.clientHeight || 260;
+      if (themeRef.current === "light") {
+        const dataUrl = instance.getDataURL({
+          type: "png",
+          pixelRatio: 2,
+          backgroundColor: "#ffffff",
+        });
+        return dataUrl && dataUrl !== "data:," ? { dataUrl, width, height } : null;
+      }
+      const currentOption = optionRef.current;
+      if (!currentOption || isEmptyOption(currentOption)) return null;
+      const offscreen = document.createElement("div");
+      const offscreenChart = init(offscreen, undefined, {
+        renderer: "canvas",
+        width,
+        height,
+      });
+      try {
+        offscreenChart.setOption(
+          { ...withChartTheme(currentOption, "light"), animation: false },
+          { notMerge: true },
+        );
+        const dataUrl = offscreenChart.getDataURL({
+          type: "png",
+          pixelRatio: 2,
+          backgroundColor: "#ffffff",
+        });
+        return dataUrl && dataUrl !== "data:," ? { dataUrl, width, height } : null;
+      } finally {
+        try {
+          offscreenChart.dispose();
+        } catch {
+          // Ignore offscreen teardown failures.
+        }
+      }
+    });
+
     const handleClick = (params: unknown) => {
       const handler = onPointClickRef.current;
       if (!handler) return;
@@ -221,6 +265,7 @@ export function EChart({
     observer?.observe(element);
 
     return () => {
+      unregisterExporter();
       observer?.disconnect();
       try {
         instance.off("click", handleClick);

@@ -7,6 +7,23 @@ import type { ReportDetail } from "@datachat/shared";
 import ReportPage from "./ReportPage";
 import type { ArtifactDetail, SessionUser } from "../lib/api";
 
+const { wordExportControl } = vi.hoisted(() => ({
+  wordExportControl: { shouldFail: false },
+}));
+
+vi.mock("../lib/report-docx", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/report-docx")>();
+  return {
+    ...actual,
+    buildReportExportDocx: async (...args: Parameters<typeof actual.buildReportExportDocx>) => {
+      if (wordExportControl.shouldFail) {
+        throw new Error("docx build failed");
+      }
+      return await actual.buildReportExportDocx(...args);
+    },
+  };
+});
+
 const user: SessionUser = {
   id: "u-1",
   username: "alice",
@@ -127,11 +144,26 @@ function renderPage(path = "/reports/r-1") {
   );
 }
 
+const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+
 beforeEach(() => {
+  wordExportControl.shouldFail = false;
   vi.spyOn(window, "print").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
+  wordExportControl.shouldFail = false;
+  if (originalCreateObjectUrl) {
+    Object.defineProperty(URL, "createObjectURL", originalCreateObjectUrl);
+  } else {
+    Reflect.deleteProperty(URL, "createObjectURL");
+  }
+  if (originalRevokeObjectUrl) {
+    Object.defineProperty(URL, "revokeObjectURL", originalRevokeObjectUrl);
+  } else {
+    Reflect.deleteProperty(URL, "revokeObjectURL");
+  }
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -172,15 +204,97 @@ describe("ReportPage", () => {
     expect(screen.getByText(/missing-artifact/)).toBeInTheDocument();
   });
 
-  it("calls window.print from the toolbar", async () => {
+  it("calls window.print from the toolbar and removes flat MD/HTML export buttons", async () => {
     stubFetch();
     const browser = userEvent.setup();
     renderPage();
 
     await screen.findByRole("heading", { name: report.title });
+    expect(screen.queryByRole("button", { name: "导出 MD" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "导出 HTML" })).not.toBeInTheDocument();
+
     await browser.click(screen.getByRole("button", { name: "打印" }));
 
     expect(window.print).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens floating export menu and downloads MD, HTML, and Word files", async () => {
+    stubFetch();
+    const browser = userEvent.setup();
+    const downloadedFiles: string[] = [];
+    const createObjectUrlMock = vi.fn(() => "blob:report-export");
+    const revokeObjectUrlMock = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectUrlMock,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: revokeObjectUrlMock,
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadedFiles.push(this.download);
+    });
+
+    renderPage();
+    await screen.findByRole("heading", { name: report.title });
+
+    await browser.click(screen.getByRole("button", { name: "导出" }));
+    expect(screen.getByRole("button", { name: "导出 Markdown" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出 HTML" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出 Word" })).toBeInTheDocument();
+
+    await browser.click(screen.getByRole("button", { name: "导出 Markdown" }));
+    expect(downloadedFiles).toEqual(["分析报告-2026-11-06-09-05.md"]);
+
+    await browser.click(screen.getByRole("button", { name: "导出" }));
+    await browser.click(screen.getByRole("button", { name: "导出 HTML" }));
+    expect(downloadedFiles).toEqual([
+      "分析报告-2026-11-06-09-05.md",
+      "分析报告-2026-11-06-09-05.html",
+    ]);
+
+    await browser.click(screen.getByRole("button", { name: "导出" }));
+    await browser.click(screen.getByRole("button", { name: "导出 Word" }));
+    await waitFor(() =>
+      expect(downloadedFiles).toEqual([
+        "分析报告-2026-11-06-09-05.md",
+        "分析报告-2026-11-06-09-05.html",
+        "分析报告-2026-11-06-09-05.docx",
+      ]),
+    );
+    expect(revokeObjectUrlMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("hides floating export button while editing", async () => {
+    stubFetch({ permissions: ["report.create"] });
+    const browser = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole("heading", { name: report.title });
+    expect(screen.getByRole("button", { name: "导出" })).toBeInTheDocument();
+
+    await browser.click(screen.getByRole("button", { name: "编辑" }));
+    expect(screen.queryByRole("button", { name: "导出" })).not.toBeInTheDocument();
+  });
+
+  it("shows an error alert if Word export fails and re-enables the export button", async () => {
+    wordExportControl.shouldFail = true;
+    stubFetch();
+    const browser = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole("heading", { name: report.title });
+    await browser.click(screen.getByRole("button", { name: "导出" }));
+    await browser.click(screen.getByRole("button", { name: "导出 Word" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("导出 Word 失败，请稍后重试。");
+    expect(screen.getByRole("button", { name: "导出" })).toBeEnabled();
   });
 
   it("returns to the originating conversation", async () => {
