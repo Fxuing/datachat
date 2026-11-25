@@ -1,4 +1,4 @@
-import type { Column, RunEvent, RunMemory } from "@datachat/shared";
+import type { Column, ExcelSheetSpec, RunEvent, RunMemory } from "@datachat/shared";
 
 export type RunStatusValue = "idle" | "queued" | "running" | "ok" | "error" | "aborted";
 
@@ -35,6 +35,13 @@ export interface RunChartState {
   spec: Record<string, unknown>;
   points: number;
   title: string;
+}
+
+export interface RunExcelState {
+  excelArtifactId: string;
+  filename: string;
+  sheets: ExcelSheetSpec[];
+  totalRows: number;
 }
 
 export interface RunQuestionOption {
@@ -85,6 +92,7 @@ export interface RunStreamState {
   sqls: RunSqlState[];
   results: RunResultState[];
   charts: RunChartState[];
+  excels: RunExcelState[];
   questions: RunQuestionState[];
   contextUsage: RunContextUsage | null;
   usage: RunUsage | null;
@@ -107,6 +115,7 @@ export const initialRunStreamState: RunStreamState = {
   sqls: [],
   results: [],
   charts: [],
+  excels: [],
   questions: [],
   contextUsage: null,
   usage: null,
@@ -151,6 +160,15 @@ function upsertChart(charts: RunChartState[], patch: RunChartState): RunChartSta
   );
   if (index === -1) return [...charts, patch];
   return charts.map((chart, current) => (current === index ? patch : chart));
+}
+
+/** Excel events can be replayed on reconnect, so dedupe by excel artifact id. */
+function upsertExcel(excels: RunExcelState[], patch: RunExcelState): RunExcelState[] {
+  const index = excels.findIndex(
+    (excel) => excel.excelArtifactId === patch.excelArtifactId,
+  );
+  if (index === -1) return [...excels, patch];
+  return excels.map((excel, current) => (current === index ? patch : excel));
 }
 
 export function runStreamReducer(
@@ -269,6 +287,16 @@ export function runStreamReducer(
               spec: event.payload.spec,
               points: event.payload.points,
               title: event.payload.title,
+            }),
+          };
+        case "excel":
+          return {
+            ...base,
+            excels: upsertExcel(state.excels, {
+              excelArtifactId: event.payload.excelArtifactId,
+              filename: event.payload.filename,
+              sheets: event.payload.sheets,
+              totalRows: event.payload.totalRows,
             }),
           };
         case "question":

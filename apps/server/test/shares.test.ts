@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 import { createSessionSigner } from "../src/auth/jwt.js";
@@ -12,7 +13,7 @@ import { createConversation } from "../src/db/repositories/conversations.js";
 import { insertDatasource } from "../src/db/repositories/datasources.js";
 import { appendRunEvent } from "../src/db/repositories/run-events.js";
 import { insertUser } from "../src/db/repositories/users.js";
-import { shares } from "../src/db/schema.js";
+import { reports, shares } from "../src/db/schema.js";
 import { RunEventBus } from "../src/agent/event-bus.js";
 import type { RuntimeManager } from "../src/agent/runtime.js";
 import { ArtifactStore, type ColumnInfo } from "../src/services/artifacts.js";
@@ -285,6 +286,74 @@ describe("shares service", () => {
     for (const forbidden of ["runId", "auditId", "datasourceId", "storagePath", "host"]) {
       expect(serialized).not.toContain(forbidden);
     }
+  });
+
+  it("strips inline excel placeholders from conversation shares and skips excel artifacts in report shares", async () => {
+    const excelId = randomUUID();
+    const resultId = await seedResult([[1, "alpha"]]);
+    const report = createReport({
+      db,
+      artifacts: store,
+      userId,
+      conversationId,
+      artifactIds: [resultId],
+      title: "客户报告",
+      markdown: "报告正文",
+    });
+    expect(report.ok).toBe(true);
+    if (!report.ok) return;
+
+    const excel = store.createExcel({
+      conversationId,
+      userId,
+      runId: "run-excel",
+      spec: {
+        filename: "导出表",
+        sheets: [{ name: "Sheet1", artifactId: resultId, rowCount: 1 }],
+        totalRows: 1,
+      },
+      rowCount: 1,
+    });
+
+    appendRunEvent(db, {
+      runId: "run-excel",
+      conversationId,
+      type: "user_message",
+      payload: { content: "导出 excel" },
+    });
+    appendRunEvent(db, {
+      runId: "run-excel",
+      conversationId,
+      type: "assistant_message",
+      payload: { content: `已生成工作簿。\n\n[[excel:${excelId}]]\n\n请下载。` },
+    });
+
+    const convShare = createShare({ db, userId, conversationId });
+    expect(convShare.ok).toBe(true);
+    if (!convShare.ok) return;
+    const resolvedConv = await resolveShare({
+      db,
+      artifacts: store,
+      token: convShare.share.token,
+    });
+    expect(resolvedConv.ok).toBe(true);
+    if (!resolvedConv.ok || resolvedConv.share.type !== "conversation") return;
+    const last = resolvedConv.share.messages.at(-1);
+    expect(last?.text).toBe("已生成工作簿。\n\n请下载。");
+    expect(last?.text).not.toContain("[[excel:");
+
+    // Also verify buildReportShare safely skips an excel artifact id if stored in a legacy report row
+    db.update(reports)
+      .set({ artifactIdsJson: JSON.stringify([resultId, excel.id]) })
+      .where(eq(reports.id, report.report.id))
+      .run();
+    const repShare = createShare({ db, userId, reportId: report.report.id });
+    expect(repShare.ok).toBe(true);
+    if (!repShare.ok) return;
+    const resolvedRep = await resolveShare({ db, artifacts: store, token: repShare.share.token });
+    expect(resolvedRep.ok).toBe(true);
+    if (!resolvedRep.ok || resolvedRep.share.type !== "report") return;
+    expect(resolvedRep.share.artifacts.map((a) => a.id)).toEqual([resultId]);
   });
 
   it("builds a whitelisted report payload with at most 100 artifact rows", async () => {

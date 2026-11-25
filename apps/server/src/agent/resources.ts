@@ -24,6 +24,7 @@ export interface ConversationPermissions {
   mcp: boolean;
   reports: boolean;
   memory: boolean;
+  export: boolean;
 }
 
 export interface ConversationResourcesInput {

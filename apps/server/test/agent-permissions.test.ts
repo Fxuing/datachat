@@ -124,7 +124,7 @@ describe("skill materialization permissions", () => {
     const skillsDir = await materializeSkillsForPermissions(
       handle.db,
       { conversationId: "c1", datasourceId: "d1", dataDir: root },
-      { skills: false, mcp: true, reports: true, memory: false },
+      { skills: false, mcp: true, reports: true, memory: false, export: false },
     );
 
     expect(skillsDir).toBeUndefined();
@@ -135,7 +135,7 @@ describe("skill materialization permissions", () => {
     const skillsDir = await materializeSkillsForPermissions(
       handle.db,
       { conversationId: "c1", datasourceId: "d1", dataDir: root },
-      { skills: true, mcp: false, reports: true, memory: false },
+      { skills: true, mcp: false, reports: true, memory: false, export: false },
     );
 
     expect(skillsDir).toBe(path.join(root, "skills", "c1"));
@@ -152,6 +152,16 @@ describe("agent tool permissions", () => {
     const withReports = buildAgentTools(ctx, { canCreateReports: true }).map((tool) => tool.name);
     expect(withoutReports).not.toContain("create_report");
     expect(withReports).toContain("create_report");
+  });
+
+  it("omits create_excel without export.data", () => {
+    const ctx = { skillsDir: root } as AgentToolContext;
+    const withoutExport = buildAgentTools(ctx, { canExportData: false }).map(
+      (tool) => tool.name,
+    );
+    const withExport = buildAgentTools(ctx, { canExportData: true }).map((tool) => tool.name);
+    expect(withoutExport).not.toContain("create_excel");
+    expect(withExport).toContain("create_excel");
   });
 });
 
@@ -194,12 +204,14 @@ describe("ConversationRuntime permission resolution", () => {
       mcp: false,
       reports: false,
       memory: true,
+      export: false,
     });
     expect(runtimeFor(userId).permissions).toEqual({
       skills: false,
       mcp: false,
       reports: false,
       memory: true,
+      export: false,
     });
   });
 
@@ -215,14 +227,33 @@ describe("ConversationRuntime permission resolution", () => {
     expect(resolveConversationPermissions(handle.db, withReport).reports).toBe(true);
   });
 
+  it("keeps Excel export tool only with export.data", () => {
+    const withoutExport = userWithRole("user", ["chat.use"]);
+    const withExport = userWithRole("user", ["chat.use", "export.data"]);
+    expect(resolveConversationPermissions(handle.db, withoutExport).export).toBe(false);
+    expect(resolveConversationPermissions(handle.db, withExport).export).toBe(true);
+  });
+
   it("keeps skills and mcp for the member preset", () => {
     const userId = userWithRole("user");
-    expect(runtimeFor(userId).permissions).toEqual({ skills: true, mcp: true, reports: true, memory: true });
+    expect(runtimeFor(userId).permissions).toEqual({
+      skills: true,
+      mcp: true,
+      reports: true,
+      memory: true,
+      export: true,
+    });
   });
 
   it("keeps skills and mcp for an admin", () => {
     const userId = userWithRole("admin");
-    expect(runtimeFor(userId).permissions).toEqual({ skills: true, mcp: true, reports: true, memory: true });
+    expect(runtimeFor(userId).permissions).toEqual({
+      skills: true,
+      mcp: true,
+      reports: true,
+      memory: true,
+      export: true,
+    });
   });
 
   it("fails closed for synthetic users without a database row", () => {
@@ -235,6 +266,12 @@ describe("ConversationRuntime permission resolution", () => {
         throw new Error("session creation is not part of this test");
       },
     });
-    expect(runtime.permissions).toEqual({ skills: false, mcp: false, reports: false, memory: false });
+    expect(runtime.permissions).toEqual({
+      skills: false,
+      mcp: false,
+      reports: false,
+      memory: false,
+      export: false,
+    });
   });
 });

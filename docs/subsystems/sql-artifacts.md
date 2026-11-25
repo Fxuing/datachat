@@ -13,8 +13,9 @@
 | 范围改写 | 按部门策略包派生表并绑定过滤参数 | [`scope.ts`](../../apps/server/src/agent/sql/scope.ts)、[`data-scope.ts` 服务](../../apps/server/src/services/data-scope.ts) |
 | Artifact 存储 | JSONL 行 + 元数据；图表 spec；读取/预览/导出 | [`artifacts.ts`](../../apps/server/src/services/artifacts.ts) |
 | 审计 | 为 ok/rejected/error 写 `query_audit` | [`audit.ts`](../../apps/server/src/services/audit.ts) |
-| 导出 HTTP | 授权、流式发送、完成后审计 | [`artifacts.ts` 路由](../../apps/server/src/routes/artifacts.ts) |
+| 导出 HTTP | 授权、单结果/多 Sheet 工作簿流式发送、完成后审计 | [`artifacts.ts` 路由](../../apps/server/src/routes/artifacts.ts)、[`export.ts`](../../apps/server/src/services/export.ts) |
 | 图表工具 | 从结果 artifact 构建图表 spec | [`make-chart.ts`](../../apps/server/src/agent/tools/make-chart.ts) |
+| Excel 工具 | 基于会话结果 artifact 组装多 Sheet `.xlsx` 工作簿元数据 | [`create-excel.ts`](../../apps/server/src/agent/tools/create-excel.ts) |
 
 限制（`maxRows`、`previewRows`、`timeoutMs`）来自应用设置，通过 `resolveQueryLimits` 解析；每次查询读一次，这样设置修改会在下一轮生效。数据源连接在存储时加密，只在查询路径内解密。
 
@@ -46,11 +47,13 @@ tool/route
 
 ## Artifact 契约
 
-- `artifacts.kind` 为 `result` 或 `chart`。结果行保存在 `DATA_DIR/artifacts/*.jsonl`（视情况 gzip）；SQLite 存 id、属主、会话/run、列、行数、截断标记、相对存储路径和时间戳。
+- `artifacts.kind` 为 `result`、`chart` 或 `excel`。结果行保存在 `DATA_DIR/artifacts/*.jsonl`（视情况 gzip）；SQLite 存 id、属主、会话/run、列、行数、截断标记、相对存储路径和时间戳。
 - 值会针对 BigInt、Date、Buffer、Decimal 和非有限数字做编码/解码（`encodeValue`/`decodeValue`）。不要直接对驱动返回的行做 `JSON.stringify`。
 - 预览行是给 UI 的有界切片。完整行通过 artifact API 分页读取；导出直接流式发送文件。
 - artifact 按 `userId` 作用域，并可选按会话/run 作用域。下载或图表必须校验访问权；绝不能接受任意文件路径。
 - 图表输入有上限（`MAX_CHART_INPUT_ROWS = 50_000`），且只读取结果 artifact。图表 spec 作为 `kind=chart` 的 artifact 保存，不存成 SQLite 行数据。
+- **多 Sheet Excel 工作簿（`kind = "excel"`）：** `create_excel` 工具受 `export.data` 权限门禁约束，在执行时从数据库重新校验 `export.data`、每个工作表引用的 `result` artifact 归属/会话一致性和部门范围快照（`artifactRunVisible`），限制 1..`EXCEL_MAX_SHEETS`（10）个工作表且总行数不超过 `EXPORT_MAX_ROWS`（100,000），清理业务文件名（`sanitizeExcelFilename`）并按不区分大小写清理/去重 31 字符工作表标签（`dedupeWorksheetNames`）；仅将轻量工作簿 spec（`filename`、`sheets`、`totalRows`）写入 `spec_json`（`storage_path = null`，不复制行数据）。`list_artifacts` 仅向模型列出 `kind = "result"` 的结果。
+- **工作簿流式下载：** `GET /api/artifacts/:id/download?format=xlsx` 支持 `kind = "excel"`（`format=csv` 返回 400 `NOT_EXPORTABLE`），在响应头发送前重新校验属主/管理员权限、`export.data` 权限及每个工作表对应结果 artifact 的部门范围可见性与文件存在性（任一缺失或越权返回 404，底层结果文件丢失返回 410，超限返回 413），通过 `multiSheetXlsxStream` 流式写出各工作表后仅写一条 `export` 审计记录并在断线时关闭全部底层行生成器。报告（`create_report`）拒绝引用 `kind = "excel"`，开放平台 `stripInternalPlaceholders` 会清洗 `[[excel:...]]`。
 - 删除会话/用户时清理 artifact 文件和记录；不要留下孤儿文件。
 
 ## 审计契约
@@ -75,6 +78,8 @@ pnpm exec vitest run apps/server/test/query-service.test.ts \
   apps/server/test/executor-sqlite.test.ts \
   apps/server/test/artifacts.test.ts \
   apps/server/test/artifacts-api.test.ts \
+  apps/server/test/export.test.ts \
+  apps/server/test/create-excel-tool.test.ts \
   apps/server/test/charts.test.ts \
   apps/server/test/make-chart-tool.test.ts
 RUN_DB_TESTS=1 pnpm exec vitest run apps/server/test/query-service.integration.test.ts \

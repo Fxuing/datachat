@@ -32,11 +32,11 @@
 - **每个会话同一时间只有一个活跃 run。** 不要直接调用 `session.prompt()`，也不要为同一会话创建第二个 runtime。
 - **`runId` 是每轮 prompt 的状态。** `AgentToolContext` 跨 run 共享；每次 prompt 前更新它，绝不要在工具工厂里捕获一次。
 - **所有终止路径都必须发出 `run_end`。** 成功、模型错误、工具错误、中止、超时和 dispose 都需要终止事件；否则 UI 会一直显示流式状态。
-- **事件必须可序列化、可回放。** 新事件类型要加入 `packages/shared/src/events.ts`，在 `event-bridge.ts` 映射、持久化，并由 `useRunStream`/UI 处理。不要发布只存在于实时的状态。
+- **事件必须可序列化、可回放。** 新事件类型要加入 `packages/shared/src/events.ts`，在 `event-bridge.ts` 映射、持久化，并由 `useRunStream`/UI 处理。其中 `create_excel` 工具完成后由 `event-bridge.ts` 映射并持久化 `excel` 事件（仅携带 `excelArtifactId`、`filename`、`sheets` 元数据与 `totalRows`）。不要发布只存在于实时的状态。
 - **中止是协作式的。** 路由调用 `runtime.abort`；会话被中止，队列项被移除。还在排队（未活跃）的 run 会立即结束。
 - **会话来源分离。** `conversations.source_kind` 区分 `'datasource'`（`datasource_id` 必非空）与 `'file'`（`datasource_id` 为空，表元数据存于 `conversation_files` / `conversation_file_tables`，数据存于 `DATA_DIR/files/<conversationId>/data.sqlite`）。文件会话不走数据库范围过滤，技能（`skills.ts`）与 MCP（`mcp.ts`）仅加载全局配置；记忆保存/提取在无数据源时归为全局（且跳过临时的 `fact`）。
 - **文件表动态可见。** `db_schema` 在文件会话每次执行时实时读取 `conversation_file_tables`，通过 `POST /api/conversations/:id/files` 追加上传文件后下一轮立即可查询、无需重建会话。删除会话与清理任务会同步删除 `DATA_DIR/files/<conversationId>` 与会话工作区目录。
-- **会话资源是快照。** 技能/MCP/报告工具在创建会话时装配。之后的权限变化影响新请求，但不会改变已有工具集；契约要求立即生效时，重建会话。
+- **会话资源是快照。** 技能/MCP/报告/导出工具（含 `ConversationPermissions.export` 控制的 `create_excel`）在创建会话时装配（开放平台会话固定禁用 `export`）。之后的权限变化影响新请求，但不会改变已有工具集（`create_excel` 执行期还会再次按数据库权限校验）；契约要求立即生效时，重建会话。
 - **队列满是对客户端可见的错误。** 路由把 run 标记为失败并返回稳定错误码；不要静默丢弃消息。
 - **建议追问独立于 `run_events`。** `GET /api/runs/:id/suggestions` 校验运行归属与 `runScopeVisible` 后，用无工具、关闭思考的独立会话生成最多 3 条追问并缓存到 `runs.suggestions_json`（同 `runId` 并发去重）；仅针对成功的聊天轮次按需触发，不向 `run_events` 追加事件以保持 `run_end` 为终止事件，也不在定时任务或错误/中止轮次额外调用模型。
 

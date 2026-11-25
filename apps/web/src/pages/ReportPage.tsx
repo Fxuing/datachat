@@ -256,6 +256,9 @@ function ReportArtifact({ artifactId, listed }: { artifactId: string; listed: bo
   if (artifact.kind === "chart") {
     return <ReportChart spec={artifact.spec} rowCount={artifact.rowCount} />;
   }
+  if (artifact.kind === "excel") {
+    return <MissingArtifact artifactId={artifact.id} message="报告不支持内嵌 Excel 文件。" />;
+  }
   return (
     <ReportResultPreview
       artifactId={artifact.id}

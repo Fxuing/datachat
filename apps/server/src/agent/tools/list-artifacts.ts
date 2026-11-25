@@ -24,10 +24,14 @@ export function createListArtifactsTool(
   return {
     name: "list_artifacts",
     label: "列出查询结果",
-    description: "列出当前会话最近 20 个查询结果（artifact），可用于追问、对比或生成图表。",
+    description: "列出当前会话最近 20 个查询结果（artifact），可用于追问、对比、生成图表或导出 Excel。",
     parameters: listParameters,
     async execute() {
-      const records = ctx.artifacts.list({ conversationId: ctx.conversationId, limit: 20 });
+      const records = ctx.artifacts.list({
+        conversationId: ctx.conversationId,
+        kind: "result",
+        limit: 20,
+      });
       const artifacts: ArtifactSummary[] = records.map((record) => ({
         id: record.id,
         kind: "query_result",

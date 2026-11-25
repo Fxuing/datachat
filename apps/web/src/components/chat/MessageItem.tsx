@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Bot, Pencil, Send, ShieldCheck, Sparkles, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -26,6 +26,7 @@ import {
   chartTitleFromSpec,
   type ChartDrillDownPoint,
 } from "./ChartCard";
+import { HistoricalExcel } from "./ExcelCard";
 import { ResultCard } from "./ResultCard";
 import { ResultLinkGroup } from "./ResultLink";
 import { TurnTrace } from "./TurnTrace";
@@ -271,6 +272,7 @@ function InlineArtifact({
   artifactId,
   results,
   charts,
+  excels,
   onCreateReport,
   creatingReport,
   canExport,
@@ -280,6 +282,7 @@ function InlineArtifact({
   artifactId: string;
   results: ChatResult[];
   charts: ChatArtifact[];
+  excels: ChatArtifact[];
   onCreateReport?: (artifactId: string) => void;
   creatingReport?: boolean;
   canExport?: boolean;
@@ -300,6 +303,10 @@ function InlineArtifact({
   const chart = charts.find((item) => item.id === artifactId);
   if (chart) {
     return <HistoricalChart artifact={chart} onPin={onPinChart} onDrillDown={onDrillDownChart} />;
+  }
+  const excel = excels.find((item) => item.id === artifactId);
+  if (excel) {
+    return <HistoricalExcel artifact={excel} allResults={results} canExport={canExport} />;
   }
   return (
     <p className="text-[11px] text-muted">
@@ -332,6 +339,7 @@ function scopeHint(error: string | null): string | null {
 export function MessageItem({
   message,
   artifacts = [],
+  allResults,
   models = [],
   retrying = false,
   creatingReport = false,
@@ -345,6 +353,8 @@ export function MessageItem({
 }: {
   message: ChatMessage;
   artifacts?: ChatArtifact[];
+  /** Conversation-wide results so cross-turn `[[result:...]]` and Excel previews resolve. */
+  allResults?: ChatResult[];
   models?: ChatModelInfo[];
   retrying?: boolean;
   creatingReport?: boolean;
@@ -360,6 +370,31 @@ export function MessageItem({
   const assistantText = message.assistant?.content ?? "";
   const allCharts = artifacts.filter((artifact) => artifact.kind === "chart");
   const charts = allCharts.filter((artifact) => artifact.runId === message.runId);
+  const allExcels = artifacts.filter((artifact) => artifact.kind === "excel");
+  const excels = allExcels.filter((artifact) => artifact.runId === message.runId);
+  const resolvedResults = useMemo(() => {
+    const map = new Map<string, ChatResult>();
+    const add = (result: ChatResult) => {
+      const existing = map.get(result.artifactId);
+      if (!existing || (existing.rows.length === 0 && result.rows.length > 0)) {
+        map.set(result.artifactId, result);
+      }
+    };
+    for (const item of message.results) add(item);
+    for (const item of allResults ?? []) add(item);
+    for (const item of artifacts) {
+      if (item.kind === "result") {
+        add({
+          artifactId: item.id,
+          columns: item.columns,
+          rows: [],
+          rowCount: item.rowCount,
+          truncated: item.truncated,
+        });
+      }
+    }
+    return [...map.values()];
+  }, [message.results, allResults, artifacts]);
   // Models sometimes paste report-style placeholders into a normal reply. Render
   // them in place instead of showing raw `[[artifact:<id>]]` text, and skip the
   // duplicate card below when the text already references that artifact.
@@ -379,6 +414,7 @@ export function MessageItem({
   const standaloneCharts = charts.filter(
     (chart) => !referenced.has(chart.id) && !reportArtifacts.has(chart.id),
   );
+  const standaloneExcels = excels.filter((excel) => !referenced.has(excel.id));
   // SQL and the rows it produced belong inside the trace; results without a
   // recorded statement stay plain cards next to the answer.
   const { pairs, unmatched } = pairQueries(message.sqls, standaloneResults);
@@ -454,12 +490,27 @@ export function MessageItem({
                   </p>
                 );
               }
+              if (segment.type === "excel") {
+                const excel = allExcels.find((item) => item.id === segment.artifactId);
+                return excel ? (
+                  <HistoricalExcel
+                    key={`excel-${index}`}
+                    artifact={excel}
+                    allResults={resolvedResults}
+                    canExport={canExport}
+                  />
+                ) : (
+                  <p key={`excel-${index}`} className="text-[11px] text-muted">
+                    Excel 文件不可用
+                  </p>
+                );
+              }
               if (segment.type === "result_group") {
                 return (
                   <ResultLinkGroup
                     key={`result-group-${index}`}
                     items={segment.items}
-                    results={message.results}
+                    results={resolvedResults}
                     disambiguate={disambiguateResults}
                     canExport={canExport}
                   />
@@ -469,8 +520,9 @@ export function MessageItem({
                 <InlineArtifact
                   key={`artifact-${index}`}
                   artifactId={segment.artifactId}
-                  results={message.results}
-                  charts={charts}
+                  results={resolvedResults}
+                  charts={allCharts}
+                  excels={allExcels}
                   onCreateReport={onCreateReport}
                   creatingReport={creatingReport}
                   canExport={canExport}
@@ -489,6 +541,18 @@ export function MessageItem({
                 artifact={chart}
                 onPin={onPinChart}
                 onDrillDown={onDrillDownChart}
+              />
+            ))}
+          </div>
+        ) : null}
+        {standaloneExcels.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {standaloneExcels.map((excel) => (
+              <HistoricalExcel
+                key={excel.id}
+                artifact={excel}
+                allResults={resolvedResults}
+                canExport={canExport}
               />
             ))}
           </div>

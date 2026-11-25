@@ -81,6 +81,20 @@ describe("parseChatMarkdown", () => {
       { type: "markdown", content: "[[artifact:art-1|标题]]" },
     ]);
   });
+
+  it("parses excel placeholders in chat and keeps them literal in reports or with pipe labels", () => {
+    expect(parseChatMarkdown("已生成：\n\n[[excel:xls-1]]\n\n请下载。")).toEqual([
+      { type: "markdown", content: "已生成：\n\n" },
+      { type: "excel", artifactId: "xls-1" },
+      { type: "markdown", content: "\n\n请下载。" },
+    ]);
+    expect(parseChatMarkdown("[[excel:xls-1|标题]]")).toEqual([
+      { type: "markdown", content: "[[excel:xls-1|标题]]" },
+    ]);
+    expect(parseReportMarkdown("[[excel:xls-1]]")).toEqual([
+      { type: "markdown", content: "[[excel:xls-1]]" },
+    ]);
+  });
 });
 
 describe("groupChatSegments", () => {

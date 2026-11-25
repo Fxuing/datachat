@@ -117,7 +117,7 @@ export interface ConversationMessage {
 export interface ConversationArtifact {
   id: string;
   runId: string | null;
-  kind: "result" | "chart";
+  kind: "result" | "chart" | "excel";
   columns: Column[];
   rowCount: number;
   truncated: boolean;
@@ -361,10 +361,14 @@ export function getConversationDetail(
   }
 
   const referencedChartIds = new Set<string>();
+  const referencedExcelIds = new Set<string>();
   for (const message of messages) {
     const content = message.assistant?.content ?? "";
     for (const match of content.matchAll(/\[\[chart:([^\]\s|]+)\]\]/g)) {
       if (match[1]) referencedChartIds.add(match[1]);
+    }
+    for (const match of content.matchAll(/\[\[excel:([^\]\s|]+)\]\]/g)) {
+      if (match[1]) referencedExcelIds.add(match[1]);
     }
   }
 
@@ -387,7 +391,8 @@ export function getConversationDetail(
       (row) =>
         (row.runId === null ||
           !retriedRunIds.has(row.runId) ||
-          (row.kind === "chart" && referencedChartIds.has(row.id))) &&
+          (row.kind === "chart" && referencedChartIds.has(row.id)) ||
+          (row.kind === "excel" && referencedExcelIds.has(row.id))) &&
         (row.runId === null || !viewer || artifactRunVisible(db, row.runId, viewer.isAdmin)),
     );
 
@@ -423,7 +428,7 @@ function parseJson(raw: string): unknown {
 function parseArtifactRow(row: {
   id: string;
   runId: string | null;
-  kind: "result" | "chart";
+  kind: "result" | "chart" | "excel";
   columnsJson: string | null;
   rowCount: number;
   truncated: number;

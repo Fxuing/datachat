@@ -4,14 +4,16 @@ export type ReportSegment =
   | { type: "chart"; artifactId: string };
 
 export type ResultSegment = { type: "result"; artifactId: string; label?: string };
-export type ChatSegment = ReportSegment | ResultSegment;
+export type ExcelSegment = { type: "excel"; artifactId: string };
+export type ChatSegment = ReportSegment | ResultSegment | ExcelSegment;
 export type GroupedChatSegment =
   | ReportSegment
+  | ExcelSegment
   | { type: "result_group"; items: ResultSegment[] };
 
-const INLINE_PLACEHOLDER = /\[\[(artifact|chart|result):([^\]\s|]+)(?:\|([^\]\r\n]*))?\]\]/g;
+const INLINE_PLACEHOLDER = /\[\[(artifact|chart|result|excel):([^\]\s|]+)(?:\|([^\]\r\n]*))?\]\]/g;
 
-function parseSegments(markdown: string, includeResults: boolean): ChatSegment[] {
+function parseSegments(markdown: string, includeChatOnly: boolean): ChatSegment[] {
   const segments: ChatSegment[] = [];
   let cursor = 0;
   for (const match of markdown.matchAll(INLINE_PLACEHOLDER)) {
@@ -25,11 +27,13 @@ function parseSegments(markdown: string, includeResults: boolean): ChatSegment[]
     if (
       !artifactId ||
       (kind !== "result" && rawLabel !== undefined) ||
-      (kind === "result" && !includeResults)
+      ((kind === "result" || kind === "excel") && !includeChatOnly)
     ) {
       segments.push({ type: "markdown", content: match[0] });
     } else if (kind === "chart") {
       segments.push({ type: "chart", artifactId });
+    } else if (kind === "excel") {
+      segments.push({ type: "excel", artifactId });
     } else if (kind === "result") {
       const label = rawLabel?.trim();
       segments.push(
@@ -84,14 +88,15 @@ export function groupChatSegments(segments: ChatSegment[]): GroupedChatSegment[]
 /**
  * Split report markdown into prose and artifact placeholders so the page can
  * render each `[[artifact:<id>]]` / `[[chart:<id>]]` as a card instead of
- * literal text. `[[result:<id>]]` is chat-only and stays literal here.
+ * literal text. `[[result:<id>]]` and `[[excel:<id>]]` are chat-only and stay
+ * literal here.
  */
 export function parseReportMarkdown(markdown: string): ReportSegment[] {
   return parseSegments(markdown, false) as ReportSegment[];
 }
 
 /**
- * Split a chat reply into prose, artifact/chart placeholders, and chat-only
+ * Split a chat reply into prose, artifact/chart/excel placeholders, and chat-only
  * `[[result:<id>]]` links that open the complete result table.
  */
 export function parseChatMarkdown(markdown: string): ChatSegment[] {

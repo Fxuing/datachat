@@ -486,4 +486,41 @@ describe("create_report tool", () => {
     expect(result.isError).toBe(true);
     expect((result.details as { code: string }).code).toBe("ARTIFACT_NOT_FOUND");
   });
+
+  it("rejects excel artifacts in createReport service and HTTP route", async () => {
+    const resultId = await seedResult();
+    const excel = store.createExcel({
+      conversationId,
+      userId,
+      runId: null,
+      spec: {
+        filename: "销售汇总",
+        sheets: [{ name: "汇总", artifactId: resultId, rowCount: 2 }],
+        totalRows: 2,
+      },
+      rowCount: 2,
+    });
+
+    const created = createReport({
+      db,
+      artifacts: store,
+      userId,
+      conversationId,
+      artifactIds: [excel.id],
+    });
+    expect(created).toMatchObject({ ok: false, code: "INVALID_ARTIFACT_KIND" });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/reports",
+      cookies: { dc_session: cookie },
+      payload: {
+        conversationId,
+        artifactIds: [excel.id],
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("VALIDATION");
+    expect(response.json().error.message).toContain("Excel");
+  });
 });

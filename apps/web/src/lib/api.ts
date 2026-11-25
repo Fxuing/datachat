@@ -458,7 +458,7 @@ export interface ChatMessage {
 export interface ChatArtifact {
   id: string;
   runId: string | null;
-  kind: "result" | "chart";
+  kind: "result" | "chart" | "excel";
   columns: Column[];
   rowCount: number;
   truncated: boolean;
@@ -483,7 +483,7 @@ export interface ConversationDetail {
 
 export interface ArtifactDetail {
   id: string;
-  kind: "result" | "chart";
+  kind: "result" | "chart" | "excel";
   conversationId: string | null;
   rowCount: number;
   truncated: boolean;

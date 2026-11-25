@@ -39,6 +39,7 @@ export interface CreateConversationSessionInput {
   /** Receives the memories injected into a turn, for the run's trace. */
   onMemoryUsed?: (items: MemoryUsageItem[]) => void;
   canCreateReports: boolean;
+  canExportData?: boolean;
   pools: PoolRegistry;
   artifacts: ArtifactStore;
   drivers?: DriverRegistry;
@@ -159,6 +160,7 @@ export async function createConversationSession(
     noTools: "builtin",
     customTools: buildAgentTools(toolContext, {
       canCreateReports: input.canCreateReports,
+      canExportData: input.canExportData === true,
     }),
   });
   input.questionBridge.bind(eventBus);

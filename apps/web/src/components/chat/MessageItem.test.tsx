@@ -610,4 +610,66 @@ describe("MessageItem", () => {
 
     expect(onEditResend).toHaveBeenCalledWith("统计本月订单", "order-check");
   });
+
+  it("renders inline and standalone excel cards, unavailable fallback, and resolves cross-turn result links", () => {
+    const excel1: ChatArtifact = {
+      id: "xls-1",
+      runId: "run-1",
+      kind: "excel",
+      columns: [],
+      rowCount: 12,
+      truncated: false,
+      spec: {
+        filename: "Q1汇总表",
+        sheets: [{ name: "区域汇总", artifactId: "res-1", rowCount: 12 }],
+        totalRows: 12,
+      },
+      createdAt: 1,
+    };
+    const excel2: ChatArtifact = {
+      id: "xls-2",
+      runId: "run-1",
+      kind: "excel",
+      columns: [],
+      rowCount: 5,
+      truncated: false,
+      spec: {
+        filename: "独立兜底表",
+        sheets: [{ name: "Sheet1", artifactId: "res-1", rowCount: 5 }],
+        totalRows: 5,
+      },
+      createdAt: 2,
+    };
+    const priorResult = {
+      artifactId: "res-prior",
+      columns: [{ name: "region", type: "string" as const }],
+      rows: [["华东"]],
+      rowCount: 1,
+      truncated: false,
+    };
+
+    render(
+      <MemoryRouter>
+        <MessageItem
+          artifacts={[excel1, excel2]}
+          allResults={[priorResult]}
+          message={message({
+            runId: "run-1",
+            status: "ok",
+            results: [],
+            assistant: {
+              content:
+                "参考历史结果：\n\n[[result:res-prior|华东历史明细]]\n\nExcel：\n\n[[excel:xls-1]]\n\n[[excel:xls-missing]]",
+            },
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: /华东历史明细\s*1 行/ })).toBeInTheDocument();
+    expect(screen.queryByText(/结果引用不可用/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("Q1汇总表.xlsx")).toHaveLength(1);
+    expect(screen.getByText("独立兜底表.xlsx")).toBeInTheDocument();
+    expect(screen.getByText("Excel 文件不可用")).toBeInTheDocument();
+  });
 });

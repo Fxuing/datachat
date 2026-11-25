@@ -1,13 +1,20 @@
 import { pipeline } from "node:stream/promises";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
+import { excelWorkbookSpecSchema } from "@datachat/shared";
 import type { Db } from "../db/client.js";
 import { queryAudit } from "../db/schema.js";
 import { findConversation } from "../db/repositories/conversations.js";
 import { recordAudit } from "../services/audit.js";
-import type { ArtifactRecord, ArtifactStore } from "../services/artifacts.js";
-import { csvStream, EXPORT_MAX_ROWS, xlsxStream } from "../services/export.js";
+import type { ArtifactRecord, ArtifactStore, ColumnInfo } from "../services/artifacts.js";
+import {
+  csvStream,
+  EXPORT_MAX_ROWS,
+  multiSheetXlsxStream,
+  sanitizeExcelFilename,
+  xlsxStream,
+} from "../services/export.js";
 import { artifactRunVisible } from "../services/scope-access.js";
 
 export interface ArtifactRouteOptions {
@@ -174,7 +181,7 @@ export async function artifactRoutes(
         return reply.code(404).send(error("NOT_FOUND", "结果不存在"));
       }
       const { offset, limit } = query.data;
-      if (artifact.kind === "chart" || !artifact.storagePath) {
+      if (artifact.kind !== "result" || !artifact.storagePath) {
         return { columns: artifact.columns, rows: [], total: artifact.rowCount };
       }
 
@@ -211,6 +218,10 @@ export async function artifactRoutes(
       if (!artifact) {
         return reply.code(404).send(error("NOT_FOUND", "结果不存在"));
       }
+      const format = query.data.format;
+      if (artifact.kind === "excel") {
+        return streamExcelWorkbookDownload(opts, artifact, format, request.user!, reply);
+      }
       if (artifact.kind !== "result") {
         return reply.code(400).send(error("NOT_EXPORTABLE", "该结果不支持下载"));
       }
@@ -232,7 +243,6 @@ export async function artifactRoutes(
         throw readError;
       }
 
-      const format = query.data.format;
       const audit = exportAuditContext(opts.db, artifact, request.user!.sub);
 
       reply.hijack();
@@ -288,4 +298,135 @@ export async function artifactRoutes(
       return reply;
     },
   );
+}
+
+/** Stream a multi-sheet workbook by re-validating every sheet's access and scope snapshot first. */
+async function streamExcelWorkbookDownload(
+  opts: ArtifactRouteOptions,
+  artifact: ArtifactRecord,
+  format: "csv" | "xlsx",
+  user: { sub: string; role: string },
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  if (format !== "xlsx") {
+    return reply
+      .code(400)
+      .send(error("NOT_EXPORTABLE", "Excel 工作簿仅支持导出为 .xlsx 格式"));
+  }
+  const parsedSpec = excelWorkbookSpecSchema.safeParse(parseSpec(artifact.specJson));
+  if (!parsedSpec.success) {
+    return reply.code(400).send(error("INVALID_ARTIFACT", "Excel 工作簿配置无效"));
+  }
+
+  const resolvedSheets: Array<{ name: string; artifact: ArtifactRecord }> = [];
+  let totalRows = 0;
+  for (const sheet of parsedSpec.data.sheets) {
+    const sheetArtifact = findReadableArtifact(opts, sheet.artifactId, user);
+    if (
+      !sheetArtifact ||
+      sheetArtifact.kind !== "result" ||
+      (artifact.conversationId && sheetArtifact.conversationId !== artifact.conversationId)
+    ) {
+      return reply
+        .code(404)
+        .send(error("NOT_FOUND", "工作表关联的查询结果不存在或无权访问"));
+    }
+    totalRows += sheetArtifact.rowCount;
+    resolvedSheets.push({ name: sheet.name, artifact: sheetArtifact });
+  }
+
+  if (totalRows > EXPORT_MAX_ROWS) {
+    return reply
+      .code(413)
+      .send(error("EXPORT_TOO_LARGE", "工作簿总行数过多，请缩小查询范围后再导出"));
+  }
+
+  const opened: Array<{
+    name: string;
+    columns: ColumnInfo[];
+    source: AsyncGenerator<unknown[], void, void>;
+  }> = [];
+  try {
+    for (const entry of resolvedSheets) {
+      const rows = opts.artifacts.openRows(entry.artifact.id);
+      const first = await rows.next();
+      opened.push({
+        name: entry.name,
+        columns: entry.artifact.columns,
+        source: prependFirst(first, rows),
+      });
+    }
+  } catch (readError) {
+    await Promise.allSettled(opened.map((item) => item.source.return(undefined)));
+    if (isEnoent(readError)) {
+      return reply.code(410).send(error("ARTIFACT_GONE", "结果文件已丢失"));
+    }
+    throw readError;
+  }
+
+  const audit = exportAuditContext(opts.db, artifact, user.sub);
+  if (!audit.sqlText && resolvedSheets[0]) {
+    const sheetAudit = exportAuditContext(opts.db, resolvedSheets[0].artifact, user.sub);
+    audit.sqlText = sheetAudit.sqlText;
+    audit.datasourceId ??= sheetAudit.datasourceId;
+  }
+
+  const safeStem = sanitizeExcelFilename(
+    parsedSpec.data.filename,
+    `datachat-${artifact.id.slice(0, 8)}`,
+  );
+  const downloadFilename = `${safeStem}.xlsx`;
+
+  reply.hijack();
+  reply.raw.writeHead(200, {
+    "Content-Type":
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(downloadFilename)}`,
+    "Cache-Control": "no-store",
+  });
+
+  const stream = multiSheetXlsxStream(
+    opened.map((item) => ({
+      name: item.name,
+      columns: item.columns,
+      rows: item.source,
+    })),
+  );
+  const closeAllSources = (): void => {
+    for (const item of opened) {
+      void item.source.return(undefined);
+    }
+  };
+  reply.raw.once("close", closeAllSources);
+  let streamError: unknown = null;
+  try {
+    await pipeline(stream, reply.raw);
+  } catch (streamFailure) {
+    streamError = streamFailure;
+    if (!reply.raw.writableEnded) reply.raw.destroy();
+  } finally {
+    reply.raw.off("close", closeAllSources);
+    closeAllSources();
+  }
+
+  safeRecordExport(opts.db, {
+    ...audit,
+    action: "export",
+    status: streamError ? "error" : "ok",
+    ...(streamError
+      ? {
+          errorMessage:
+            streamError instanceof Error ? streamError.message : String(streamError),
+        }
+      : {}),
+    rowCount: totalRows,
+    detail: {
+      artifactId: artifact.id,
+      format: "xlsx",
+      filename: downloadFilename,
+      sheetCount: opened.length,
+      sheetArtifactIds: resolvedSheets.map((item) => item.artifact.id),
+    },
+  });
+  return reply;
 }

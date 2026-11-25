@@ -13,6 +13,24 @@ export const columnSchema = z.object({
 });
 export type Column = z.infer<typeof columnSchema>;
 
+export const EXCEL_MAX_SHEETS = 10;
+export const EXCEL_MAX_FILENAME_LENGTH = 100;
+export const EXCEL_MAX_SHEET_NAME_LENGTH = 31;
+
+export const excelSheetSpecSchema = z.object({
+  name: z.string(),
+  artifactId: z.string(),
+  rowCount: z.number().int().nonnegative(),
+});
+export type ExcelSheetSpec = z.infer<typeof excelSheetSpecSchema>;
+
+export const excelWorkbookSpecSchema = z.object({
+  filename: z.string(),
+  sheets: z.array(excelSheetSpecSchema).min(1).max(EXCEL_MAX_SHEETS),
+  totalRows: z.number().int().nonnegative(),
+});
+export type ExcelWorkbookSpec = z.infer<typeof excelWorkbookSpecSchema>;
+
 /**
  * Stream event model (spec §5.7). One event per run_events row; the server adds
  * `seq` when persisting (spec: `RunEvent & { seq: number }`), so it is not part of
@@ -159,6 +177,15 @@ export const runEventSchema = z.discriminatedUnion("type", [
       spec: z.record(z.unknown()),
       points: z.number().int().nonnegative(),
       title: z.string(),
+    }),
+  }),
+  z.object({
+    type: z.literal("excel"),
+    payload: z.object({
+      excelArtifactId: z.string(),
+      filename: z.string(),
+      sheets: z.array(excelSheetSpecSchema),
+      totalRows: z.number().int().nonnegative(),
     }),
   }),
   z.object({

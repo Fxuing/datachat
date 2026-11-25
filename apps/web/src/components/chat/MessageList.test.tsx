@@ -471,3 +471,111 @@ describe("MessageList scrolling", () => {
     expect(container.scrollTop).toBe(1000);
   });
 });
+
+describe("MessageList excel and cross-turn results", () => {
+  const excelItem = {
+    excelArtifactId: "xls-stream-1",
+    filename: "实时销售工作簿",
+    sheets: [{ name: "汇总", artifactId: "res-1", rowCount: 8 }],
+    totalRows: 8,
+  };
+
+  it("hides incomplete excel markers while running, renders inline excel immediately when complete, and appends unreferenced excels at end", () => {
+    const { rerender } = renderList(
+      stream({
+        status: "running",
+        text: "正在准备\n\n[[excel:xls-stream",
+        excels: [excelItem],
+      }),
+    );
+
+    expect(screen.queryByText(/\[\[excel:/)).not.toBeInTheDocument();
+    expect(screen.queryByText("实时销售工作簿.xlsx")).not.toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <MessageList
+          messages={[]}
+          stream={stream({
+            status: "running",
+            text: "已生成：\n\n[[excel:xls-stream-1]]",
+            excels: [excelItem],
+          })}
+          showStream
+          optimisticText={null}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("实时销售工作簿.xlsx")).toBeInTheDocument();
+
+    // Unreferenced excel shows up once the run completes
+    rerender(
+      <MemoryRouter>
+        <MessageList
+          messages={[]}
+          stream={stream({
+            status: "ok",
+            text: "已完成汇总。",
+            excels: [excelItem],
+          })}
+          showStream
+          optimisticText={null}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("实时销售工作簿.xlsx")).toHaveLength(1);
+  });
+
+  it("resolves cross-turn result links in both persisted messages and active streams", () => {
+    render(
+      <MemoryRouter>
+        <MessageList
+          messages={[
+            {
+              runId: "run-1",
+              status: "ok",
+              user: { content: "查第一轮明细" },
+              assistant: { content: "已查询完成。" },
+              tools: [],
+              sqls: [],
+              results: [
+                {
+                  artifactId: "res-turn-1",
+                  columns: [{ name: "city", type: "string" }],
+                  rows: [["上海"]],
+                  rowCount: 1,
+                  truncated: false,
+                },
+              ],
+              error: null,
+              createdAt: 1,
+            },
+            {
+              runId: "run-2",
+              status: "ok",
+              user: { content: "引用第一轮结果" },
+              assistant: { content: "第二轮引用：\n\n[[result:res-turn-1|上海明细]]" },
+              tools: [],
+              sqls: [],
+              results: [],
+              error: null,
+              createdAt: 2,
+            },
+          ]}
+          stream={stream({
+            status: "running",
+            text: "流式引用：\n\n[[result:res-turn-1|历史城市场景]]",
+          })}
+          showStream
+          optimisticText={null}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: /上海明细\s*1 行/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /历史城市场景\s*1 行/ })).toBeInTheDocument();
+    expect(screen.queryByText(/结果引用不可用/)).not.toBeInTheDocument();
+  });
+});

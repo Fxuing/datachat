@@ -868,4 +868,16 @@ describe("open platform", () => {
     const resolved = resolveConversationModel(modelRuntime, conv?.modelId ?? null, enabledProviderIds(handle.db));
     expect(modelKey(resolved)).toBe(canonicalDefault);
   });
+
+  it("strips internal UI placeholders including excel and labelled result markers", async () => {
+    const { stripInternalPlaceholders } = await import("../src/services/open-platform-execution.js");
+    const u1 = randomUUID();
+    const u2 = randomUUID();
+    const u3 = randomUUID();
+    const u4 = randomUUID();
+    const cleaned = stripInternalPlaceholders(
+      `总计 100 单。\n\n[[artifact:${u1}]]\n[[chart:${u2}]]\n[[result:${u3}|区域明细]]\n[[excel:${u4}]]\n\n完成。`,
+    );
+    expect(cleaned).toBe("总计 100 单。\n\n完成。");
+  });
 });

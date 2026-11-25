@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUpRight, Bot, Database, FileSpreadsheet, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -6,6 +6,7 @@ import {
   type ChatArtifact,
   type ChatMessage,
   type ChatModelInfo,
+  type ChatResult,
   type ConversationFileSummary,
   type ConversationFileTableSummary,
   type DatasourceSummary,
@@ -15,6 +16,7 @@ import { PageSpinner } from "../ui/spinner";
 import { Button } from "../ui/button";
 import { BrandMark } from "../BrandMark";
 import { ChartCard, chartOptionFromSpec, type ChartDrillDownPoint } from "./ChartCard";
+import { ExcelCard, HistoricalExcel } from "./ExcelCard";
 import { FileUploadPanel, type FileUploadPanelProps } from "./FileUploadPanel";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
 import { RunStatus } from "./RunStatus";
@@ -473,12 +475,45 @@ export function MessageList({
       .filter((segment) => segment.type === "chart")
       .map((segment) => segment.artifactId),
   );
+  const referencedExcels = new Set(
+    streamSegments
+      .filter((segment) => segment.type === "excel")
+      .map((segment) => segment.artifactId),
+  );
   const streamReportArtifacts = reportArtifactIdsFromTools(stream.tools);
   const standaloneCharts = stream.charts.filter(
     (chart) =>
       !referencedCharts.has(chart.chartArtifactId) &&
       !streamReportArtifacts.has(chart.chartArtifactId),
   );
+  const standaloneExcels = stream.excels.filter(
+    (excel) => !referencedExcels.has(excel.excelArtifactId),
+  );
+  const conversationResults = useMemo(() => {
+    const map = new Map<string, ChatResult>();
+    const add = (result: ChatResult) => {
+      const existing = map.get(result.artifactId);
+      if (!existing || (existing.rows.length === 0 && result.rows.length > 0)) {
+        map.set(result.artifactId, result);
+      }
+    };
+    for (const message of messages) {
+      for (const result of message.results) add(result);
+    }
+    for (const result of stream.results) add(result);
+    for (const artifact of artifacts) {
+      if (artifact.kind === "result") {
+        add({
+          artifactId: artifact.id,
+          columns: artifact.columns,
+          rows: [],
+          rowCount: artifact.rowCount,
+          truncated: artifact.truncated,
+        });
+      }
+    }
+    return [...map.values()];
+  }, [messages, stream.results, artifacts]);
   // Results already rendered inline at their `[[artifact:…]]` or chat-only
   // `[[result:…]]` placeholder must not show up a second time inside the trace.
   const inlineResults = new Set(
@@ -632,6 +667,7 @@ export function MessageList({
     stream.sqls.length,
     stream.results.length,
     stream.charts.length,
+    stream.excels.length,
   ]);
 
   if (loading && !hasContent) {
@@ -681,6 +717,7 @@ export function MessageList({
             <MessageItem
               message={message}
               artifacts={artifacts}
+              allResults={conversationResults}
               models={models}
               retrying={retryingRunId === message.runId}
               creatingReport={creatingReport}
@@ -723,7 +760,7 @@ export function MessageList({
                   const content = chartsReady
                     ? segment.content
                     : segment.content.replace(
-                        /\[\[(?:(?:chart|artifact):[^\]\s]*|result:[^\]\r\n]*)$/,
+                        /\[\[(?:(?:chart|artifact|excel):[^\]\s]*|result:[^\]\r\n]*)$/,
                         "",
                       );
                   return content.trim() ? (
@@ -731,7 +768,7 @@ export function MessageList({
                   ) : null;
                 }
                 if (segment.type === "artifact") {
-                  const result = stream.results.find(
+                  const result = conversationResults.find(
                     (item) => item.artifactId === segment.artifactId,
                   );
                   return result ? (
@@ -749,12 +786,41 @@ export function MessageList({
                     <ResultLinkGroup
                       key={`result-group-${index}`}
                       items={segment.items}
-                      results={stream.results}
+                      results={conversationResults}
                       disambiguate={disambiguateStreamResults}
                       canExport={canExport}
                       hideMissing
                     />
                   );
+                }
+                if (segment.type === "excel") {
+                  const excel = stream.excels.find(
+                    (item) => item.excelArtifactId === segment.artifactId,
+                  );
+                  if (excel) {
+                    return (
+                      <ExcelCard
+                        key={`excel-${index}`}
+                        artifactId={excel.excelArtifactId}
+                        filename={excel.filename}
+                        sheets={excel.sheets}
+                        totalRows={excel.totalRows}
+                        allResults={conversationResults}
+                        canExport={canExport}
+                      />
+                    );
+                  }
+                  const historicalExcel = artifacts.find(
+                    (item) => item.kind === "excel" && item.id === segment.artifactId,
+                  );
+                  return historicalExcel ? (
+                    <HistoricalExcel
+                      key={`excel-${index}`}
+                      artifact={historicalExcel}
+                      allResults={conversationResults}
+                      canExport={canExport}
+                    />
+                  ) : null;
                 }
                 if (!chartsReady) return null;
                 const chart = stream.charts.find(
@@ -779,6 +845,21 @@ export function MessageList({
                       option={chartOptionFromSpec(chart.spec)}
                       points={chart.points}
                       onDrillDown={onDrillDownChart}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              {chartsReady && standaloneExcels.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  {standaloneExcels.map((excel) => (
+                    <ExcelCard
+                      key={excel.excelArtifactId}
+                      artifactId={excel.excelArtifactId}
+                      filename={excel.filename}
+                      sheets={excel.sheets}
+                      totalRows={excel.totalRows}
+                      allResults={conversationResults}
+                      canExport={canExport}
                     />
                   ))}
                 </div>

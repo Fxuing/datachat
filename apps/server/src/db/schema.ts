@@ -584,7 +584,7 @@ export const artifacts = sqliteTable(
     conversationId: text("conversation_id"),
     userId: text("user_id"),
     runId: text("run_id"),
-    kind: text("kind", { enum: ["result", "chart"] }).notNull(),
+    kind: text("kind", { enum: ["result", "chart", "excel"] }).notNull(),
     storagePath: text("storage_path"),
     columnsJson: text("columns_json"),
     rowCount: integer("row_count").notNull().default(0),

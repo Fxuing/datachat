@@ -186,6 +186,34 @@ describe("runStreamReducer", () => {
     expect(state).toBe(before);
   });
 
+  it("collects excel events by artifact id and dedupes replays", () => {
+    const excelEvent: RunEvent = {
+      type: "excel",
+      payload: {
+        excelArtifactId: "xls-1",
+        filename: "2025年Q1销售",
+        sheets: [
+          { name: "区域汇总", artifactId: "r-1", rowCount: 4 },
+          { name: "订单明细", artifactId: "r-2", rowCount: 120 },
+        ],
+        totalRows: 124,
+      },
+    };
+    let state = apply(initialRunStreamState, 1, excelEvent);
+    expect(state.excels).toEqual([excelEvent.payload]);
+
+    state = apply(state, 2, {
+      ...excelEvent,
+      payload: { ...excelEvent.payload, filename: "更新名称" },
+    });
+    expect(state.excels).toHaveLength(1);
+    expect(state.excels[0]?.filename).toBe("更新名称");
+
+    const before = state;
+    state = apply(state, 2, excelEvent);
+    expect(state).toBe(before);
+  });
+
   it("clears the previous attempt's text when a retry starts", () => {
     let state = apply(initialRunStreamState, 1, {
       type: "run_start",

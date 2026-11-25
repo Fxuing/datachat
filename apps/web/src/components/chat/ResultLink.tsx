@@ -1,10 +1,11 @@
-import { useState } from "react";
+import type { Column } from "@datachat/shared";
+import { useEffect, useState } from "react";
 import { ChevronRight, Table2 } from "lucide-react";
-import type { ChatResult } from "../../lib/api";
+import { ApiError, getArtifactRows, type ChatResult } from "../../lib/api";
 import type { ResultSegment } from "../../lib/report-markdown";
 import { formatCount } from "../../lib/utils";
 import { ResultDetailDialog } from "./ResultDetailDialog";
-import { ResultTable } from "./ResultTable";
+import { MAX_PREVIEW_ROWS, ResultTable } from "./ResultTable";
 
 function defaultResultTitle(result: ChatResult): string {
   return result.truncated ? "查看查询结果" : "查看完整结果";
@@ -27,6 +28,60 @@ export function ResultLink({
   canExport?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState<{
+    artifactId: string;
+    columns: Column[];
+    rows: unknown[][];
+    total: number;
+  } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoaded(null);
+    setLoadError(null);
+  }, [result.artifactId]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (result.rows.length > 0 || result.rowCount === 0) return;
+    if (loaded?.artifactId === result.artifactId) return;
+
+    let cancelled = false;
+    setLoadError(null);
+    getArtifactRows(result.artifactId, { offset: 0, limit: MAX_PREVIEW_ROWS })
+      .then((page) => {
+        if (cancelled) return;
+        setLoaded({
+          artifactId: result.artifactId,
+          columns: page.columns,
+          rows: page.rows,
+          total: page.total,
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setLoadError(
+          error instanceof ApiError ? error.message : "加载查询结果失败，请稍后重试",
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, result.artifactId, result.rows.length, result.rowCount, loaded?.artifactId]);
+
+  const resolvedColumns =
+    result.rows.length > 0 || result.rowCount === 0
+      ? result.columns
+      : loaded?.columns.length
+        ? loaded.columns
+        : result.columns;
+  const resolvedRows =
+    result.rows.length > 0 || result.rowCount === 0
+      ? result.rows
+      : loaded?.rows ?? [];
+  const resolvedRowCount = loaded?.total ?? result.rowCount;
+  const needsRows = result.rows.length === 0 && result.rowCount > 0 && !loaded;
+
   const customTitle = title?.trim();
   const displayTitle = customTitle || defaultResultTitle(result);
   const countLabel = result.truncated
@@ -44,7 +99,10 @@ export function ResultLink({
       <button
         type="button"
         aria-haspopup="dialog"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setLoadError(null);
+          setOpen(true);
+        }}
         className="group inline-flex max-w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs shadow-card transition-colors hover:border-brand/40 hover:bg-brandsoft/40"
       >
         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-brandsoft text-brandtext">
@@ -69,18 +127,29 @@ export function ResultLink({
         <ResultDetailDialog
           title={dialogTitle}
           sql={result.sql}
-          onClose={() => setOpen(false)}
+          onClose={() => {
+            setOpen(false);
+            setLoadError(null);
+          }}
         >
-          <ResultTable
-            artifactId={result.artifactId}
-            columns={result.columns}
-            rows={result.rows}
-            rowCount={result.rowCount}
-            truncated={result.truncated}
-            embedded
-            maxBodyHeightClass="max-h-[60vh]"
-            canExport={canExport}
-          />
+          {loadError ? (
+            <p role="alert" className="py-6 text-center text-xs text-danger">
+              {loadError}
+            </p>
+          ) : needsRows ? (
+            <p className="py-6 text-center text-xs text-muted">加载查询结果…</p>
+          ) : (
+            <ResultTable
+              artifactId={result.artifactId}
+              columns={resolvedColumns}
+              rows={resolvedRows}
+              rowCount={resolvedRowCount}
+              truncated={result.truncated}
+              embedded
+              maxBodyHeightClass="max-h-[60vh]"
+              canExport={canExport}
+            />
+          )}
         </ResultDetailDialog>
       ) : null}
     </>

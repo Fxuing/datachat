@@ -1,6 +1,7 @@
 import type { ChatArtifact, ChatMessage } from "./api";
 import { parseChatMarkdown } from "./report-markdown";
 import { chartTitleFromSpec } from "../components/chat/ChartCard";
+import { parseExcelSpec } from "../components/chat/ExcelCard";
 
 export interface ConversationExportInput {
   title: string;
@@ -61,7 +62,18 @@ export function buildConversationMarkdown(input: ConversationExportInput): strin
             const label = segment.label?.trim() || "查询结果";
             return `\n> [数据表] ${label}\n`;
           }
+          if (segment.type === "excel") {
+            const excel = artifactMap.get(segment.artifactId);
+            const parsed = excel ? parseExcelSpec(excel.spec) : null;
+            return parsed
+              ? `\n> [Excel 文件] ${parsed.filename}.xlsx\n`
+              : "\n> [Excel 文件]\n";
+          }
           const art = artifactMap.get(segment.artifactId);
+          if (art?.kind === "excel") {
+            const parsed = parseExcelSpec(art.spec);
+            return `\n> [附件] ${parsed ? `${parsed.filename}.xlsx` : "Excel 文件"}\n`;
+          }
           const label =
             art?.kind === "chart" ? chartTitleFromSpec(art.spec) : "查询结果";
           return `\n> [附件] ${label}\n`;

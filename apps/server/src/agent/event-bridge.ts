@@ -1,5 +1,5 @@
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import type { Column, RunEvent } from "@datachat/shared";
+import { excelWorkbookSpecSchema, type Column, type RunEvent } from "@datachat/shared";
 import type { Db } from "../db/client.js";
 import { appendRunEvent } from "../db/repositories/run-events.js";
 
@@ -40,6 +40,10 @@ interface ToolDetails {
   points?: unknown;
   title?: unknown;
   spec?: unknown;
+  excelArtifactId?: unknown;
+  filename?: unknown;
+  sheets?: unknown;
+  totalRows?: unknown;
   url?: unknown;
 }
 
@@ -226,6 +230,33 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
                 title: details.title,
               },
             });
+          }
+          return;
+        }
+
+        if (event.toolName === "create_excel") {
+          if (
+            !event.isError &&
+            details &&
+            typeof details.excelArtifactId === "string" &&
+            details.excelArtifactId
+          ) {
+            const parsed = excelWorkbookSpecSchema.safeParse({
+              filename: details.filename,
+              sheets: details.sheets,
+              totalRows: details.totalRows,
+            });
+            if (parsed.success) {
+              persist({
+                type: "excel",
+                payload: {
+                  excelArtifactId: details.excelArtifactId,
+                  filename: parsed.data.filename,
+                  sheets: parsed.data.sheets,
+                  totalRows: parsed.data.totalRows,
+                },
+              });
+            }
           }
           return;
         }

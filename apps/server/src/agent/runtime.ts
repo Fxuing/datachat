@@ -94,13 +94,14 @@ export function resolveConversationPermissions(
   userId: string,
 ): ConversationPermissions {
   const user = findUserById(db, userId);
-  if (!user) return { skills: false, mcp: false, reports: false, memory: false };
+  if (!user) return { skills: false, mcp: false, reports: false, memory: false, export: false };
   const access = resolveUserAccess(db, user);
   return {
     skills: access.permissions.has("skill.use"),
     mcp: access.permissions.has("mcp.use"),
     reports: access.permissions.has("report.create"),
     memory: isMemoryEnabled(db, user.id),
+    export: access.permissions.has("export.data"),
   };
 }
 
@@ -600,6 +601,7 @@ export class RuntimeManager {
           canUseMemory: permissions.memory,
           ...(onMemoryUsed ? { onMemoryUsed } : {}),
           canCreateReports: permissions.reports,
+          canExportData: permissions.export,
           pools: this.pools,
           artifacts: this.artifacts,
           ...(this.drivers ? { drivers: this.drivers } : {}),

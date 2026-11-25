@@ -67,4 +67,9 @@ describe("renderSystemPrompt", () => {
     expect(prompt).toContain("报告详情页");
     expect(prompt).toContain("create_report");
   });
+
+  it("instructs using create_excel and [[excel:<excelArtifactId>]] for Excel downloads", () => {
+    expect(prompt).toContain("create_excel");
+    expect(prompt).toContain("[[excel:<excelArtifactId>]]");
+  });
 });

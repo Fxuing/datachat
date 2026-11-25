@@ -18,6 +18,7 @@ export const TOOL_TITLES: Record<string, string> = {
   db_explain: "分析执行计划",
   db_query: "执行查询",
   make_chart: "生成图表",
+  create_excel: "生成 Excel",
   create_report: "生成报告",
   list_artifacts: "查看历史结果",
   read: "读取技能文档",

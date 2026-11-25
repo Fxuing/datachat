@@ -13,6 +13,7 @@ import { migrateDb } from "../src/db/migrate.js";
 import { artifacts, queryAudit } from "../src/db/schema.js";
 import { createConversation } from "../src/db/repositories/conversations.js";
 import { insertDatasource } from "../src/db/repositories/datasources.js";
+import { createRole, setUserRoles } from "../src/db/repositories/roles.js";
 import { createRun } from "../src/db/repositories/runs.js";
 import { insertUser } from "../src/db/repositories/users.js";
 import { RunEventBus } from "../src/agent/event-bus.js";
@@ -447,5 +448,198 @@ describe("artifact download", () => {
     expect(response.statusCode).toBe(200);
     const audit = (await exportAudits())[0];
     expect(audit?.userId).toBe(adminId);
+  });
+});
+
+describe("multi-sheet excel workbook download", () => {
+  it("streams a multi-sheet XLSX workbook with sanitized UTF-8 filename and records one audit row", async () => {
+    const run = createRun(db, { conversationId, userId });
+    const a1 = await seedResult(
+      [
+        [1, "alice"],
+        [2, "bob"],
+      ],
+      { runId: run.id },
+    );
+    const a2 = await seedResult([[3, "charlie"]], { runId: run.id });
+    recordAudit(db, {
+      runId: run.id,
+      conversationId,
+      userId,
+      datasourceId,
+      action: "query",
+      sqlText: "select id, name from users",
+      status: "ok",
+      rowCount: 3,
+    });
+
+    const excel = store.createExcel({
+      conversationId,
+      userId,
+      runId: run.id,
+      spec: {
+        filename: "2025/Q1:销售分析",
+        sheets: [
+          { name: "区域汇总", artifactId: a1, rowCount: 2 },
+          { name: "明细", artifactId: a2, rowCount: 1 },
+        ],
+        totalRows: 3,
+      },
+      rowCount: 3,
+    });
+
+    const csvDenied = await get(`/api/artifacts/${excel.id}/download?format=csv`);
+    expect(csvDenied.statusCode).toBe(400);
+    expect(csvDenied.json().error.code).toBe("NOT_EXPORTABLE");
+
+    const response = await get(`/api/artifacts/${excel.id}/download?format=xlsx`);
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("spreadsheetml.sheet");
+    expect(decodeURIComponent(String(response.headers["content-disposition"]))).toContain(
+      "2025-Q1-销售分析.xlsx",
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(
+      Buffer.from(response.rawPayload) as unknown as Parameters<typeof workbook.xlsx.load>[0],
+    );
+    expect(workbook.worksheets.map((ws) => ws.name)).toEqual(["区域汇总", "明细"]);
+    expect(workbook.getWorksheet("区域汇总")!.getRow(2).values).toEqual([undefined, 1, "alice"]);
+    expect(workbook.getWorksheet("明细")!.getRow(2).values).toEqual([undefined, 3, "charlie"]);
+
+    const audits = await exportAudits();
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      action: "export",
+      status: "ok",
+      rowCount: 3,
+      userId,
+      datasourceId,
+    });
+    expect(JSON.parse(audits[0]!.detailJson!)).toMatchObject({
+      artifactId: excel.id,
+      format: "xlsx",
+      sheetCount: 2,
+      sheetArtifactIds: [a1, a2],
+    });
+  });
+
+  it("denies excel download without export.data permission", async () => {
+    const noExportId = randomUUID();
+    insertUser(db, {
+      id: noExportId,
+      username: "noexport",
+      passwordHash: await hashPassword("pass-123"),
+      role: "user",
+      createdAt: Date.now(),
+    });
+    const chatOnlyRole = createRole(db, { name: "chat-only", permissions: ["chat.use"] });
+    setUserRoles(db, noExportId, [chatOnlyRole.id]);
+    const noExportCookie = await createSessionSigner(testConfig.appSecret).sign({
+      sub: noExportId,
+      username: "noexport",
+      role: "user",
+    });
+
+    const conv = createConversation(db, { userId: noExportId, datasourceId }).id;
+    const sheetId = await seedResult([[1, "a"]], { owner: noExportId, conversation: conv });
+    const excel = store.createExcel({
+      conversationId: conv,
+      userId: noExportId,
+      runId: null,
+      spec: {
+        filename: "无权下载",
+        sheets: [{ name: "Sheet1", artifactId: sheetId, rowCount: 1 }],
+        totalRows: 1,
+      },
+      rowCount: 1,
+    });
+
+    const denied = await get(`/api/artifacts/${excel.id}/download?format=xlsx`, noExportCookie);
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json().error.permission).toBe("export.data");
+  });
+
+  it("returns 410 if any backing sheet file disappeared and 413 if total rows exceed cap", async () => {
+    const a1 = await seedResult([[1, "ok"]]);
+    const a2 = await seedResult([[2, "missing"]]);
+    const a2Record = store.get(a2)!;
+    fs.rmSync(path.join(root, "artifacts", a2Record.storagePath));
+
+    const missingWorkbook = store.createExcel({
+      conversationId,
+      userId,
+      runId: null,
+      spec: {
+        filename: "缺文件",
+        sheets: [
+          { name: "s1", artifactId: a1, rowCount: 1 },
+          { name: "s2", artifactId: a2, rowCount: 1 },
+        ],
+        totalRows: 2,
+      },
+      rowCount: 2,
+    });
+    const gone = await get(`/api/artifacts/${missingWorkbook.id}/download?format=xlsx`);
+    expect(gone.statusCode).toBe(410);
+    expect(gone.json().error.code).toBe("ARTIFACT_GONE");
+
+    const big1 = seedRawResult({ rowCount: 60_000, storagePath: "a.jsonl.gz" });
+    const big2 = seedRawResult({ rowCount: 40_001, storagePath: "b.jsonl.gz" });
+    const largeWorkbook = store.createExcel({
+      conversationId,
+      userId,
+      runId: null,
+      spec: {
+        filename: "超限",
+        sheets: [
+          { name: "s1", artifactId: big1, rowCount: 60_000 },
+          { name: "s2", artifactId: big2, rowCount: 40_001 },
+        ],
+        totalRows: 100_001,
+      },
+      rowCount: 100_001,
+    });
+    const tooLarge = await get(`/api/artifacts/${largeWorkbook.id}/download?format=xlsx`);
+    expect(tooLarge.statusCode).toBe(413);
+    expect(tooLarge.json().error.code).toBe("EXPORT_TOO_LARGE");
+  });
+
+  it("rejects excel download with 404 when a referenced sheet fails department scope", async () => {
+    const scopedDsId = randomUUID();
+    insertDatasource(db, {
+      id: scopedDsId,
+      name: "scoped-ds",
+      type: "mysql",
+      host: "127.0.0.1",
+      port: 3306,
+      database: "scoped",
+      username: "scoped",
+      passwordCipher: "cipher",
+      createdBy: userId,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      dataScopeMode: "enabled",
+    });
+    const scopedConv = createConversation(db, { userId, datasourceId: scopedDsId }).id;
+    const legacyRun = createRun(db, { conversationId: scopedConv, userId });
+    const hiddenSheet = await seedResult([[1, "secret"]], {
+      conversation: scopedConv,
+      runId: legacyRun.id,
+    });
+    const excel = store.createExcel({
+      conversationId: scopedConv,
+      userId,
+      runId: null,
+      spec: {
+        filename: "受控导出",
+        sheets: [{ name: "Sheet1", artifactId: hiddenSheet, rowCount: 1 }],
+        totalRows: 1,
+      },
+      rowCount: 1,
+    });
+
+    const denied = await get(`/api/artifacts/${excel.id}/download?format=xlsx`);
+    expect(denied.statusCode).toBe(404);
   });
 });

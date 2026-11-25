@@ -317,6 +317,53 @@ describe("bridgeSessionEvents", () => {
     });
   });
 
+  it("maps create_excel into tool_end and excel events", () => {
+    const { session } = setup();
+    const sheets = [
+      { name: "区域汇总", artifactId: "artifact-1", rowCount: 2 },
+      { name: "明细", artifactId: "artifact-2", rowCount: 15 },
+    ];
+    const result = {
+      content: [{ type: "text", text: JSON.stringify({ excelArtifactId: "excel-1" }) }],
+      details: {
+        excelArtifactId: "excel-1",
+        filename: "2025年Q1销售",
+        sheets,
+        totalRows: 17,
+        message: "2025年Q1销售.xlsx · 2 个工作表（17 行）",
+      },
+    };
+
+    send(session, {
+      type: "tool_execution_start",
+      toolCallId: "call-3",
+      toolName: "create_excel",
+      args: { filename: "2025年Q1销售", sheets: [{ name: "区域汇总", artifactId: "artifact-1" }] },
+    });
+    send(session, {
+      type: "tool_execution_end",
+      toolCallId: "call-3",
+      toolName: "create_excel",
+      result,
+      isError: false,
+      durationMs: 8,
+    });
+
+    const rows = stored();
+    expect(rows.map((row) => row.event.type)).toEqual(["tool_start", "tool_end", "excel"]);
+    expect(rows[1]?.event.payload).toMatchObject({
+      toolCallId: "call-3",
+      name: "create_excel",
+      summary: "2025年Q1销售.xlsx · 2 个工作表（17 行）",
+    });
+    expect(rows[2]?.event.payload).toEqual({
+      excelArtifactId: "excel-1",
+      filename: "2025年Q1销售",
+      sheets,
+      totalRows: 17,
+    });
+  });
+
   it("swallows event persistence failures and keeps the session subscribed", () => {
     const session = new FakeAgentSession();
     const failingDb = {

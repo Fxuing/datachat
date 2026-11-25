@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import { createGunzip, createGzip } from "node:zlib";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
+import type { ExcelWorkbookSpec } from "@datachat/shared";
 import type { Db } from "../db/client.js";
 import { artifacts } from "../db/schema.js";
 
@@ -20,13 +21,15 @@ export interface ArtifactMeta {
   truncated: boolean;
 }
 
+export type ArtifactKind = "result" | "chart" | "excel";
+
 export interface ArtifactRecord extends ArtifactMeta {
   conversationId: string | null;
   userId: string | null;
   runId: string | null;
-  kind: "result" | "chart";
+  kind: ArtifactKind;
   columns: ColumnInfo[];
-  /** Relative path; empty for chart artifacts, which store a spec instead of rows. */
+  /** Relative path; empty for chart/excel artifacts, which store spec metadata instead of rows. */
   storagePath: string;
   specJson: string | null;
   createdAt: number;
@@ -36,6 +39,7 @@ export interface ArtifactListInput {
   conversationId?: string;
   runId?: string;
   userId?: string;
+  kind?: ArtifactKind;
   limit?: number;
 }
 
@@ -358,6 +362,34 @@ export class ArtifactStore {
     return { id, rowCount: input.rowCount, truncated: false };
   }
 
+  /** Persist an Excel workbook specification; excel artifacts stream rows from referenced result sheets on download. */
+  createExcel(input: {
+    conversationId: string;
+    userId: string;
+    runId: string | null;
+    spec: ExcelWorkbookSpec;
+    rowCount: number;
+  }): ArtifactMeta {
+    const id = randomUUID();
+    this.db
+      .insert(artifacts)
+      .values({
+        id,
+        conversationId: input.conversationId,
+        userId: input.userId,
+        runId: input.runId,
+        kind: "excel",
+        storagePath: null,
+        columnsJson: "[]",
+        rowCount: input.rowCount,
+        truncated: 0,
+        specJson: JSON.stringify(input.spec),
+        createdAt: Date.now(),
+      })
+      .run();
+    return { id, rowCount: input.rowCount, truncated: false };
+  }
+
   get(id: string): ArtifactRecord | null {
     const row = this.db.select().from(artifacts).where(eq(artifacts.id, id)).get();
     return row ? toRecord(row) : null;
@@ -425,6 +457,7 @@ export class ArtifactStore {
           input.conversationId ? eq(artifacts.conversationId, input.conversationId) : undefined,
           input.runId ? eq(artifacts.runId, input.runId) : undefined,
           input.userId ? eq(artifacts.userId, input.userId) : undefined,
+          input.kind ? eq(artifacts.kind, input.kind) : undefined,
         ),
       )
       .orderBy(desc(artifacts.createdAt))
@@ -436,7 +469,7 @@ export class ArtifactStore {
   async read(id: string): Promise<{ meta: ArtifactRecord; rows: unknown[][] } | null> {
     const meta = this.get(id);
     if (!meta) return null;
-    if (meta.kind === "chart") return { meta, rows: [] };
+    if (meta.kind !== "result") return { meta, rows: [] };
     if (!meta.storagePath) return null;
     const rows: unknown[][] = [];
     const file = createReadStream(this.resolvePath(meta.storagePath));
@@ -465,7 +498,7 @@ export class ArtifactStore {
   ): Promise<{ meta: ArtifactRecord; rows: unknown[][]; truncatedInput: boolean } | null> {
     const meta = this.get(id);
     if (!meta) return null;
-    if (meta.kind === "chart") return { meta, rows: [], truncatedInput: false };
+    if (meta.kind !== "result") return { meta, rows: [], truncatedInput: false };
     if (!meta.storagePath) return null;
 
     const max = Math.min(Math.max(0, Math.trunc(limit)), MAX_CHART_INPUT_ROWS);

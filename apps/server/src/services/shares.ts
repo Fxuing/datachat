@@ -423,6 +423,13 @@ function applyEvent(group: MessageGroup, event: RunEvent): void {
   }
 }
 
+const EXCEL_PLACEHOLDER_RE = /\[\[excel:[^\]\s|]+\]\]/g;
+
+function stripExcelPlaceholders(text: string): string {
+  if (!text.includes("[[excel:")) return text;
+  return text.replace(EXCEL_PLACEHOLDER_RE, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /**
  * Rebuild the conversation as a whitelisted public transcript. Run ids, audit ids,
  * datasource ids, storage paths and tool details are intentionally never copied.
@@ -451,7 +458,7 @@ function buildConversationShare(db: Db, conversation: ConversationRow): PublicCo
     for (const chart of group.charts) {
       messages.push({ role: "assistant", text: "", chart });
     }
-    const text = group.assistant ?? group.deltas.join("");
+    const text = stripExcelPlaceholders(group.assistant ?? group.deltas.join(""));
     const sql = group.sqls.at(-1);
     if (text || sql) {
       messages.push({ role: "assistant", text, ...(sql !== undefined ? { sql } : {}) });
@@ -486,6 +493,7 @@ async function buildReportShare(
       items.push({ id, kind: "chart", ...(spec !== undefined ? { spec } : {}) });
       continue;
     }
+    if (meta.kind === "excel") continue;
     try {
       const read = await artifacts.readRowsStream(id, SHARE_MAX_ROWS);
       items.push({

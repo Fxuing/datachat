@@ -20,7 +20,8 @@ export type ReportErrorCode =
   | "TOO_MANY_ARTIFACTS"
   | "CONVERSATION_NOT_FOUND"
   | "ARTIFACT_NOT_FOUND"
-  | "ARTIFACT_CONVERSATION_MISMATCH";
+  | "ARTIFACT_CONVERSATION_MISMATCH"
+  | "INVALID_ARTIFACT_KIND";
 
 export type CreateReportResult =
   | { ok: true; report: ReportDetail }
@@ -146,6 +147,13 @@ export function createReport(input: CreateReportInput): CreateReportResult {
         ok: false,
         code: "ARTIFACT_CONVERSATION_MISMATCH",
         message: "查询结果不属于该会话",
+      };
+    }
+    if (artifact.kind === "excel") {
+      return {
+        ok: false,
+        code: "INVALID_ARTIFACT_KIND",
+        message: "报告只能引用查询结果或图表，不能直接引用 Excel 文件",
       };
     }
     records.push(artifact);
