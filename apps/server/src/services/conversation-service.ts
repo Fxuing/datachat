@@ -57,6 +57,12 @@ export interface ToolMessage {
   status: "running" | "ok" | "error";
   durationMs?: number;
   summary?: string;
+  url?: string;
+}
+
+export interface ConversationReportMessage {
+  reportId: string;
+  title: string;
 }
 
 export interface ConversationResultMessage {
@@ -105,6 +111,7 @@ export interface ConversationMessage {
   tools: ToolMessage[];
   results: ConversationResultMessage[];
   sqls: SqlMessage[];
+  reports?: ConversationReportMessage[];
   /** Department range that filtered this run; null when nothing was rewritten. */
   scope: { departments: string[] } | null;
   /** Cached follow-up suggestions; null means completed turn can fetch lazily. */
@@ -153,6 +160,7 @@ interface MessageGroup {
   tools: ToolMessage[];
   results: ConversationResultMessage[];
   sqls: SqlMessage[];
+  reports: ConversationReportMessage[];
 }
 
 export function toConversationResponse(row: ConversationRow): ConversationResponse {
@@ -222,6 +230,7 @@ function groupFor(grouped: Map<string, MessageGroup>, runId: string, createdAt: 
     tools: [],
     results: [],
     sqls: [],
+    reports: [],
   };
   grouped.set(runId, group);
   return group;
@@ -263,6 +272,7 @@ function applyEvent(group: MessageGroup, event: RunEvent): void {
         tool.status = event.payload.isError ? "error" : "ok";
         tool.durationMs = event.payload.durationMs;
         tool.summary = event.payload.summary;
+        if (event.payload.url) tool.url = event.payload.url;
       }
       break;
     }
@@ -272,6 +282,14 @@ function applyEvent(group: MessageGroup, event: RunEvent): void {
     case "sql":
       group.sqls.push(event.payload);
       break;
+    case "report": {
+      const existing = group.reports.findIndex(
+        (item) => item.reportId === event.payload.reportId,
+      );
+      if (existing === -1) group.reports.push(event.payload);
+      else group.reports[existing] = event.payload;
+      break;
+    }
     default:
       break;
   }
@@ -353,6 +371,7 @@ export function getConversationDetail(
       tools: group.tools,
       results: group.results,
       sqls: group.sqls,
+      ...(group.reports.length > 0 ? { reports: group.reports } : {}),
       scope: toMessageScope(run),
       suggestions,
       error: run?.error ?? null,

@@ -44,6 +44,11 @@ export interface RunExcelState {
   totalRows: number;
 }
 
+export interface RunReportState {
+  reportId: string;
+  title: string;
+}
+
 export interface RunQuestionOption {
   label: string;
   description: string;
@@ -93,6 +98,7 @@ export interface RunStreamState {
   results: RunResultState[];
   charts: RunChartState[];
   excels: RunExcelState[];
+  reports: RunReportState[];
   questions: RunQuestionState[];
   contextUsage: RunContextUsage | null;
   usage: RunUsage | null;
@@ -116,6 +122,7 @@ export const initialRunStreamState: RunStreamState = {
   results: [],
   charts: [],
   excels: [],
+  reports: [],
   questions: [],
   contextUsage: null,
   usage: null,
@@ -169,6 +176,13 @@ function upsertExcel(excels: RunExcelState[], patch: RunExcelState): RunExcelSta
   );
   if (index === -1) return [...excels, patch];
   return excels.map((excel, current) => (current === index ? patch : excel));
+}
+
+/** Report events can be replayed on reconnect, so dedupe by report id. */
+function upsertReport(reports: RunReportState[], patch: RunReportState): RunReportState[] {
+  const index = reports.findIndex((report) => report.reportId === patch.reportId);
+  if (index === -1) return [...reports, patch];
+  return reports.map((report, current) => (current === index ? patch : report));
 }
 
 export function runStreamReducer(
@@ -356,7 +370,13 @@ export function runStreamReducer(
         case "usage":
           return { ...base, usage: event.payload };
         case "report":
-          return base;
+          return {
+            ...base,
+            reports: upsertReport(state.reports, {
+              reportId: event.payload.reportId,
+              title: event.payload.title,
+            }),
+          };
         default:
           return base;
       }

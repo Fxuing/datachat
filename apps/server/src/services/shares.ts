@@ -423,11 +423,14 @@ function applyEvent(group: MessageGroup, event: RunEvent): void {
   }
 }
 
-const EXCEL_PLACEHOLDER_RE = /\[\[excel:[^\]\s|]+\]\]/g;
+const CHAT_ONLY_CARD_PLACEHOLDER_RE = /\[\[(?:excel|report):[^\]\s|]+\]\]/g;
 
-function stripExcelPlaceholders(text: string): string {
-  if (!text.includes("[[excel:")) return text;
-  return text.replace(EXCEL_PLACEHOLDER_RE, "").replace(/\n{3,}/g, "\n\n").trim();
+function stripChatOnlyPlaceholders(text: string): string {
+  if (!text.includes("[[excel:") && !text.includes("[[report:")) return text;
+  return text
+    .replace(CHAT_ONLY_CARD_PLACEHOLDER_RE, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**
@@ -458,7 +461,7 @@ function buildConversationShare(db: Db, conversation: ConversationRow): PublicCo
     for (const chart of group.charts) {
       messages.push({ role: "assistant", text: "", chart });
     }
-    const text = stripExcelPlaceholders(group.assistant ?? group.deltas.join(""));
+    const text = stripChatOnlyPlaceholders(group.assistant ?? group.deltas.join(""));
     const sql = group.sqls.at(-1);
     if (text || sql) {
       messages.push({ role: "assistant", text, ...(sql !== undefined ? { sql } : {}) });

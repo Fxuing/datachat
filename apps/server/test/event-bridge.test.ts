@@ -364,6 +364,47 @@ describe("bridgeSessionEvents", () => {
     });
   });
 
+  it("maps create_report into tool_end with url and report events", () => {
+    const { session } = setup();
+    const result = {
+      content: [{ type: "text", text: "报告已生成" }],
+      details: {
+        reportId: "rep-1",
+        title: "2025年Q1经营分析",
+        url: "/reports/rep-1",
+        message: "《2025年Q1经营分析》",
+      },
+    };
+
+    send(session, {
+      type: "tool_execution_start",
+      toolCallId: "call-4",
+      toolName: "create_report",
+      args: { title: "2025年Q1经营分析", markdown: "# 正文", artifactIds: ["a-1"] },
+    });
+    send(session, {
+      type: "tool_execution_end",
+      toolCallId: "call-4",
+      toolName: "create_report",
+      result,
+      isError: false,
+      durationMs: 6,
+    });
+
+    const rows = stored();
+    expect(rows.map((row) => row.event.type)).toEqual(["tool_start", "tool_end", "report"]);
+    expect(rows[1]?.event.payload).toMatchObject({
+      toolCallId: "call-4",
+      name: "create_report",
+      url: "/reports/rep-1",
+      summary: "《2025年Q1经营分析》",
+    });
+    expect(rows[2]?.event.payload).toEqual({
+      reportId: "rep-1",
+      title: "2025年Q1经营分析",
+    });
+  });
+
   it("swallows event persistence failures and keeps the session subscribed", () => {
     const session = new FakeAgentSession();
     const failingDb = {

@@ -11,12 +11,15 @@ import {
   type ChatArtifact,
   type ChatMessage,
   type ChatModelInfo,
+  type ChatReport,
   type ChatResult,
 } from "../../lib/api";
 import {
   groupChatSegments,
   parseChatMarkdown,
   reportArtifactIdsFromTools,
+  reportsFromMessage,
+  type ReportPlaceholderSegment,
 } from "../../lib/report-markdown";
 import { pairQueries } from "../../lib/pair-queries";
 import { useBranding } from "../../lib/branding";
@@ -27,6 +30,7 @@ import {
   type ChartDrillDownPoint,
 } from "./ChartCard";
 import { HistoricalExcel } from "./ExcelCard";
+import { ReportCard } from "./ReportCard";
 import { ResultCard } from "./ResultCard";
 import { ResultLinkGroup } from "./ResultLink";
 import { TurnTrace } from "./TurnTrace";
@@ -340,6 +344,7 @@ export function MessageItem({
   message,
   artifacts = [],
   allResults,
+  allReports,
   models = [],
   retrying = false,
   creatingReport = false,
@@ -355,6 +360,8 @@ export function MessageItem({
   artifacts?: ChatArtifact[];
   /** Conversation-wide results so cross-turn `[[result:...]]` and Excel previews resolve. */
   allResults?: ChatResult[];
+  /** Conversation-wide reports so cross-turn `[[report:...]]` links keep titles. */
+  allReports?: ChatReport[];
   models?: ChatModelInfo[];
   retrying?: boolean;
   creatingReport?: boolean;
@@ -404,8 +411,26 @@ export function MessageItem({
     segments.filter((segment) => segment.type === "result").length >= 2;
   const referenced = new Set(
     segments
-      .filter((segment) => segment.type !== "markdown")
+      .filter(
+        (segment): segment is Exclude<typeof segment, { type: "markdown" } | ReportPlaceholderSegment> =>
+          segment.type !== "markdown" && segment.type !== "report",
+      )
       .map((segment) => segment.artifactId),
+  );
+  const referencedReports = new Set(
+    segments
+      .filter((segment): segment is ReportPlaceholderSegment => segment.type === "report")
+      .map((segment) => segment.reportId),
+  );
+  const turnReports = useMemo(() => reportsFromMessage(message), [message]);
+  const resolvedReports = useMemo(() => {
+    const byId = new Map<string, ChatReport>();
+    for (const item of allReports ?? []) byId.set(item.reportId, item);
+    for (const item of turnReports) byId.set(item.reportId, item);
+    return [...byId.values()];
+  }, [allReports, turnReports]);
+  const standaloneReports = turnReports.filter(
+    (report) => !referencedReports.has(report.reportId),
   );
   const standaloneResults = message.results.filter(
     (result) => !referenced.has(result.artifactId),
@@ -505,6 +530,18 @@ export function MessageItem({
                   </p>
                 );
               }
+              if (segment.type === "report") {
+                const report = resolvedReports.find(
+                  (item) => item.reportId === segment.reportId,
+                );
+                return (
+                  <ReportCard
+                    key={`report-${index}`}
+                    reportId={segment.reportId}
+                    title={report?.title}
+                  />
+                );
+              }
               if (segment.type === "result_group") {
                 return (
                   <ResultLinkGroup
@@ -553,6 +590,17 @@ export function MessageItem({
                 artifact={excel}
                 allResults={resolvedResults}
                 canExport={canExport}
+              />
+            ))}
+          </div>
+        ) : null}
+        {standaloneReports.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {standaloneReports.map((report) => (
+              <ReportCard
+                key={report.reportId}
+                reportId={report.reportId}
+                title={report.title}
               />
             ))}
           </div>

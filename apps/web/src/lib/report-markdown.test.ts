@@ -95,6 +95,20 @@ describe("parseChatMarkdown", () => {
       { type: "markdown", content: "[[excel:xls-1]]" },
     ]);
   });
+
+  it("parses report placeholders in chat and keeps them literal in reports or with pipe labels", () => {
+    expect(parseChatMarkdown("已生成：\n\n[[report:rep-1]]\n\n请查看。")).toEqual([
+      { type: "markdown", content: "已生成：\n\n" },
+      { type: "report", reportId: "rep-1" },
+      { type: "markdown", content: "\n\n请查看。" },
+    ]);
+    expect(parseChatMarkdown("[[report:rep-1|标题]]")).toEqual([
+      { type: "markdown", content: "[[report:rep-1|标题]]" },
+    ]);
+    expect(parseReportMarkdown("[[report:rep-1]]")).toEqual([
+      { type: "markdown", content: "[[report:rep-1]]" },
+    ]);
+  });
 });
 
 describe("groupChatSegments", () => {

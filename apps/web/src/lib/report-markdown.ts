@@ -5,13 +5,20 @@ export type ReportSegment =
 
 export type ResultSegment = { type: "result"; artifactId: string; label?: string };
 export type ExcelSegment = { type: "excel"; artifactId: string };
-export type ChatSegment = ReportSegment | ResultSegment | ExcelSegment;
+export type ReportPlaceholderSegment = { type: "report"; reportId: string };
+export type ChatSegment =
+  | ReportSegment
+  | ResultSegment
+  | ExcelSegment
+  | ReportPlaceholderSegment;
 export type GroupedChatSegment =
   | ReportSegment
   | ExcelSegment
+  | ReportPlaceholderSegment
   | { type: "result_group"; items: ResultSegment[] };
 
-const INLINE_PLACEHOLDER = /\[\[(artifact|chart|result|excel):([^\]\s|]+)(?:\|([^\]\r\n]*))?\]\]/g;
+const INLINE_PLACEHOLDER =
+  /\[\[(artifact|chart|result|excel|report):([^\]\s|]+)(?:\|([^\]\r\n]*))?\]\]/g;
 
 function parseSegments(markdown: string, includeChatOnly: boolean): ChatSegment[] {
   const segments: ChatSegment[] = [];
@@ -27,13 +34,15 @@ function parseSegments(markdown: string, includeChatOnly: boolean): ChatSegment[
     if (
       !artifactId ||
       (kind !== "result" && rawLabel !== undefined) ||
-      ((kind === "result" || kind === "excel") && !includeChatOnly)
+      ((kind === "result" || kind === "excel" || kind === "report") && !includeChatOnly)
     ) {
       segments.push({ type: "markdown", content: match[0] });
     } else if (kind === "chart") {
       segments.push({ type: "chart", artifactId });
     } else if (kind === "excel") {
       segments.push({ type: "excel", artifactId });
+    } else if (kind === "report") {
+      segments.push({ type: "report", reportId: artifactId });
     } else if (kind === "result") {
       const label = rawLabel?.trim();
       segments.push(
@@ -88,19 +97,57 @@ export function groupChatSegments(segments: ChatSegment[]): GroupedChatSegment[]
 /**
  * Split report markdown into prose and artifact placeholders so the page can
  * render each `[[artifact:<id>]]` / `[[chart:<id>]]` as a card instead of
- * literal text. `[[result:<id>]]` and `[[excel:<id>]]` are chat-only and stay
- * literal here.
+ * literal text. `[[result:<id>]]`, `[[excel:<id>]]`, and `[[report:<id>]]`
+ * are chat-only and stay literal here.
  */
 export function parseReportMarkdown(markdown: string): ReportSegment[] {
   return parseSegments(markdown, false) as ReportSegment[];
 }
 
 /**
- * Split a chat reply into prose, artifact/chart/excel placeholders, and chat-only
- * `[[result:<id>]]` links that open the complete result table.
+ * Split a chat reply into prose, artifact/chart/excel/report placeholders, and
+ * chat-only `[[result:<id>]]` links that open the complete result table.
  */
 export function parseChatMarkdown(markdown: string): ChatSegment[] {
   return parseSegments(markdown, true);
+}
+
+const REPORT_URL_RE = /^\/reports\/([0-9a-fA-F-]{36})$/;
+
+/**
+ * Collect reports produced in a persisted/live message turn from `message.reports`
+ * plus a legacy fallback reading succeeded `create_report` tool entries that only
+ * recorded `url` / `args`.
+ */
+export function reportsFromMessage(input: {
+  reports?: ReadonlyArray<{ reportId: string; title: string }>;
+  tools?: ReadonlyArray<{ name: string; status: string; url?: string | null; args?: unknown; summary?: string | null }>;
+}): Array<{ reportId: string; title: string }> {
+  const byId = new Map<string, { reportId: string; title: string }>();
+  for (const report of input.reports ?? []) {
+    if (report.reportId) {
+      byId.set(report.reportId, { reportId: report.reportId, title: report.title });
+    }
+  }
+  for (const tool of input.tools ?? []) {
+    if (tool.name !== "create_report" || tool.status !== "ok" || !tool.url) continue;
+    const match = REPORT_URL_RE.exec(tool.url);
+    const reportId = match?.[1];
+    if (!reportId || byId.has(reportId)) continue;
+    const argsTitle =
+      tool.args &&
+      typeof tool.args === "object" &&
+      !Array.isArray(tool.args) &&
+      typeof (tool.args as { title?: unknown }).title === "string"
+        ? (tool.args as { title: string }).title.trim()
+        : "";
+    const summaryTitle = tool.summary?.replace(/^《|》$/g, "").trim() ?? "";
+    byId.set(reportId, {
+      reportId,
+      title: argsTitle || summaryTitle || "分析报告",
+    });
+  }
+  return [...byId.values()];
 }
 
 /**

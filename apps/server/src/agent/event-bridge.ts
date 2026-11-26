@@ -44,6 +44,7 @@ interface ToolDetails {
   filename?: unknown;
   sheets?: unknown;
   totalRows?: unknown;
+  reportId?: unknown;
   url?: unknown;
 }
 
@@ -257,6 +258,26 @@ export function bridgeSessionEvents(input: EventBridgeInput): EventBridge {
                 },
               });
             }
+          }
+          return;
+        }
+
+        if (event.toolName === "create_report") {
+          if (
+            !event.isError &&
+            details &&
+            typeof details.reportId === "string" &&
+            details.reportId &&
+            typeof details.title === "string" &&
+            details.title
+          ) {
+            persist({
+              type: "report",
+              payload: {
+                reportId: details.reportId,
+                title: details.title,
+              },
+            });
           }
           return;
         }

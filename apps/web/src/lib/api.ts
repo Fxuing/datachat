@@ -401,6 +401,12 @@ export interface ChatTool {
   status: "running" | "ok" | "error";
   durationMs?: number;
   summary?: string;
+  url?: string;
+}
+
+export interface ChatReport {
+  reportId: string;
+  title: string;
 }
 
 export interface ChatSql {
@@ -446,6 +452,7 @@ export interface ChatMessage {
   tools: ChatTool[];
   results: ChatResult[];
   sqls: ChatSql[];
+  reports?: ChatReport[];
   /** Department range that filtered this run; null when nothing was rewritten. */
   scope?: { departments: string[] } | null;
   /** Cached follow-up suggestions; null means a finished run has not generated them yet. */

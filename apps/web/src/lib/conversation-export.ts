@@ -1,5 +1,5 @@
 import type { ChatArtifact, ChatMessage } from "./api";
-import { parseChatMarkdown } from "./report-markdown";
+import { parseChatMarkdown, reportsFromMessage } from "./report-markdown";
 import { chartTitleFromSpec } from "../components/chat/ChartCard";
 import { parseExcelSpec } from "../components/chat/ExcelCard";
 
@@ -33,6 +33,12 @@ export function buildConversationMarkdown(input: ConversationExportInput): strin
   const title = input.title.trim() || "未命名会话";
   const artifacts = input.artifacts ?? [];
   const artifactMap = new Map(artifacts.map((item) => [item.id, item]));
+  const reportTitleMap = new Map<string, string>();
+  for (const message of input.messages) {
+    for (const report of reportsFromMessage(message)) {
+      reportTitleMap.set(report.reportId, report.title);
+    }
+  }
   const exportedAt = input.exportedAt ?? Date.now();
 
   const lines: string[] = [`# ${title}`, ""];
@@ -68,6 +74,12 @@ export function buildConversationMarkdown(input: ConversationExportInput): strin
             return parsed
               ? `\n> [Excel 文件] ${parsed.filename}.xlsx\n`
               : "\n> [Excel 文件]\n";
+          }
+          if (segment.type === "report") {
+            const reportTitle = reportTitleMap.get(segment.reportId);
+            return reportTitle
+              ? `\n> [分析报告] ${reportTitle}\n`
+              : "\n> [分析报告]\n";
           }
           const art = artifactMap.get(segment.artifactId);
           if (art?.kind === "excel") {

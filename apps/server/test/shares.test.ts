@@ -325,7 +325,9 @@ describe("shares service", () => {
       runId: "run-excel",
       conversationId,
       type: "assistant_message",
-      payload: { content: `已生成工作簿。\n\n[[excel:${excelId}]]\n\n请下载。` },
+      payload: {
+        content: `已生成工作簿与报告。\n\n[[excel:${excelId}]]\n\n[[report:${report.report.id}]]\n\n请下载。`,
+      },
     });
 
     const convShare = createShare({ db, userId, conversationId });
@@ -339,8 +341,9 @@ describe("shares service", () => {
     expect(resolvedConv.ok).toBe(true);
     if (!resolvedConv.ok || resolvedConv.share.type !== "conversation") return;
     const last = resolvedConv.share.messages.at(-1);
-    expect(last?.text).toBe("已生成工作簿。\n\n请下载。");
+    expect(last?.text).toBe("已生成工作簿与报告。\n\n请下载。");
     expect(last?.text).not.toContain("[[excel:");
+    expect(last?.text).not.toContain("[[report:");
 
     // Also verify buildReportShare safely skips an excel artifact id if stored in a legacy report row
     db.update(reports)

@@ -672,4 +672,45 @@ describe("MessageItem", () => {
     expect(screen.getByText("独立兜底表.xlsx")).toBeInTheDocument();
     expect(screen.getByText("Excel 文件不可用")).toBeInTheDocument();
   });
+
+  it("renders inline, standalone, legacy-tool, and cross-turn report cards without duplicating inline references", () => {
+    const repIdInline = "11111111-1111-4111-8111-111111111111";
+    const repIdStandalone = "22222222-2222-4222-8222-222222222222";
+    const repIdLegacy = "33333333-3333-4333-8333-333333333333";
+    const repIdCrossTurn = "44444444-4444-4444-8444-444444444444";
+
+    render(
+      <MemoryRouter>
+        <MessageItem
+          allReports={[{ reportId: repIdCrossTurn, title: "第一轮历史报告" }]}
+          message={message({
+            runId: "run-report-card",
+            status: "ok",
+            reports: [
+              { reportId: repIdInline, title: "内联报告" },
+              { reportId: repIdStandalone, title: "兜底报告" },
+            ],
+            tools: [
+              {
+                toolCallId: "tc-legacy",
+                name: "create_report",
+                status: "ok",
+                args: { title: "旧版历史报告" },
+                url: `/reports/${repIdLegacy}`,
+              },
+            ],
+            assistant: {
+              content: `复盘如下：\n\n[[report:${repIdInline}]]\n\n以及历史报告：\n\n[[report:${repIdCrossTurn}]]`,
+            },
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("内联报告")).toHaveLength(1);
+    expect(screen.getByText("兜底报告")).toBeInTheDocument();
+    expect(screen.getByText("旧版历史报告")).toBeInTheDocument();
+    expect(screen.getByText("第一轮历史报告")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "导出 Word" })).toHaveLength(4);
+  });
 });

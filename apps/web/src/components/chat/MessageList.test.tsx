@@ -578,4 +578,74 @@ describe("MessageList excel and cross-turn results", () => {
     expect(screen.getByRole("button", { name: /历史城市场景\s*1 行/ })).toBeInTheDocument();
     expect(screen.queryByText(/结果引用不可用/)).not.toBeInTheDocument();
   });
+
+  it("hides partial report placeholders during streaming, renders inline and standalone reports, and resolves prior reports", () => {
+    const repStream = { reportId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", title: "流式分析报告" };
+    const repPrior = { reportId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", title: "历史周报" };
+    const priorMessage = {
+      runId: "run-0",
+      status: "ok" as const,
+      user: { content: "生成周报" },
+      assistant: { content: "已生成。" },
+      tools: [],
+      sqls: [],
+      results: [],
+      reports: [repPrior],
+      error: null,
+      createdAt: 1,
+    };
+
+    const { rerender } = render(
+      <MemoryRouter>
+        <MessageList
+          messages={[priorMessage]}
+          stream={stream({
+            status: "running",
+            text: "正在整理\n\n[[report:aaaaaaaa-aaaa",
+            reports: [repStream],
+          })}
+          showStream
+          optimisticText={null}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText(/\[\[report:/)).not.toBeInTheDocument();
+    expect(screen.queryByText("流式分析报告")).not.toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <MessageList
+          messages={[priorMessage]}
+          stream={stream({
+            status: "running",
+            text: `已引用：\n\n[[report:${repStream.reportId}]]\n\n历史：\n\n[[report:${repPrior.reportId}]]`,
+            reports: [repStream],
+          })}
+          showStream
+          optimisticText={null}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("流式分析报告")).toHaveLength(1);
+    expect(screen.getAllByText("历史周报")).toHaveLength(2);
+
+    rerender(
+      <MemoryRouter>
+        <MessageList
+          messages={[priorMessage]}
+          stream={stream({
+            status: "ok",
+            text: "已为你整理好报告。",
+            reports: [repStream],
+          })}
+          showStream
+          optimisticText={null}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("流式分析报告")).toHaveLength(1);
+  });
 });

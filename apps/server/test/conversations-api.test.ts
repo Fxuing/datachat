@@ -383,6 +383,66 @@ describe("conversation routes", () => {
     }
   });
 
+  it("replays report events and tool URLs in conversation detail", async () => {
+    const conversation = createConversation(db, { userId, datasourceId });
+    const run = createRun(db, {
+      conversationId: conversation.id,
+      userId,
+      modelId: "deepseek-ai/DeepSeek-V3.2",
+    });
+    const events = [
+      { type: "user_message", payload: { content: "生成销售报告" } },
+      {
+        type: "tool_start",
+        payload: {
+          toolCallId: "call-rep",
+          name: "create_report",
+          args: { title: "销售报告", markdown: "# 内容", artifactIds: ["a-1"] },
+        },
+      },
+      {
+        type: "tool_end",
+        payload: {
+          toolCallId: "call-rep",
+          name: "create_report",
+          isError: false,
+          durationMs: 12,
+          summary: "《销售报告》",
+          url: "/reports/rep-123",
+        },
+      },
+      { type: "report", payload: { reportId: "rep-123", title: "销售报告" } },
+      { type: "assistant_message", payload: { content: "报告已生成。" } },
+      { type: "run_end", payload: { status: "ok" } },
+    ];
+    for (const event of events) {
+      appendRunEvent(db, {
+        runId: run.id,
+        conversationId: conversation.id,
+        type: event.type,
+        payload: event.payload,
+      });
+    }
+    markRun(db, run.id, { status: "ok", endedAt: Date.now() });
+
+    const app = await makeApp();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/conversations/${conversation.id}`,
+        cookies: { dc_session: cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.messages[0].reports).toEqual([
+        { reportId: "rep-123", title: "销售报告" },
+      ]);
+      expect(body.messages[0].tools[0].url).toBe("/reports/rep-123");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("skips artifacts with malformed JSON columns instead of failing the detail", async () => {
     const conversation = createConversation(db, { userId, datasourceId });
     const now = Date.now();

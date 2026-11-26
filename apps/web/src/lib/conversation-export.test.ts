@@ -5,6 +5,7 @@ import type { ChatArtifact, ChatMessage } from "./api";
 const chartId = "11111111-1111-4111-8111-111111111111";
 const resultId = "22222222-2222-4222-8222-222222222222";
 const excelId = "33333333-3333-4333-8333-333333333333";
+const reportId = "44444444-4444-4444-8444-444444444444";
 
 describe("conversation-export", () => {
   it("builds markdown with cleaned inline placeholders and SQL blocks", () => {
@@ -14,7 +15,7 @@ describe("conversation-export", () => {
         status: "ok",
         user: { content: "统计各区域 GMV", skill: "sales-summary" },
         assistant: {
-          content: `华北排名第一。\n\n[[chart:${chartId}]]\n\n明细见 [[result:${resultId}|各区域明细]]\n\n[[excel:${excelId}]]`,
+          content: `华北排名第一。\n\n[[chart:${chartId}]]\n\n明细见 [[result:${resultId}|各区域明细]]\n\n[[excel:${excelId}]]\n\n[[report:${reportId}]]`,
         },
         tools: [],
         sqls: [
@@ -25,6 +26,7 @@ describe("conversation-export", () => {
           },
         ],
         results: [],
+        reports: [{ reportId, title: "区域经营分析报告" }],
         error: null,
         createdAt: 1_700_000_000_000,
       },
@@ -81,9 +83,11 @@ describe("conversation-export", () => {
     expect(md).toContain("> [图表] 区域 GMV 对比");
     expect(md).toContain("> [数据表] 各区域明细");
     expect(md).toContain("> [Excel 文件] 区域销售汇总.xlsx");
+    expect(md).toContain("> [分析报告] 区域经营分析报告");
     expect(md).not.toContain(`[[chart:${chartId}]]`);
     expect(md).not.toContain(`[[result:${resultId}`);
     expect(md).not.toContain(`[[excel:${excelId}]]`);
+    expect(md).not.toContain(`[[report:${reportId}]]`);
     expect(md).toContain("```sql\nSELECT region, SUM(amount) FROM orders GROUP BY region\n```");
     expect(md).toContain("> 错误：表不存在");
   });

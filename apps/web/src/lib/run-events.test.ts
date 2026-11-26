@@ -214,6 +214,29 @@ describe("runStreamReducer", () => {
     expect(state).toBe(before);
   });
 
+  it("collects report events by report id and dedupes replays", () => {
+    const reportEvent: RunEvent = {
+      type: "report",
+      payload: {
+        reportId: "rep-1",
+        title: "2025年Q1经营分析报告",
+      },
+    };
+    let state = apply(initialRunStreamState, 1, reportEvent);
+    expect(state.reports).toEqual([reportEvent.payload]);
+
+    state = apply(state, 2, {
+      ...reportEvent,
+      payload: { reportId: "rep-1", title: "2025年Q1修订报告" },
+    });
+    expect(state.reports).toHaveLength(1);
+    expect(state.reports[0]?.title).toBe("2025年Q1修订报告");
+
+    const before = state;
+    state = apply(state, 2, reportEvent);
+    expect(state).toBe(before);
+  });
+
   it("clears the previous attempt's text when a retry starts", () => {
     let state = apply(initialRunStreamState, 1, {
       type: "run_start",

@@ -8,7 +8,10 @@ import {
   TooltipComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
-import { registerChartExporter } from "../../lib/chart-export-registry";
+import {
+  registerChartExporter,
+  type ChartExportSnapshot,
+} from "../../lib/chart-export-registry";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
 
@@ -141,6 +144,58 @@ function extractClickPoint(params: unknown): EChartClickPoint | null {
   return { name, seriesName, value };
 }
 
+/** Render an ECharts option offscreen in light mode to a high-DPI PNG snapshot. */
+export function renderChartOptionToPng(
+  option: ChartOption | null | undefined,
+  size: { width?: number; height?: number } = {},
+): ChartExportSnapshot | null {
+  if (!option || isEmptyOption(option)) return null;
+  const probeCanvas =
+    typeof document !== "undefined" ? document.createElement("canvas") : null;
+  if (
+    !probeCanvas ||
+    typeof probeCanvas.getContext !== "function" ||
+    !probeCanvas.getContext("2d")
+  ) {
+    return null;
+  }
+
+  const width = Math.max(1, Math.round(size.width ?? 720));
+  const height = Math.max(1, Math.round(size.height ?? 340));
+  const offscreen = document.createElement("div");
+  let offscreenChart: EChartsType;
+  try {
+    offscreenChart = init(offscreen, undefined, {
+      renderer: "canvas",
+      width,
+      height,
+    });
+  } catch {
+    return null;
+  }
+
+  try {
+    offscreenChart.setOption(
+      { ...withChartTheme(option, "light"), animation: false },
+      { notMerge: true },
+    );
+    const dataUrl = offscreenChart.getDataURL({
+      type: "png",
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+    });
+    return dataUrl && dataUrl !== "data:," ? { dataUrl, width, height } : null;
+  } catch {
+    return null;
+  } finally {
+    try {
+      offscreenChart.dispose();
+    } catch {
+      // Ignore offscreen teardown failures.
+    }
+  }
+}
+
 export function EChart({
   option,
   className,
@@ -216,32 +271,7 @@ export function EChart({
         });
         return dataUrl && dataUrl !== "data:," ? { dataUrl, width, height } : null;
       }
-      const currentOption = optionRef.current;
-      if (!currentOption || isEmptyOption(currentOption)) return null;
-      const offscreen = document.createElement("div");
-      const offscreenChart = init(offscreen, undefined, {
-        renderer: "canvas",
-        width,
-        height,
-      });
-      try {
-        offscreenChart.setOption(
-          { ...withChartTheme(currentOption, "light"), animation: false },
-          { notMerge: true },
-        );
-        const dataUrl = offscreenChart.getDataURL({
-          type: "png",
-          pixelRatio: 2,
-          backgroundColor: "#ffffff",
-        });
-        return dataUrl && dataUrl !== "data:," ? { dataUrl, width, height } : null;
-      } finally {
-        try {
-          offscreenChart.dispose();
-        } catch {
-          // Ignore offscreen teardown failures.
-        }
-      }
+      return renderChartOptionToPng(optionRef.current, { width, height });
     });
 
     const handleClick = (params: unknown) => {

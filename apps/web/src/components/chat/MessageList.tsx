@@ -6,6 +6,7 @@ import {
   type ChatArtifact,
   type ChatMessage,
   type ChatModelInfo,
+  type ChatReport,
   type ChatResult,
   type ConversationFileSummary,
   type ConversationFileTableSummary,
@@ -17,6 +18,7 @@ import { Button } from "../ui/button";
 import { BrandMark } from "../BrandMark";
 import { ChartCard, chartOptionFromSpec, type ChartDrillDownPoint } from "./ChartCard";
 import { ExcelCard, HistoricalExcel } from "./ExcelCard";
+import { ReportCard } from "./ReportCard";
 import { FileUploadPanel, type FileUploadPanelProps } from "./FileUploadPanel";
 import { MarkdownText, MessageItem, UserBubble } from "./MessageItem";
 import { RunStatus } from "./RunStatus";
@@ -30,6 +32,8 @@ import {
   groupChatSegments,
   parseChatMarkdown,
   reportArtifactIdsFromTools,
+  reportsFromMessage,
+  type ReportPlaceholderSegment,
 } from "../../lib/report-markdown";
 import { pairQueries } from "../../lib/pair-queries";
 import { useBranding } from "../../lib/branding";
@@ -480,6 +484,11 @@ export function MessageList({
       .filter((segment) => segment.type === "excel")
       .map((segment) => segment.artifactId),
   );
+  const referencedReports = new Set(
+    streamSegments
+      .filter((segment): segment is ReportPlaceholderSegment => segment.type === "report")
+      .map((segment) => segment.reportId),
+  );
   const streamReportArtifacts = reportArtifactIdsFromTools(stream.tools);
   const standaloneCharts = stream.charts.filter(
     (chart) =>
@@ -489,6 +498,21 @@ export function MessageList({
   const standaloneExcels = stream.excels.filter(
     (excel) => !referencedExcels.has(excel.excelArtifactId),
   );
+  const standaloneReports = stream.reports.filter(
+    (report) => !referencedReports.has(report.reportId),
+  );
+  const conversationReports = useMemo(() => {
+    const byId = new Map<string, ChatReport>();
+    for (const message of messages) {
+      for (const report of reportsFromMessage(message)) {
+        byId.set(report.reportId, report);
+      }
+    }
+    for (const report of stream.reports) {
+      byId.set(report.reportId, report);
+    }
+    return [...byId.values()];
+  }, [messages, stream.reports]);
   const conversationResults = useMemo(() => {
     const map = new Map<string, ChatResult>();
     const add = (result: ChatResult) => {
@@ -668,6 +692,7 @@ export function MessageList({
     stream.results.length,
     stream.charts.length,
     stream.excels.length,
+    stream.reports.length,
   ]);
 
   if (loading && !hasContent) {
@@ -718,6 +743,7 @@ export function MessageList({
               message={message}
               artifacts={artifacts}
               allResults={conversationResults}
+              allReports={conversationReports}
               models={models}
               retrying={retryingRunId === message.runId}
               creatingReport={creatingReport}
@@ -760,7 +786,7 @@ export function MessageList({
                   const content = chartsReady
                     ? segment.content
                     : segment.content.replace(
-                        /\[\[(?:(?:chart|artifact|excel):[^\]\s]*|result:[^\]\r\n]*)$/,
+                        /\[\[(?:(?:chart|artifact|excel|report):[^\]\s]*|result:[^\]\r\n]*)$/,
                         "",
                       );
                   return content.trim() ? (
@@ -822,6 +848,19 @@ export function MessageList({
                     />
                   ) : null;
                 }
+                if (segment.type === "report") {
+                  const report =
+                    stream.reports.find((item) => item.reportId === segment.reportId) ??
+                    conversationReports.find((item) => item.reportId === segment.reportId);
+                  if (!report && !chartsReady) return null;
+                  return (
+                    <ReportCard
+                      key={`report-${index}`}
+                      reportId={segment.reportId}
+                      title={report?.title}
+                    />
+                  );
+                }
                 if (!chartsReady) return null;
                 const chart = stream.charts.find(
                   (item) => item.chartArtifactId === segment.artifactId,
@@ -860,6 +899,17 @@ export function MessageList({
                       totalRows={excel.totalRows}
                       allResults={conversationResults}
                       canExport={canExport}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              {chartsReady && standaloneReports.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  {standaloneReports.map((report) => (
+                    <ReportCard
+                      key={report.reportId}
+                      reportId={report.reportId}
+                      title={report.title}
                     />
                   ))}
                 </div>

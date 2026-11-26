@@ -62,9 +62,11 @@ describe("renderSystemPrompt", () => {
     expect(prompt).not.toMatch(/\{\{\w+\}\}/);
   });
 
-  it("guides report export requests including Word (.docx) to the report detail page", () => {
+  it("guides report export requests including Word (.docx) to the inline report card and detail page", () => {
     expect(prompt).toContain("Word `.docx`");
+    expect(prompt).toContain("报告卡片");
     expect(prompt).toContain("报告详情页");
+    expect(prompt).toContain("[[report:<reportId>]]");
     expect(prompt).toContain("create_report");
   });
 

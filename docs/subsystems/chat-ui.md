@@ -10,10 +10,11 @@
 | 流 | 重连、回放、按序号合并事件、取消/清理 | [`useRunStream.ts`](../../apps/web/src/hooks/useRunStream.ts) |
 | 消息列表 | 排序、滚动锚定、流式尾部、“有新内容” | [`MessageList.tsx`](../../apps/web/src/components/chat/MessageList.tsx)、[`message-scroll.ts`](../../apps/web/src/lib/message-scroll.ts) |
 | 单条消息 | Markdown、分段、执行过程、用量、操作、部门范围提示 | [`MessageItem.tsx`](../../apps/web/src/components/chat/MessageItem.tsx) |
-| 解析器 | 切分 markdown/artifact/chart/result/excel 段 | [`report-markdown.ts`](../../apps/web/src/lib/report-markdown.ts) |
+| 解析器 | 切分 markdown/artifact/chart/result/excel/report 段 | [`report-markdown.ts`](../../apps/web/src/lib/report-markdown.ts) |
 | 数据表格 | 预览、加载更多、导出、SQL 详情 | [`ResultTable.tsx`](../../apps/web/src/components/chat/ResultTable.tsx)、[`ResultDetailDialog.tsx`](../../apps/web/src/components/chat/ResultDetailDialog.tsx) |
 | 行内结果 | 链接 + 详情弹窗 | [`ResultLink.tsx`](../../apps/web/src/components/chat/ResultLink.tsx) |
 | Excel 卡片 | 多 Sheet `.xlsx` 一键下载与分表预览 | [`ExcelCard.tsx`](../../apps/web/src/components/chat/ExcelCard.tsx) |
+| 报告卡片 | 对话内一键离线/离屏导出 Word/HTML/Markdown 与详情跳转 | [`ReportCard.tsx`](../../apps/web/src/components/chat/ReportCard.tsx)、[`report-offscreen-export.ts`](../../apps/web/src/lib/report-offscreen-export.ts) |
 | 图表 | 渲染校验后的图表 spec、前端免重跑切图/排序与明细表 | [`ChartCard.tsx`](../../apps/web/src/components/chat/ChartCard.tsx)、[`chart-option.ts`](../../apps/web/src/lib/chart-option.ts) |
 | 报告 | 报告 artifact 卡片/链接 | [`ReportPage.tsx`](../../apps/web/src/pages/ReportPage.tsx) |
 | 建议追问 | 输入框上方的追问胶囊、点击直发与按轮次隐藏 | [`SuggestedQuestions.tsx`](../../apps/web/src/components/chat/SuggestedQuestions.tsx) |
@@ -37,8 +38,9 @@ React Query 是服务端状态缓存；使用 `lib/query.ts` 的 `queryKeys` 和
 - `chart`——`[[chart:<id>]]`，从图表 artifact 就地渲染；本轮未在正文中引用的图表会在回答末尾作为兜底独立展示，但若该图表已被本轮成功的 `create_report` 调用纳入报告（由 `reportArtifactIdsFromTools` 收集），则不再兜底追加，避免报告链接下方出现孤儿图表；
 - `result`——`[[result:<id>]]` 或 `[[result:<id>|简短标题]]`，聊天专用的结果行内芯片入口。`MessageList` 会汇总会话内全部结果（跨轮次与历史 `artifacts` 中未带预览行的 `result` 记录；点开且暂无预览行时由 `ResultLink` 按需拉取首页 `/api/artifacts/:id/rows`），使后续追问轮引用历史 `artifactId` 时可正常展示而非报错。连续的 `result` 分段（中间仅有空白或换行）会经 `groupChatSegments` 合并成 `result_group` 横向换行排列（`flex-wrap`）；单条消息包含至少两个 `result` 且未显式提供 `|标题` 时，`ResultLinkGroup` 会按结果前两个列名（超出两列后缀 `等`）自动生成区分标题，组内同名再追加 `#1`、`#2`。
 - `excel`——`[[excel:<id>]]`，聊天专用的多 Sheet Excel 工作簿下载卡片（[`ExcelCard.tsx`](../../apps/web/src/components/chat/ExcelCard.tsx)），展示文件名、工作表芯片与总行数、受 `export.data` 门禁控制的「下载 Excel」按钮及点击各 Sheet 芯片按需预览弹窗；若本轮调用 `create_excel` 但正文未显式写出 `[[excel:<id>]]`，在轮次结束后兜底渲染独立卡片；会话导出 Markdown 渲染为 `> [Excel 文件] <filename>.xlsx`，开放平台与会话公开分享会剥离该占位符。
+- `report`——`[[report:<id>]]`，聊天专用的分析报告卡片（[`ReportCard.tsx`](../../apps/web/src/components/chat/ReportCard.tsx)），展示报告标题、一键「导出 Word（`.docx`）」按钮及下拉格式选择（HTML / Markdown）和「查看详情」入口；点击导出由 [`report-offscreen-export.ts`](../../apps/web/src/lib/report-offscreen-export.ts) 在浏览器离屏组装同构 `<article>` 并强制浅色重绘 ECharts（`renderChartOptionToPng`）与 Mermaid，复用 `buildReportExportHtml`/`buildReportExportDocx` 原地下载；本轮 `create_report` 成功但正文未写 `[[report:<id>]]` 时自动兜底展示独立报告卡片（同时兼容历史消息里仅含 `tool.url` 的旧记录）；会话导出 Markdown 渲染为 `> [分析报告] <title>`，开放平台与会话公开分享会剥离该占位符。
 
-`parseReportMarkdown` 故意把 `[[result:...]]` 与 `[[excel:...]]` 当普通文本（报告使用 artifact）。新增标记或分段时：
+`parseReportMarkdown` 故意把 `[[result:...]]`、`[[excel:...]]` 与 `[[report:...]]` 当普通文本（报告使用 artifact）。新增标记或分段时：
 
 1. 扩展解析器和类型。
 2. 更新 `MessageItem` 和 `MessageList` 的流式分支；如果报告/分享可能收到该标记，同步更新 `parseReportMarkdown` 行为。
@@ -61,8 +63,8 @@ Mermaid 代码块由 `MermaidDiagram` 在聊天、报告和公开分享中渲染
 - 顶栏右侧状态指示器真实反映当前流状态（「生成中…」「重连中…」「模型异常」），空闲时不显示占位提示。
 - 长表格横向滚动；每个 flex/grid 祖先都要有 `min-w-0`/`overflow-x-auto`。不要只靠 `truncate` 把表格压小。
 - 结果预览有界；“加载更多”追加分页，导出流式发送完整 artifact；生成报告进行中禁用按钮防连点。初次渲染卡片时绝不拉取全部行。
-- 流式文本可能包含半个 `[[artifact:`/`[[chart:`/`[[result:`/`[[excel:` 标记；在完整前隐藏，不要显示原始语法。
-- 未知 `excel` id 在历史消息中显示「Excel 文件不可用」，在流式输出期间保持隐藏。
+- 流式文本可能包含半个 `[[artifact:`/`[[chart:`/`[[result:`/`[[excel:`/`[[report:` 标记；在完整前隐藏，不要显示原始语法。
+- 未知 `excel` id 在历史消息中显示「Excel 文件不可用」，未知 `report` id 在卡片拉取失败时显示「报告不可用」，二者在流式输出期间均保持隐藏直至结束。
 - 使用共享 `Button`/`Dialog`/`Sheet`/`ConfirmDialog` 原语，不在业务操作中调用原生 `window.confirm`；原生 `title` 只通过 `Tooltip` 组件使用；纯图标按钮要有可访问名称。
 - **建议追问栏**：位于 `Composer` 正上方（胶囊标签样式），仅在当前存在 `chat.use` 权限、流与重试已结束、无待回答 `QuestionCard` 且最后一条消息为成功轮次（`status === "ok"`）时显示。若 `latestMessage.suggestions === null` 且模型已配置，前端通过 `GET /api/runs/:id/suggestions` 按需懒加载一次并依赖服务端缓存（`runs.suggestions_json`）；点击任意建议会立即发起追问，点击隐藏按轮次收起（下一轮新回复出现时重新展示）。
 

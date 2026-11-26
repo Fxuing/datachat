@@ -47,12 +47,12 @@ export const OPEN_SYNC_TIMEOUT_MS = 120_000;
 export const OPEN_ASYNC_WATCH_TIMEOUT_MS = 10 * 60_000;
 
 const INTERNAL_PLACEHOLDER_RE =
-  /\[\[(?:artifact|chart|excel):[0-9a-fA-F-]+\]\]|\[\[result:[0-9a-fA-F-]+(?:\|[^\]\r\n]*)?\]\]/g;
+  /\[\[(?:artifact|chart|excel|report):[0-9a-fA-F-]+\]\]|\[\[result:[0-9a-fA-F-]+(?:\|[^\]\r\n]*)?\]\]/g;
 
 /**
  * Strips DataChat's internal UI placeholders (`[[artifact:]]`, `[[chart:]]`, `[[result:]]`,
- * `[[excel:]]`) so external systems receive clean prose/Markdown alongside structured
- * `datasets` and `charts`.
+ * `[[excel:]]`, `[[report:]]`) so external systems receive clean prose/Markdown alongside
+ * structured `datasets` and `charts`.
  */
 export function stripInternalPlaceholders(markdown: string): string {
   return markdown
