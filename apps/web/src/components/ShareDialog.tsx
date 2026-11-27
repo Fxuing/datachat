@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Link2 } from "lucide-react";
-import { createShare, revokeShare, type CreatedShare } from "../lib/api";
+import { createShare, listShares, revokeShare, type CreatedShare } from "../lib/api";
 import { copyToClipboard } from "../lib/clipboard";
 import { describeApiError } from "../lib/errors";
+import { queryKeys } from "../lib/query";
+import { formatDateTime } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { useToast } from "./ui/toast";
 
 export interface ShareTarget {
   conversationId?: string;
@@ -35,25 +38,54 @@ function absoluteUrl(url: string): string {
 }
 
 export function ShareDialog({ target, onClose }: ShareDialogProps) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [expiresInDays, setExpiresInDays] = useState(7);
   const [created, setCreated] = useState<CreatedShare | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const targetParams = {
+    ...(target.conversationId !== undefined ? { conversationId: target.conversationId } : {}),
+    ...(target.reportId !== undefined ? { reportId: target.reportId } : {}),
+    ...(target.dashboardId !== undefined ? { dashboardId: target.dashboardId } : {}),
+  };
+
+  const activeSharesQuery = useQuery({
+    queryKey: queryKeys.shares({ ...targetParams, status: "active" }),
+    queryFn: () => listShares({ ...targetParams, status: "active" }),
+    enabled: Boolean(target.conversationId || target.reportId || target.dashboardId),
+  });
+
   const createMutation = useMutation({
     mutationFn: () =>
       createShare({
-        ...(target.conversationId !== undefined
-          ? { conversationId: target.conversationId }
-          : {}),
-        ...(target.reportId !== undefined ? { reportId: target.reportId } : {}),
-        ...(target.dashboardId !== undefined ? { dashboardId: target.dashboardId } : {}),
+        ...targetParams,
         expiresInDays,
       }),
-    onSuccess: (data) => setCreated(data.share),
+    onSuccess: (data) => {
+      setCreated(data.share);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sharesAll });
+      toast.success("已创建分享链接");
+    },
   });
 
   const revokeMutation = useMutation({
     mutationFn: (id: string) => revokeShare(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sharesAll });
+      toast.success("已撤销分享链接");
+    },
+  });
+
+  const revokeExistingMutation = useMutation({
+    mutationFn: (id: string) => revokeShare(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sharesAll });
+      toast.success("已撤销分享链接");
+    },
+    onError: (err) => {
+      toast.error(describeApiError(err, "撤销分享链接失败"));
+    },
   });
 
   const shareUrl = created ? absoluteUrl(created.url) : null;
@@ -64,10 +96,15 @@ export function ShareDialog({ target, onClose }: ShareDialogProps) {
   const revokeError = revokeMutation.isError
     ? describeApiError(revokeMutation.error, "撤销分享链接失败，请稍后重试。")
     : null;
+  const existingShares = (activeSharesQuery.data?.shares ?? []).filter(
+    (item) => item.id !== created?.id,
+  );
 
   const handleCopy = async () => {
     if (!shareUrl) return;
-    setCopied(await copyToClipboard(shareUrl));
+    const ok = await copyToClipboard(shareUrl);
+    setCopied(ok);
+    if (ok) toast.success("已复制分享链接");
   };
 
   return (
@@ -161,6 +198,41 @@ export function ShareDialog({ target, onClose }: ShareDialogProps) {
             ) : null}
           </div>
         )}
+
+        {existingShares.length > 0 ? (
+          <div className="mt-4 space-y-2 border-t border-line pt-3">
+            <p className="text-[11px] font-medium text-inksoft">
+              当前生效的分享链接（{existingShares.length}）
+            </p>
+            <ul className="max-h-36 space-y-1.5 overflow-y-auto">
+              {existingShares.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-line bg-subtle/50 px-2.5 py-1.5 text-[11px]"
+                >
+                  <div className="min-w-0 text-muted">
+                    <span className="block truncate text-inksoft">
+                      过期：{formatDateTime(item.expiresAt)}
+                    </span>
+                    <span className="block text-[10px]">
+                      创建于 {formatDateTime(item.createdAt)}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 shrink-0 px-2 text-[11px] text-danger hover:bg-dangersoft hover:text-danger"
+                    disabled={revokeExistingMutation.isPending}
+                    onClick={() => revokeExistingMutation.mutate(item.id)}
+                  >
+                    撤销
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brain, Filter, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
-import { Link } from "react-router-dom";
 import {
   clearMemories,
   createMemory,
@@ -18,8 +17,10 @@ import {
   type MemoryScope,
 } from "../lib/api";
 import { AppShell } from "../components/AppShell";
+import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { useToast } from "../components/ui/toast";
 import { useCan } from "../hooks/use-access";
 import { describeApiError } from "../lib/errors";
 import { queryKeys } from "../lib/query";
@@ -57,6 +58,7 @@ const kindTones: Record<MemoryKind, string> = {
 
 export default function MemoryPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
   const canChat = useCan("chat.use");
   const [query, setQuery] = useState("");
@@ -115,6 +117,7 @@ export default function MemoryPage() {
       setEditing(null);
       setFormError(null);
       void queryClient.invalidateQueries({ queryKey: ["memories"] });
+      toast.success(editing ? "记忆已更新" : "记忆已添加");
     },
     onError: (error) => setFormError(describeApiError(error, "保存失败")),
   });
@@ -135,6 +138,7 @@ export default function MemoryPage() {
       setPageError(null);
       setDeleteTarget(null);
       void queryClient.invalidateQueries({ queryKey: ["memories"] });
+      toast.success("记忆已删除");
     },
     onError: (error) => {
       setDeleteTarget(null);
@@ -148,6 +152,7 @@ export default function MemoryPage() {
       setPageError(null);
       setClearOpen(false);
       void queryClient.invalidateQueries({ queryKey: ["memories"] });
+      toast.success("已清空全部记忆");
     },
     onError: (error) => {
       setClearOpen(false);
@@ -174,40 +179,7 @@ export default function MemoryPage() {
   return (
     <AppShell
       user={meQuery.data?.user ?? { id: "", username: "", displayName: null, role: "user", status: "active" }}
-      sidebar={
-        <div className="p-2">
-          {/* Router link: a plain anchor would reload the whole app. */}
-          <Link
-            to="/chat"
-            className="block rounded-lg px-2 py-1.5 text-[13px] text-inksoft hover:bg-subtle hover:text-ink"
-          >
-            ← 返回对话
-          </Link>
-          <div className="mt-2 flex items-center justify-between rounded-lg px-2 py-1.5">
-            <span className="text-[13px] text-inksoft">记忆注入</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={enabled && globalEnabled}
-              aria-label="记忆注入"
-              disabled={!globalEnabled || settingsMutation.isPending}
-              onClick={() => settingsMutation.mutate(!enabled)}
-              className={cn(
-                "relative h-5 w-9 rounded-full transition-colors",
-                enabled && globalEnabled ? "bg-brand" : "bg-line",
-                !globalEnabled && "cursor-not-allowed opacity-50",
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all",
-                  enabled && globalEnabled ? "left-[18px]" : "left-0.5",
-                )}
-              />
-            </button>
-          </div>
-        </div>
-      }
+      sidebar={<ConversationSidebar datasources={datasourcesQuery.data?.datasources ?? []} />}
       topbar={
         <div className="flex min-w-0 items-center gap-2">
           <Brain className="h-4 w-4 text-muted" />
@@ -226,7 +198,30 @@ export default function MemoryPage() {
                 {memories.length} 条记忆 · {enabled && globalEnabled ? "已开启" : "已关闭"}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1">
+                <span className="text-xs text-inksoft">记忆注入</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={enabled && globalEnabled}
+                  aria-label="记忆注入"
+                  disabled={!globalEnabled || settingsMutation.isPending}
+                  onClick={() => settingsMutation.mutate(!enabled)}
+                  className={cn(
+                    "relative h-5 w-9 rounded-full transition-colors",
+                    enabled && globalEnabled ? "bg-brand" : "bg-line",
+                    !globalEnabled && "cursor-not-allowed opacity-50",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all",
+                      enabled && globalEnabled ? "left-[18px]" : "left-0.5",
+                    )}
+                  />
+                </button>
+              </div>
               <Button
                 variant="outline"
                 size="sm"

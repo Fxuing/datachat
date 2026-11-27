@@ -22,6 +22,7 @@ import { queryKeys } from "../../lib/query";
 import { formatClock } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export interface DatasourcePluginsDrawerProps {
@@ -316,9 +317,16 @@ export function DatasourcePluginsDrawer({ onClose }: DatasourcePluginsDrawerProp
                                 <span>{formatBytes(driver.sizeBytes)}</span>
                               ) : null}
                               {driver.sha256 ? (
-                                <span className="font-mono" title={driver.sha256}>
-                                  SHA256: {driver.sha256.slice(0, 12)}
-                                </span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span tabIndex={0} className="font-mono">
+                                      SHA256: {driver.sha256.slice(0, 12)}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="font-mono">
+                                    {driver.sha256}
+                                  </TooltipContent>
+                                </Tooltip>
                               ) : null}
                               {driver.updatedAt ? (
                                 <span>更新于 {formatClock(driver.updatedAt)}</span>

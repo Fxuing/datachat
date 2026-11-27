@@ -1189,6 +1189,45 @@ export function refreshAllDashboardCards(
   return apiRequest(`/api/dashboards/${dashboardId}/refresh`, { method: "POST" });
 }
 
+export interface ReportListItem {
+  id: string;
+  conversationId: string;
+  title: string;
+  artifactIds: string[];
+  artifactCount: number;
+  source: "chat" | "scheduled";
+  sourceKind: "datasource" | "file";
+  datasourceId: string | null;
+  datasourceName: string | null;
+  conversationTitle: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ReportListResponse {
+  reports: ReportListItem[];
+  total: number;
+}
+
+export function listReports(
+  params: {
+    q?: string;
+    source?: "all" | "chat" | "scheduled";
+    datasourceId?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<ReportListResponse> {
+  const qs = new URLSearchParams();
+  if (params.q?.trim()) qs.set("q", params.q.trim());
+  if (params.source && params.source !== "all") qs.set("source", params.source);
+  if (params.datasourceId) qs.set("datasourceId", params.datasourceId);
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params.offset !== undefined) qs.set("offset", String(params.offset));
+  const query = qs.toString();
+  return apiRequest(`/api/reports${query ? `?${query}` : ""}`);
+}
+
 export function createReport(input: {
   conversationId: string;
   title?: string;
@@ -1345,6 +1384,47 @@ export function getDatasourceSchema(
   if (search) params.set("search", search);
   const query = params.toString();
   return apiRequest(`/api/datasources/${id}/schema${query ? `?${query}` : ""}`);
+}
+
+export interface DatasourceCatalogMetric {
+  id: string;
+  name: string;
+  synonyms: string[];
+  description: string | null;
+  tableName: string | null;
+  timeColumn: string | null;
+  unit: string | null;
+}
+
+export interface DatasourceCatalogRelation {
+  id: string;
+  leftTable: string;
+  leftColumn: string;
+  rightTable: string;
+  rightColumn: string;
+  joinType: SemanticJoinType;
+  description: string | null;
+}
+
+export interface DatasourceStarterQuestion {
+  title: string;
+  body: string;
+  source: "example" | "metric";
+}
+
+export interface DatasourceCatalogResponse {
+  datasourceId: string;
+  refreshedAt: number | null;
+  stale: boolean;
+  tableCount: number;
+  scopeNotice: string | null;
+  metrics: DatasourceCatalogMetric[];
+  relations: DatasourceCatalogRelation[];
+  starterQuestions: DatasourceStarterQuestion[];
+}
+
+export function getDatasourceCatalog(id: string): Promise<DatasourceCatalogResponse> {
+  return apiRequest(`/api/datasources/${id}/catalog`);
 }
 
 export interface DatasourceGrantsResponse {
@@ -2051,6 +2131,38 @@ export interface CreatedShare {
   expiresAt: number;
 }
 
+export interface ShareListItem {
+  id: string;
+  targetType: "conversation" | "report" | "dashboard";
+  targetId: string;
+  targetTitle: string;
+  createdBy: string;
+  creatorUsername?: string;
+  expiresAt: number;
+  revokedAt: number | null;
+  status: "active" | "expired" | "revoked";
+  createdAt: number;
+}
+
+export function listShares(
+  params: {
+    conversationId?: string;
+    reportId?: string;
+    dashboardId?: string;
+    status?: "active" | "all";
+    scope?: "mine" | "all";
+  } = {},
+): Promise<{ shares: ShareListItem[] }> {
+  const qs = new URLSearchParams();
+  if (params.conversationId) qs.set("conversationId", params.conversationId);
+  if (params.reportId) qs.set("reportId", params.reportId);
+  if (params.dashboardId) qs.set("dashboardId", params.dashboardId);
+  if (params.status) qs.set("status", params.status);
+  if (params.scope) qs.set("scope", params.scope);
+  const query = qs.toString();
+  return apiRequest(`/api/shares${query ? `?${query}` : ""}`);
+}
+
 export function createShare(input: CreateShareInput): Promise<{ share: CreatedShare }> {
   return apiRequest("/api/shares", {
     method: "POST",
@@ -2075,6 +2187,23 @@ export async function getPublicShare(token: string): Promise<PublicShare> {
     throw await parseError(response);
   }
   return (await response.json()) as PublicShare;
+}
+
+export async function getPublicShareReport(
+  token: string,
+  reportId: string,
+): Promise<PublicReportShare> {
+  const response = await fetch(
+    `/api/public/shares/${encodeURIComponent(token)}/reports/${encodeURIComponent(reportId)}`,
+    {
+      credentials: "omit",
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+  return (await response.json()) as PublicReportShare;
 }
 
 export type MemoryKind = "profile" | "instruction" | "preference" | "fact";

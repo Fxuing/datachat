@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Download, FileSpreadsheet, Share2, X } from "lucide-react";
+import {
+  ChevronDown,
+  Database,
+  Download,
+  FileCode2,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  Share2,
+  X,
+} from "lucide-react";
 import { AppShell, type AppShellStatusIndicator } from "../components/AppShell";
 import { Composer } from "../components/chat/Composer";
 import type { ChartDrillDownPoint } from "../components/chat/ChartCard";
+import { DataCatalogDrawer } from "../components/chat/DataCatalogDrawer";
 import { QuestionCard } from "../components/chat/QuestionCard";
 import { SuggestedQuestions } from "../components/chat/SuggestedQuestions";
 import { ConversationSidebar } from "../components/chat/ConversationSidebar";
@@ -15,6 +26,9 @@ import type { ModelPickerStatus } from "../components/chat/ModelPicker";
 import { ShareDialog } from "../components/ShareDialog";
 import { PageSpinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { useToast } from "../components/ui/toast";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { useRunStream } from "../hooks/useRunStream";
 import { useCan } from "../hooks/use-access";
 import {
@@ -29,6 +43,7 @@ import {
   deleteFileDataset,
   fetchMe,
   getConversation,
+  getDatasourceCatalog,
   getRunSuggestions,
   listDatasources,
   listConversationSkills,
@@ -52,6 +67,7 @@ import {
   downloadTextFile,
   sanitizeFileName,
 } from "../lib/conversation-export";
+import { describeApiError } from "../lib/errors";
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message;
@@ -80,6 +96,7 @@ export default function ChatPage() {
   const { conversationId } = useParams<{ conversationId?: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const [activeTurn, setActiveTurn] = useState<{
     conversationId: string;
@@ -105,6 +122,9 @@ export default function ChatPage() {
   const [draftThinkingLevel, setDraftThinkingLevel] = useState<string>("off");
   const [dismissedSuggestionRunId, setDismissedSuggestionRunId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportingHtml, setExportingHtml] = useState(false);
   const [pinTarget, setPinTarget] = useState<{ artifactId: string; title: string } | null>(null);
   const [composerDraft, setComposerDraft] = useState<{ id: number; text: string } | null>(null);
   const draftSeqRef = useRef(0);
@@ -458,6 +478,7 @@ export default function ChatPage() {
     setSendError(null);
     setFailedSend(null);
     setFileTablesOpen(false);
+    setCatalogOpen(false);
   }, [conversationId]);
 
   // A brand-new conversation is created on the empty state and navigated to
@@ -483,6 +504,18 @@ export default function ChatPage() {
     () => datasourcesQuery.data?.datasources ?? [],
     [datasourcesQuery.data],
   );
+  const catalogDatasource = isFileConversation
+    ? null
+    : conversationId
+      ? (datasource ?? null)
+      : (availableDatasources.find((item) => item.id === draftDatasourceId) ?? null);
+  const catalogQuery = useQuery({
+    queryKey: queryKeys.datasourceCatalog(catalogDatasource?.id ?? ""),
+    queryFn: () => getDatasourceCatalog(catalogDatasource!.id),
+    enabled: Boolean(catalogDatasource),
+    staleTime: 60_000,
+    retry: false,
+  });
   useEffect(() => {
     if (availableDatasources.length === 0) {
       if (draftDatasourceId) setDraftDatasourceId(null);
@@ -764,17 +797,19 @@ export default function ChatPage() {
     stream.state.contextUsage ?? conversationQuery.data?.contextUsage ?? null,
     selectedModel?.contextWindow,
   );
+  const exportSourceLabel = isFileConversation
+    ? `Excel / CSV（${conversationTables.length} 张表）`
+    : datasource
+      ? `${datasource.name} · ${datasourceTypeLabel(datasource)}`
+      : null;
+
   const handleExportMarkdown = () => {
     if (!conversationId || !conversation || !messages || messages.length === 0) return;
+    setExportMenuOpen(false);
     const title = conversation.title ?? "未命名会话";
-    const sourceLabel = isFileConversation
-      ? `Excel / CSV（${conversationTables.length} 张表）`
-      : datasource
-        ? `${datasource.name} · ${datasourceTypeLabel(datasource)}`
-        : null;
     const markdown = buildConversationMarkdown({
       title,
-      sourceLabel,
+      sourceLabel: exportSourceLabel,
       messages,
       artifacts: conversationQuery.data?.artifacts ?? [],
     });
@@ -783,6 +818,30 @@ export default function ChatPage() {
       markdown,
       "text/markdown;charset=utf-8",
     );
+    toast.success("已导出 Markdown");
+  };
+
+  const handleExportHtml = async () => {
+    if (!conversationId || !conversation || !messages || messages.length === 0 || exportingHtml) {
+      return;
+    }
+    setExportMenuOpen(false);
+    setExportingHtml(true);
+    const title = conversation.title ?? "未命名会话";
+    try {
+      const { exportConversationHtml } = await import("../lib/conversation-html-export");
+      await exportConversationHtml({
+        title,
+        sourceLabel: exportSourceLabel,
+        messages,
+        artifacts: conversationQuery.data?.artifacts ?? [],
+      });
+      toast.success("已导出离线 HTML");
+    } catch (error) {
+      toast.error(describeApiError(error, "导出离线 HTML 失败，请稍后重试。"));
+    } finally {
+      setExportingHtml(false);
+    }
   };
 
   const topbar = (
@@ -806,30 +865,97 @@ export default function ChatPage() {
             <span>Excel / CSV · {conversationTables.length} 张表</span>
           </button>
         ) : datasource ? (
-          <span className="hidden shrink-0 rounded bg-subtle px-1.5 py-0.5 text-[11px] text-muted sm:inline">
-            {datasource.name} · {datasourceTypeLabel(datasource)}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => setCatalogOpen(true)}
+                className="hidden shrink-0 items-center gap-1.5 rounded bg-subtle px-2 py-0.5 text-[11px] text-inksoft transition-colors hover:bg-line sm:inline-flex"
+              >
+                <Database className="h-3 w-3 text-brand" />
+                <span>
+                  {datasource.name} · {datasourceTypeLabel(datasource)}
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">查看表结构与业务指标</TooltipContent>
+          </Tooltip>
         ) : null}
         {!isFileConversation && (meQuery.data?.departmentNames ?? []).length > 0 ? (
-          <span
-            className="hidden shrink-0 rounded bg-brandsoft px-1.5 py-0.5 text-[11px] text-brandtext sm:inline"
-            title="查询结果按这些部门的子树过滤"
-          >
-            范围：{(meQuery.data?.departmentNames ?? []).join("、")}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                tabIndex={0}
+                className="hidden shrink-0 rounded bg-brandsoft px-1.5 py-0.5 text-[11px] text-brandtext sm:inline"
+              >
+                范围：{(meQuery.data?.departmentNames ?? []).join("、")}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">查询结果按这些部门的子树过滤</TooltipContent>
+          </Tooltip>
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          disabled={!conversationId || !conversation || !messages || messages.length === 0}
-          onClick={handleExportMarkdown}
-        >
-          <Download className="h-3.5 w-3.5" />
-          导出
-        </Button>
+        <Popover open={exportMenuOpen} onOpenChange={setExportMenuOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={
+                !conversationId ||
+                !conversation ||
+                !messages ||
+                messages.length === 0 ||
+                exportingHtml
+              }
+            >
+              {exportingHtml ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              {exportingHtml ? "导出中…" : "导出"}
+              <ChevronDown className="h-3 w-3 text-muted" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" sideOffset={6} className="w-60 p-1.5">
+            <div className="flex flex-col gap-0.5">
+              <button
+                type="button"
+                disabled={exportingHtml}
+                onClick={() => void handleExportHtml()}
+                className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FileCode2 className="mt-0.5 h-4 w-4 shrink-0 text-brandtext" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2 text-xs font-medium text-ink">
+                    <span>导出为离线 HTML</span>
+                    <span className="font-mono text-[11px] font-normal text-muted">.html</span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-muted">
+                    含图表、数据表与可展开完整报告
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                disabled={exportingHtml}
+                onClick={handleExportMarkdown}
+                className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2 text-xs font-medium text-ink">
+                    <span>导出为 Markdown</span>
+                    <span className="font-mono text-[11px] font-normal text-muted">.md</span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-muted">纯文本对话记录与 SQL</p>
+                </div>
+              </button>
+            </div>
+          </PopoverContent>
+        </Popover>
         {canShare ? (
           <Button
             variant="outline"
@@ -869,6 +995,9 @@ export default function ChatPage() {
         onRetryModels={() => void modelsQuery.refetch()}
         selectedDatasourceId={draftDatasourceId}
         onSelectDatasource={setDraftDatasourceId}
+        starterExamples={catalogQuery.data?.starterQuestions}
+        onOpenCatalog={catalogDatasource ? () => setCatalogOpen(true) : undefined}
+        catalogMeta={catalogQuery.data ?? null}
         newChatMode={draftMode}
         onNewChatModeChange={setDraftMode}
         fileReady={fileReady}
@@ -971,6 +1100,9 @@ export default function ChatPage() {
         onRetryModels={() => void modelsQuery.refetch()}
         datasourceLocked
         boundDatasource={datasource ?? null}
+        starterExamples={catalogQuery.data?.starterQuestions}
+        onOpenCatalog={catalogDatasource ? () => setCatalogOpen(true) : undefined}
+        catalogMeta={catalogQuery.data ?? null}
         conversationSourceKind={isFileConversation ? "file" : "datasource"}
         conversationFiles={conversationFiles}
         conversationTables={conversationTables}
@@ -1151,6 +1283,28 @@ export default function ChatPage() {
                 }
               : undefined
           }
+        />
+      ) : null}
+      {catalogOpen && catalogDatasource ? (
+        <DataCatalogDrawer
+          datasource={catalogDatasource}
+          catalog={catalogQuery.data ?? null}
+          catalogLoading={catalogQuery.isPending}
+          catalogError={
+            catalogQuery.isError
+              ? errorMessage(catalogQuery.error, "加载业务指标失败，请稍后重试")
+              : null
+          }
+          onRetryCatalog={() => void catalogQuery.refetch()}
+          onInsertPrompt={
+            canUseChat && !active
+              ? (text) => {
+                  draftSeqRef.current += 1;
+                  setComposerDraft({ id: draftSeqRef.current, text });
+                }
+              : undefined
+          }
+          onClose={() => setCatalogOpen(false)}
         />
       ) : null}
     </AppShell>

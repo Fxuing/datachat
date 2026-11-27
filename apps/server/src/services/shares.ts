@@ -1,8 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { runEventSchema, type RunEvent } from "@datachat/shared";
 import type { Db } from "../db/client.js";
-import { conversations, reports, shares } from "../db/schema.js";
+import { conversations, dashboards, reports, shares, users } from "../db/schema.js";
 import {
   findConversation,
   type ConversationRow,
@@ -125,11 +125,48 @@ export interface ResolveShareInput {
   now?: () => number;
 }
 
+export interface ResolveShareReportInput {
+  db: Db;
+  artifacts: ArtifactStore;
+  token: string;
+  reportId: string;
+  /** Clock seam for tests. */
+  now?: () => number;
+}
+
 export interface RevokeShareInput {
   db: Db;
   shareId: string;
   userId: string;
   role: "user" | "admin";
+  now?: number;
+}
+
+export type ShareTargetType = "conversation" | "report" | "dashboard";
+export type ShareStatus = "active" | "expired" | "revoked";
+
+export interface ShareListItem {
+  id: string;
+  targetType: ShareTargetType;
+  targetId: string;
+  targetTitle: string;
+  createdBy: string;
+  creatorUsername?: string;
+  expiresAt: number;
+  revokedAt: number | null;
+  status: ShareStatus;
+  createdAt: number;
+}
+
+export interface ListSharesInput {
+  db: Db;
+  userId: string;
+  isAdmin: boolean;
+  scope?: "mine" | "all";
+  status?: "active" | "all";
+  conversationId?: string;
+  reportId?: string;
+  dashboardId?: string;
   now?: number;
 }
 
@@ -339,7 +376,7 @@ export async function resolveShare(input: ResolveShareInput): Promise<ResolveSha
     if (!conversation) {
       return { ok: false, code: "SHARE_GONE", message: SHARE_GONE_MESSAGE };
     }
-    return { ok: true, share: buildConversationShare(input.db, conversation) };
+    return { ok: true, share: buildConversationShare(input.db, input.artifacts, conversation) };
   }
 
   if (share.reportId) {
@@ -361,14 +398,57 @@ export async function resolveShare(input: ResolveShareInput): Promise<ResolveSha
   return { ok: false, code: "SHARE_GONE", message: SHARE_GONE_MESSAGE };
 }
 
+/**
+ * Resolve a report inside a shared conversation without authentication, enforcing
+ * active share token checks, department scope restrictions, and strict same-conversation
+ * ownership so arbitrary report IDs cannot be probed across conversations.
+ */
+export async function resolveShareReport(
+  input: ResolveShareReportInput,
+): Promise<ResolveShareResult> {
+  const now = input.now?.() ?? Date.now();
+  const share = input.db
+    .select()
+    .from(shares)
+    .where(eq(shares.tokenHash, hashShareToken(input.token)))
+    .get();
+
+  if (!share || share.revokedAt !== null || share.expiresAt <= now || !share.conversationId) {
+    return { ok: false, code: "SHARE_GONE", message: SHARE_GONE_MESSAGE };
+  }
+
+  if (shareTargetScopeEnforced(input.db, share.conversationId, undefined, undefined)) {
+    return {
+      ok: false,
+      code: "SHARE_DISABLED_BY_SCOPE",
+      message: "该数据源已启用部门数据权限，分享已失效",
+    };
+  }
+
+  const conversation = findConversation(input.db, share.conversationId);
+  const report = findReport(input.db, input.reportId);
+  if (
+    !conversation ||
+    !report ||
+    report.conversationId !== conversation.id ||
+    report.userId !== conversation.userId
+  ) {
+    return { ok: false, code: "SHARE_GONE", message: SHARE_GONE_MESSAGE };
+  }
+
+  return { ok: true, share: await buildReportShare(input.artifacts, report) };
+}
+
 interface MessageGroup {
   createdAt: number;
   user: string | null;
   assistant: string | null;
   deltas: string[];
   sqls: string[];
-  results: { columns: ColumnInfo[]; rows: unknown[][] }[];
-  charts: unknown[];
+  results: { artifactId: string; columns: ColumnInfo[]; rows: unknown[][] }[];
+  charts: { artifactId: string; spec: unknown }[];
+  pendingReportTools: Map<string, string[]>;
+  reportArtifactIds: Set<string>;
 }
 
 function parseEvent(row: { type: string; payloadJson: string }): RunEvent | null {
@@ -393,9 +473,21 @@ function groupFor(groups: Map<string, MessageGroup>, runId: string, createdAt: n
     sqls: [],
     results: [],
     charts: [],
+    pendingReportTools: new Map(),
+    reportArtifactIds: new Set(),
   };
   groups.set(runId, group);
   return group;
+}
+
+function extractToolArtifactIds(args: unknown): string[] {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return [];
+  const raw = (args as { artifactIds?: unknown }).artifactIds;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((id): id is string => typeof id === "string")
+    .map((id) => id.trim())
+    .filter(Boolean);
 }
 
 function applyEvent(group: MessageGroup, event: RunEvent): void {
@@ -413,31 +505,111 @@ function applyEvent(group: MessageGroup, event: RunEvent): void {
       group.sqls.push(event.payload.sql);
       break;
     case "result":
-      group.results.push({ columns: event.payload.columns, rows: event.payload.rows });
+      group.results.push({
+        artifactId: event.payload.artifactId,
+        columns: event.payload.columns,
+        rows: event.payload.rows,
+      });
       break;
     case "chart":
-      group.charts.push(event.payload.spec);
+      group.charts.push({
+        artifactId: event.payload.chartArtifactId,
+        spec: event.payload.spec,
+      });
+      break;
+    case "tool_start":
+      if (event.payload.name === "create_report") {
+        group.pendingReportTools.set(
+          event.payload.toolCallId,
+          extractToolArtifactIds(event.payload.args),
+        );
+      }
+      break;
+    case "tool_end":
+      if (event.payload.name === "create_report" && !event.payload.isError) {
+        const ids = group.pendingReportTools.get(event.payload.toolCallId) ?? [];
+        for (const id of ids) group.reportArtifactIds.add(id);
+      }
       break;
     default:
       break;
   }
 }
 
-const CHAT_ONLY_CARD_PLACEHOLDER_RE = /\[\[(?:excel|report):[^\]\s|]+\]\]/g;
+const INLINE_PLACEHOLDER_RE =
+  /\[\[(artifact|chart|result|excel|report):([^\]\s|]+)(?:\|([^\]\r\n]*))?\]\]/g;
 
-function stripChatOnlyPlaceholders(text: string): string {
-  if (!text.includes("[[excel:") && !text.includes("[[report:")) return text;
-  return text
-    .replace(CHAT_ONLY_CARD_PLACEHOLDER_RE, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+function cleanShareText(text: string): string {
+  return text.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function resolveChartSpecFromStore(
+  artifactId: string,
+  chartsById: Map<string, unknown>,
+  artifacts: ArtifactStore,
+  conversationId: string,
+): { found: true; spec: unknown } | { found: false } {
+  if (chartsById.has(artifactId)) {
+    return { found: true, spec: chartsById.get(artifactId) };
+  }
+  const meta = artifacts.get(artifactId);
+  if (!meta || meta.conversationId !== conversationId || meta.kind !== "chart" || !meta.specJson) {
+    return { found: false };
+  }
+  try {
+    return { found: true, spec: JSON.parse(meta.specJson) as unknown };
+  } catch {
+    return { found: false };
+  }
+}
+
+interface ParsedInlineShareSegment {
+  type: "text" | "artifact" | "chart" | "result" | "excel" | "report";
+  text?: string;
+  artifactId?: string;
+  label?: string;
+}
+
+function parseInlineShareSegments(rawText: string): ParsedInlineShareSegment[] {
+  const segments: ParsedInlineShareSegment[] = [];
+  let cursor = 0;
+  for (const match of rawText.matchAll(INLINE_PLACEHOLDER_RE)) {
+    const index = match.index ?? 0;
+    if (index > cursor) {
+      segments.push({ type: "text", text: rawText.slice(cursor, index) });
+    }
+    const kind = match[1];
+    const artifactId = match[2]?.trim();
+    const rawLabel = match[3];
+    if (!artifactId || (kind !== "result" && rawLabel !== undefined)) {
+      segments.push({ type: "text", text: match[0] });
+    } else if (kind === "chart" || kind === "excel" || kind === "report" || kind === "artifact") {
+      segments.push({ type: kind, artifactId });
+    } else if (kind === "result") {
+      const label = rawLabel?.trim();
+      segments.push({
+        type: "result",
+        artifactId,
+        ...(label ? { label } : {}),
+      });
+    }
+    cursor = index + match[0].length;
+  }
+  if (cursor < rawText.length) {
+    segments.push({ type: "text", text: rawText.slice(cursor) });
+  }
+  return segments;
 }
 
 /**
  * Rebuild the conversation as a whitelisted public transcript. Run ids, audit ids,
  * datasource ids, storage paths and tool details are intentionally never copied.
  */
-function buildConversationShare(db: Db, conversation: ConversationRow): PublicConversationShare {
+function buildConversationShare(
+  db: Db,
+  artifacts: ArtifactStore,
+  conversation: ConversationRow,
+): PublicConversationShare {
   const groups = new Map<string, MessageGroup>();
   for (const row of listConversationEvents(db, conversation.id, 20_000)) {
     const event = parseEvent(row);
@@ -445,12 +617,43 @@ function buildConversationShare(db: Db, conversation: ConversationRow): PublicCo
     applyEvent(groupFor(groups, row.runId, row.createdAt), event);
   }
 
+  const orderedGroups = [...groups.values()].sort((a, b) => a.createdAt - b.createdAt);
+  const chartsById = new Map<string, unknown>();
+  const resultsById = new Map<string, { columns: ColumnInfo[]; rows: unknown[][] }>();
+  for (const group of orderedGroups) {
+    for (const result of group.results) {
+      resultsById.set(result.artifactId, { columns: result.columns, rows: result.rows });
+    }
+    for (const chart of group.charts) {
+      chartsById.set(chart.artifactId, chart.spec);
+    }
+  }
+
   const messages: PublicShareMessage[] = [];
-  for (const group of [...groups.values()].sort((a, b) => a.createdAt - b.createdAt)) {
+  for (const group of orderedGroups) {
     // Stray tool events without a user prompt are not part of the transcript.
     if (group.user === null) continue;
     messages.push({ role: "user", text: group.user });
+
+    const rawText = group.assistant ?? group.deltas.join("");
+    const inlineSegments = rawText ? parseInlineShareSegments(rawText) : [];
+    const referencedArtifactIds = new Set<string>();
+    for (const segment of inlineSegments) {
+      if (
+        (segment.type === "chart" ||
+          segment.type === "result" ||
+          segment.type === "artifact" ||
+          segment.type === "excel") &&
+        segment.artifactId
+      ) {
+        referencedArtifactIds.add(segment.artifactId);
+      }
+    }
+
+    // Emit unreferenced results/charts first (backwards compatibility for turns without markers),
+    // skipping charts bundled exclusively into reports.
     for (const result of group.results) {
+      if (referencedArtifactIds.has(result.artifactId)) continue;
       messages.push({
         role: "assistant",
         text: "",
@@ -459,12 +662,97 @@ function buildConversationShare(db: Db, conversation: ConversationRow): PublicCo
       });
     }
     for (const chart of group.charts) {
-      messages.push({ role: "assistant", text: "", chart });
+      if (
+        referencedArtifactIds.has(chart.artifactId) ||
+        group.reportArtifactIds.has(chart.artifactId)
+      ) {
+        continue;
+      }
+      messages.push({ role: "assistant", text: "", chart: chart.spec });
     }
-    const text = stripChatOnlyPlaceholders(group.assistant ?? group.deltas.join(""));
+
+    let textBuffer = "";
+    const turnTextMsgIndices: number[] = [];
+
+    const flushTextBuffer = () => {
+      const cleaned = cleanShareText(textBuffer);
+      textBuffer = "";
+      if (!cleaned) return;
+      turnTextMsgIndices.push(messages.length);
+      messages.push({ role: "assistant", text: cleaned });
+    };
+
+    for (const segment of inlineSegments) {
+      if (segment.type === "text") {
+        textBuffer += segment.text ?? "";
+        continue;
+      }
+      if (segment.type === "excel" || segment.type === "report") {
+        continue;
+      }
+      const artifactId = segment.artifactId ?? "";
+      if (segment.type === "chart") {
+        const resolved = resolveChartSpecFromStore(
+          artifactId,
+          chartsById,
+          artifacts,
+          conversation.id,
+        );
+        if (resolved.found) {
+          flushTextBuffer();
+          messages.push({ role: "assistant", text: "", chart: resolved.spec });
+        }
+        continue;
+      }
+      if (segment.type === "result") {
+        const result = resultsById.get(artifactId);
+        if (segment.label) {
+          textBuffer += `「${segment.label}」`;
+        }
+        if (result) {
+          flushTextBuffer();
+          messages.push({
+            role: "assistant",
+            text: "",
+            columns: result.columns,
+            rows: result.rows.slice(0, SHARE_MAX_ROWS),
+          });
+        }
+        continue;
+      }
+      // segment.type === "artifact"
+      const chart = resolveChartSpecFromStore(
+        artifactId,
+        chartsById,
+        artifacts,
+        conversation.id,
+      );
+      if (chart.found) {
+        flushTextBuffer();
+        messages.push({ role: "assistant", text: "", chart: chart.spec });
+        continue;
+      }
+      const result = resultsById.get(artifactId);
+      if (result) {
+        flushTextBuffer();
+        messages.push({
+          role: "assistant",
+          text: "",
+          columns: result.columns,
+          rows: result.rows.slice(0, SHARE_MAX_ROWS),
+        });
+      }
+    }
+
+    flushTextBuffer();
     const sql = group.sqls.at(-1);
-    if (text || sql) {
-      messages.push({ role: "assistant", text, ...(sql !== undefined ? { sql } : {}) });
+    if (sql !== undefined) {
+      const lastTextIndex = turnTextMsgIndices.at(-1);
+      if (lastTextIndex !== undefined) {
+        messages[lastTextIndex] = { ...messages[lastTextIndex]!, sql };
+      } else {
+        messages.push({ role: "assistant", text: "", sql });
+      }
     }
   }
 
@@ -551,4 +839,148 @@ export function revokeSharesForDatasource(db: Db, datasourceId: string): number 
     .where(and(isNull(shares.revokedAt), target))
     .run();
   return Number(result.changes ?? 0);
+}
+
+/** Deleting a report revokes its share links so no live rows point at a missing target. */
+export function revokeSharesForReport(db: Db, reportId: string): number {
+  const result = db
+    .update(shares)
+    .set({ revokedAt: Date.now() })
+    .where(and(isNull(shares.revokedAt), eq(shares.reportId, reportId)))
+    .run();
+  return Number(result.changes ?? 0);
+}
+
+export function listShares(input: ListSharesInput): ShareListItem[] {
+  const scope = input.scope === "all" && input.isAdmin ? "all" : "mine";
+  const statusFilter = input.status ?? "active";
+  const now = input.now ?? Date.now();
+
+  const hasTargetFilter = Boolean(input.conversationId || input.reportId || input.dashboardId);
+  if (
+    hasTargetFilter &&
+    scope !== "all" &&
+    !isTargetFound(
+      input.db,
+      input.userId,
+      input.conversationId,
+      input.reportId,
+      input.dashboardId,
+    )
+  ) {
+    return [];
+  }
+
+  const conditions = [];
+  if (scope !== "all") {
+    conditions.push(eq(shares.createdBy, input.userId));
+  }
+  if (statusFilter === "active") {
+    conditions.push(isNull(shares.revokedAt), gt(shares.expiresAt, now));
+  }
+  if (input.conversationId) {
+    conditions.push(eq(shares.conversationId, input.conversationId));
+  } else if (input.reportId) {
+    conditions.push(eq(shares.reportId, input.reportId));
+  } else if (input.dashboardId) {
+    conditions.push(eq(shares.dashboardId, input.dashboardId));
+  }
+
+  const rows = input.db
+    .select({
+      id: shares.id,
+      conversationId: shares.conversationId,
+      reportId: shares.reportId,
+      dashboardId: shares.dashboardId,
+      createdBy: shares.createdBy,
+      expiresAt: shares.expiresAt,
+      revokedAt: shares.revokedAt,
+      createdAt: shares.createdAt,
+    })
+    .from(shares)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(shares.createdAt))
+    .limit(100)
+    .all();
+
+  if (rows.length === 0) return [];
+
+  const convIds = [...new Set(rows.map((r) => r.conversationId).filter((v): v is string => Boolean(v)))];
+  const reportIds = [...new Set(rows.map((r) => r.reportId).filter((v): v is string => Boolean(v)))];
+  const dashboardIds = [...new Set(rows.map((r) => r.dashboardId).filter((v): v is string => Boolean(v)))];
+  const creatorIds = scope === "all" ? [...new Set(rows.map((r) => r.createdBy))] : [];
+
+  const convTitleMap = new Map(
+    convIds.length > 0
+      ? input.db
+          .select({ id: conversations.id, title: conversations.title })
+          .from(conversations)
+          .where(inArray(conversations.id, convIds))
+          .all()
+          .map((row) => [row.id, row.title?.trim() || "未命名会话"])
+      : [],
+  );
+  const reportTitleMap = new Map(
+    reportIds.length > 0
+      ? input.db
+          .select({ id: reports.id, title: reports.title })
+          .from(reports)
+          .where(inArray(reports.id, reportIds))
+          .all()
+          .map((row) => [row.id, row.title])
+      : [],
+  );
+  const dashboardTitleMap = new Map(
+    dashboardIds.length > 0
+      ? input.db
+          .select({ id: dashboards.id, name: dashboards.name })
+          .from(dashboards)
+          .where(inArray(dashboards.id, dashboardIds))
+          .all()
+          .map((row) => [row.id, row.name])
+      : [],
+  );
+  const creatorMap = new Map(
+    creatorIds.length > 0
+      ? input.db
+          .select({ id: users.id, username: users.username })
+          .from(users)
+          .where(inArray(users.id, creatorIds))
+          .all()
+          .map((row) => [row.id, row.username])
+      : [],
+  );
+
+  return rows.map((row) => {
+    let targetType: ShareTargetType = "conversation";
+    let targetId = row.conversationId ?? "";
+    let targetTitle = "已删除的会话";
+    if (row.reportId) {
+      targetType = "report";
+      targetId = row.reportId;
+      targetTitle = reportTitleMap.get(row.reportId) ?? "已删除的报告";
+    } else if (row.dashboardId) {
+      targetType = "dashboard";
+      targetId = row.dashboardId;
+      targetTitle = dashboardTitleMap.get(row.dashboardId) ?? "已删除的看板";
+    } else if (row.conversationId) {
+      targetTitle = convTitleMap.get(row.conversationId) ?? "已删除的会话";
+    }
+
+    const status: ShareStatus =
+      row.revokedAt !== null ? "revoked" : row.expiresAt <= now ? "expired" : "active";
+
+    return {
+      id: row.id,
+      targetType,
+      targetId,
+      targetTitle,
+      createdBy: row.createdBy,
+      ...(scope === "all" ? { creatorUsername: creatorMap.get(row.createdBy) ?? "未知用户" } : {}),
+      expiresAt: row.expiresAt,
+      revokedAt: row.revokedAt,
+      status,
+      createdAt: row.createdAt,
+    };
+  });
 }

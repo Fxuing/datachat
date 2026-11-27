@@ -20,6 +20,7 @@ import {
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { PageSpinner } from "../../components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import {
   createRole,
   deleteRole,
@@ -307,17 +308,27 @@ export default function RolesPage() {
                             <Button variant="ghost" size="sm" onClick={() => openEdit(role.id)}>
                               编辑
                             </Button>
-                            {role.builtin ? null : (
+                            {role.builtin ? null : role.userCount > 0 ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-danger hover:bg-dangersoft hover:text-danger"
+                                      disabled
+                                    >
+                                      删除
+                                    </Button>
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">请先解除该角色下的用户分配</TooltipContent>
+                              </Tooltip>
+                            ) : (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 className="text-danger hover:bg-dangersoft hover:text-danger"
-                                disabled={role.userCount > 0}
-                                title={
-                                  role.userCount > 0
-                                    ? "请先解除该角色下的用户分配"
-                                    : undefined
-                                }
                                 onClick={() => {
                                   deleteMutation.reset();
                                   setDeleteTarget(role);

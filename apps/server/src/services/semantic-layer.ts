@@ -3,6 +3,7 @@ import type { Db } from "../db/client.js";
 import { findDatasource } from "../db/repositories/datasources.js";
 import { findUserById } from "../db/repositories/users.js";
 import { listScopePolicies } from "../db/repositories/data-scope.js";
+import { userDepartmentScope } from "./data-scope.js";
 import {
   listSemanticMetrics,
   listSemanticRelations,
@@ -170,54 +171,139 @@ function formatRelationLine(relation: SemanticRelationDto): string {
   return relation.description ? `${base}（${sanitize(relation.description)}）` : base;
 }
 
+export interface VisibleSemanticEntries {
+  metrics: SemanticMetricDto[];
+  relations: SemanticRelationDto[];
+  examples: SqlExampleDto[];
+  scopeDeniedNoDepartment: boolean;
+}
+
+export interface DatasourceStarterQuestion {
+  title: string;
+  body: string;
+  source: "example" | "metric";
+}
+
 /**
- * Filter semantic items against enabled data-scope policies so denied or
- * unconfigured tables are never leaked into non-admin prompts.
+ * Filter enabled semantic entries against active data-scope policies so denied or
+ * unconfigured tables are never leaked to non-admin users.
  */
-function allowedTablesForUser(
+export function listVisibleSemanticEntries(
   db: Db,
   datasourceId: string,
   userId?: string,
-): Set<string> | null {
-  if (!userId) return null;
+  options: { requireDepartment?: boolean } = {},
+): VisibleSemanticEntries {
   const datasource = findDatasource(db, datasourceId);
-  if (!datasource || datasource.dataScopeMode !== "enabled") return null;
-  if (findUserById(db, userId)?.role === "admin") return null;
-  return new Set(
-    listScopePolicies(db, datasourceId)
-      .filter((policy) => policy.enabled && policy.mode !== "denied")
-      .map((policy) => normalizeTableName(policy.tableName)),
+  const enforceScope =
+    Boolean(userId) &&
+    datasource?.dataScopeMode === "enabled" &&
+    findUserById(db, userId!)?.role !== "admin";
+
+  if (options.requireDepartment !== false && enforceScope && userDepartmentScope(db, userId!).size === 0) {
+    return {
+      metrics: [],
+      relations: [],
+      examples: [],
+      scopeDeniedNoDepartment: true,
+    };
+  }
+
+  const allowedTables = enforceScope
+    ? new Set(
+        listScopePolicies(db, datasourceId)
+          .filter((policy) => policy.enabled && policy.mode !== "denied")
+          .map((policy) => normalizeTableName(policy.tableName)),
+      )
+    : null;
+
+  const metrics = listSemanticMetrics(db, datasourceId, { onlyEnabled: true }).filter(
+    (metric) => {
+      if (!allowedTables || !metric.tableName) return true;
+      return allowedTables.has(normalizeTableName(metric.tableName));
+    },
   );
+  const relations = listSemanticRelations(db, datasourceId, {
+    onlyEnabled: true,
+  }).filter((relation) => {
+    if (!allowedTables) return true;
+    return (
+      allowedTables.has(normalizeTableName(relation.leftTable)) &&
+      allowedTables.has(normalizeTableName(relation.rightTable))
+    );
+  });
+  const examples = listSqlExamples(db, datasourceId, { onlyEnabled: true }).filter(
+    (example) => {
+      if (!allowedTables) return true;
+      // Fail closed on scoped datasources: never expose an example whose referenced tables
+      // are empty/unknown or touch any table outside the viewer's allowed scope.
+      if (example.tables.length === 0) return false;
+      return example.tables.every((table) => allowedTables.has(normalizeTableName(table)));
+    },
+  );
+
+  return {
+    metrics,
+    relations,
+    examples,
+    scopeDeniedNoDepartment: false,
+  };
+}
+
+function shortQuestionTitle(question: string): string {
+  const compact = question.replace(/\s+/g, " ").trim();
+  if (compact.length <= 18) return compact;
+  return `${compact.slice(0, 17)}…`;
+}
+
+export function buildDatasourceStarterQuestions(
+  metrics: SemanticMetricDto[],
+  examples: SqlExampleDto[],
+): DatasourceStarterQuestion[] {
+  const items: DatasourceStarterQuestion[] = [];
+  const seenBodies = new Set<string>();
+
+  const sortedExamples = [...examples].sort(
+    (a, b) => b.useCount - a.useCount || b.updatedAt - a.updatedAt,
+  );
+  for (const example of sortedExamples) {
+    if (items.length >= 3) break;
+    const body = example.question.trim();
+    if (!body || seenBodies.has(body)) continue;
+    seenBodies.add(body);
+    items.push({
+      title: shortQuestionTitle(body),
+      body,
+      source: "example",
+    });
+  }
+
+  for (const metric of metrics) {
+    if (items.length >= 3) break;
+    const body = metric.timeColumn
+      ? `按月统计最近 6 个月的${metric.name}变化趋势并拆解主要构成`
+      : `统计${metric.name}的整体表现并按核心维度排行`;
+    if (seenBodies.has(body)) continue;
+    seenBodies.add(body);
+    items.push({
+      title: `分析「${metric.name}」`,
+      body,
+      source: "metric",
+    });
+  }
+
+  return items;
 }
 
 export function buildSemanticBlock(input: SemanticBlockInput): SemanticBlockResult {
   try {
-    const allowedTables = allowedTablesForUser(input.db, input.datasourceId, input.userId);
-    const allMetrics = listSemanticMetrics(input.db, input.datasourceId, { onlyEnabled: true }).filter(
-      (metric) => {
-        if (!allowedTables || !metric.tableName) return true;
-        return allowedTables.has(normalizeTableName(metric.tableName));
-      },
-    );
-    const allRelations = listSemanticRelations(input.db, input.datasourceId, {
-      onlyEnabled: true,
-    }).filter((relation) => {
-      if (!allowedTables) return true;
-      return (
-        allowedTables.has(normalizeTableName(relation.leftTable)) &&
-        allowedTables.has(normalizeTableName(relation.rightTable))
-      );
+    const visible = listVisibleSemanticEntries(input.db, input.datasourceId, input.userId, {
+      requireDepartment: false,
     });
-
-    const allExamples = listSqlExamples(input.db, input.datasourceId, { onlyEnabled: true }).filter(
-      (example) => {
-        if (!allowedTables) return true;
-        // Fail closed on scoped datasources: never expose an example whose referenced tables
-        // are empty/unknown or touch any table outside the viewer's allowed scope.
-        if (example.tables.length === 0) return false;
-        return example.tables.every((table) => allowedTables.has(normalizeTableName(table)));
-      },
-    );
+    if (visible.scopeDeniedNoDepartment) {
+      return { text: "", metrics: [], relations: [], examples: [] };
+    }
+    const { metrics: allMetrics, relations: allRelations, examples: allExamples } = visible;
 
     if (allMetrics.length === 0 && allRelations.length === 0 && allExamples.length === 0) {
       return { text: "", metrics: [], relations: [], examples: [] };

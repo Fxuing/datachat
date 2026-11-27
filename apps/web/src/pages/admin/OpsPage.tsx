@@ -13,6 +13,7 @@ import {
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { PageSpinner } from "../../components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import {
   fetchMe,
   getAdminSettings,
@@ -132,11 +133,18 @@ function MetricsSection() {
                     key={day.date}
                     className="group flex flex-1 flex-col items-center justify-end gap-1"
                   >
-                    <div
-                      className="w-full min-w-[2px] rounded-t bg-brand/70 transition-colors group-hover:bg-brand"
-                      style={{ height: `${Math.max(2, (day.runs / maxDaily) * 76)}px` }}
-                      title={`${day.date}: ${day.runs} 次，失败 ${day.error + day.aborted}`}
-                    />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div
+                          tabIndex={0}
+                          className="w-full min-w-[2px] rounded-t bg-brand/70 transition-colors group-hover:bg-brand"
+                          style={{ height: `${Math.max(2, (day.runs / maxDaily) * 76)}px` }}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        {`${day.date}: ${day.runs} 次，失败 ${day.error + day.aborted}`}
+                      </TooltipContent>
+                    </Tooltip>
                     <span className="hidden text-[9px] text-muted sm:block">{day.date.slice(5)}</span>
                   </div>
                 ))}

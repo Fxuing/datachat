@@ -1,6 +1,7 @@
 import { useEffect, useState, type RefObject } from "react";
 import { cn } from "../../lib/utils";
 import type { ReportHeading } from "../../lib/report-toc";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 function useActiveHeading(headings: ReportHeading[], scrollRef: RefObject<HTMLDivElement | null>) {
   const [activeId, setActiveId] = useState(headings[0]?.id ?? "");
@@ -73,21 +74,24 @@ export function ReportToc({
         <p className="px-2 pb-1 text-[11px] font-medium tracking-wide text-muted">目录</p>
         <div className="max-h-[60vh] overflow-y-auto">
           {headings.map((heading) => (
-            <button
-              key={heading.id}
-              type="button"
-              onClick={() => onSelect(heading.id)}
-              className={cn(
-                "block w-full truncate rounded-md px-2 py-1 text-left text-xs transition-colors",
-                heading.level === 2 ? "pl-4" : heading.level === 3 ? "pl-6" : "",
-                heading.id === activeId
-                  ? "bg-subtle font-medium text-brand"
-                  : "text-inksoft hover:bg-subtle",
-              )}
-              title={heading.text}
-            >
-              {heading.text}
-            </button>
+            <Tooltip key={heading.id}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => onSelect(heading.id)}
+                  className={cn(
+                    "block w-full truncate rounded-md px-2 py-1 text-left text-xs transition-colors",
+                    heading.level === 2 ? "pl-4" : heading.level === 3 ? "pl-6" : "",
+                    heading.id === activeId
+                      ? "bg-subtle font-medium text-brand"
+                      : "text-inksoft hover:bg-subtle",
+                  )}
+                >
+                  {heading.text}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">{heading.text}</TooltipContent>
+            </Tooltip>
           ))}
         </div>
       </div>

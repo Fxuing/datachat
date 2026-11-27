@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => ({
   runScheduledTask: vi.fn(),
   listScheduledTaskRuns: vi.fn(),
   listDatasources: vi.fn(),
+  listConversations: vi.fn(),
+  listNotifications: vi.fn(),
   listModels: vi.fn(),
   fetchMe: vi.fn(),
   logout: vi.fn(),
@@ -41,6 +43,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../lib/api", () => mocks);
 vi.mock("../hooks/use-access", () => ({ useCan: () => true }));
+vi.mock("../components/NotificationBell", () => ({ NotificationBell: () => null }));
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -66,6 +69,8 @@ beforeEach(() => {
     roles: [],
   });
   mocks.listScheduledTasks.mockResolvedValue({ tasks: [task] });
+  mocks.listConversations.mockResolvedValue({ items: [], nextCursor: null });
+  mocks.listNotifications.mockResolvedValue({ notifications: [], unread: 0 });
   mocks.listDatasources.mockResolvedValue({
     datasources: [
       {
@@ -166,7 +171,7 @@ describe("ScheduledTasksPage", () => {
     renderPage();
     await screen.findByText("每日订单");
 
-    await userEvent.click(screen.getByRole("link", { name: /返回对话/ }));
+    await userEvent.click(screen.getByRole("button", { name: /新建对话/ }));
 
     expect(await screen.findByText("会话页")).toBeInTheDocument();
   });

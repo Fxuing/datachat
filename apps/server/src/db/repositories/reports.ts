@@ -1,9 +1,23 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../client.js";
-import { reports } from "../schema.js";
+import { conversations, datasources, reports } from "../schema.js";
 
 export type ReportRow = typeof reports.$inferSelect;
+
+export interface UserReportListRow extends ReportRow {
+  conversationKind: "chat" | "scheduled" | null;
+  conversationTitle: string | null;
+  sourceKind: "datasource" | "file" | null;
+  datasourceId: string | null;
+  datasourceName: string | null;
+}
+
+export interface ListReportsForUserOptions {
+  q?: string;
+  source?: "chat" | "scheduled";
+  datasourceId?: string;
+}
 
 export interface InsertReportInput {
   conversationId: string;
@@ -33,6 +47,47 @@ export function insertReport(db: Db, input: InsertReportInput): ReportRow {
 
 export function findReport(db: Db, id: string): ReportRow | undefined {
   return db.select().from(reports).where(eq(reports.id, id)).get();
+}
+
+export function listReportsForUser(
+  db: Db,
+  userId: string,
+  opts: ListReportsForUserOptions = {},
+): UserReportListRow[] {
+  const conditions = [eq(reports.userId, userId)];
+  const q = opts.q?.trim();
+  if (q) {
+    conditions.push(sql`instr(lower(${reports.title}), lower(${q})) > 0`);
+  }
+  if (opts.source) {
+    conditions.push(eq(conversations.kind, opts.source));
+  }
+  if (opts.datasourceId) {
+    conditions.push(eq(conversations.datasourceId, opts.datasourceId));
+  }
+
+  return db
+    .select({
+      id: reports.id,
+      conversationId: reports.conversationId,
+      userId: reports.userId,
+      title: reports.title,
+      markdown: reports.markdown,
+      artifactIdsJson: reports.artifactIdsJson,
+      createdAt: reports.createdAt,
+      updatedAt: reports.updatedAt,
+      conversationKind: conversations.kind,
+      conversationTitle: conversations.title,
+      sourceKind: conversations.sourceKind,
+      datasourceId: conversations.datasourceId,
+      datasourceName: datasources.name,
+    })
+    .from(reports)
+    .leftJoin(conversations, eq(reports.conversationId, conversations.id))
+    .leftJoin(datasources, eq(conversations.datasourceId, datasources.id))
+    .where(and(...conditions))
+    .orderBy(desc(reports.updatedAt), desc(reports.createdAt))
+    .all();
 }
 
 /** Newest first; the owner filter is optional for admin-side listings. */

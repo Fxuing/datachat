@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Brain,
   Clock,
+  FileText,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -160,6 +161,19 @@ export function AppShell({
         >
           <LayoutDashboard className="h-4 w-4 shrink-0" />
           数据看板
+        </Link>
+        <Link
+          to="/reports"
+          aria-current={location.pathname === "/reports" || location.pathname.startsWith("/reports/") ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] transition-colors",
+            location.pathname === "/reports" || location.pathname.startsWith("/reports/")
+              ? "bg-brandsoft font-medium text-brandtext"
+              : "text-inksoft hover:bg-subtle hover:text-ink",
+          )}
+        >
+          <FileText className="h-4 w-4 shrink-0" />
+          报告中心
         </Link>
         <Link
           to="/scheduled"

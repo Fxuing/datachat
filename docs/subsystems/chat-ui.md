@@ -12,9 +12,11 @@
 | 单条消息 | Markdown、分段、执行过程、用量、操作、部门范围提示 | [`MessageItem.tsx`](../../apps/web/src/components/chat/MessageItem.tsx) |
 | 解析器 | 切分 markdown/artifact/chart/result/excel/report 段 | [`report-markdown.ts`](../../apps/web/src/lib/report-markdown.ts) |
 | 数据表格 | 预览、加载更多、导出、SQL 详情 | [`ResultTable.tsx`](../../apps/web/src/components/chat/ResultTable.tsx)、[`ResultDetailDialog.tsx`](../../apps/web/src/components/chat/ResultDetailDialog.tsx) |
+| 数据目录 | 对话内表结构、业务指标与表关联抽屉 | [`DataCatalogDrawer.tsx`](../../apps/web/src/components/chat/DataCatalogDrawer.tsx) |
 | 行内结果 | 链接 + 详情弹窗 | [`ResultLink.tsx`](../../apps/web/src/components/chat/ResultLink.tsx) |
 | Excel 卡片 | 多 Sheet `.xlsx` 一键下载与分表预览 | [`ExcelCard.tsx`](../../apps/web/src/components/chat/ExcelCard.tsx) |
 | 报告卡片 | 对话内一键离线/离屏导出 Word/HTML/Markdown 与详情跳转 | [`ReportCard.tsx`](../../apps/web/src/components/chat/ReportCard.tsx)、[`report-offscreen-export.ts`](../../apps/web/src/lib/report-offscreen-export.ts) |
+| 会话导出 | 顶栏导出离线 HTML（图表 PNG、结果预览表、Mermaid、SQL 与可展开完整报告）或 Markdown | [`conversation-html-export.ts`](../../apps/web/src/lib/conversation-html-export.ts)、[`conversation-export.ts`](../../apps/web/src/lib/conversation-export.ts) |
 | 图表 | 渲染校验后的图表 spec、前端免重跑切图/排序与明细表 | [`ChartCard.tsx`](../../apps/web/src/components/chat/ChartCard.tsx)、[`chart-option.ts`](../../apps/web/src/lib/chart-option.ts) |
 | 报告 | 报告 artifact 卡片/链接 | [`ReportPage.tsx`](../../apps/web/src/pages/ReportPage.tsx) |
 | 建议追问 | 输入框上方的追问胶囊、点击直发与按轮次隐藏 | [`SuggestedQuestions.tsx`](../../apps/web/src/components/chat/SuggestedQuestions.tsx) |
@@ -52,9 +54,10 @@ Mermaid 代码块由 `MermaidDiagram` 在聊天、报告和公开分享中渲染
 
 ## 布局与交互契约
 
-- 消息区域是滚动所有者。输入框不在其中 sticky；它在下方，不能遮住最后一行。桌面端左侧导航栏支持一键收起/展开并持久化到 `localStorage`（`datachat:sidebar-collapsed`）；窄屏下左侧栏收起为左抽屉（`Sheet`），通过顶栏菜单按钮打开，避免挤压对话与后台表格。
+- 消息区域是滚动所有者。输入框不在其中 sticky；它在下方，不能遮住最后一行。桌面端左侧导航栏支持一键收起/展开并持久化到 `localStorage`（`datachat:sidebar-collapsed`）；窄屏下左侧栏收起为左抽屉（`Sheet`），通过顶栏菜单按钮打开，避免挤压对话与后台表格。所有工作区主页面（对话、数据看板、报告中心、报告详情、定时任务、我的记忆）统一使用 `ConversationSidebar` 与含「报告中心」（`/reports`）的导航栏，操作反馈通过全局 `ToastProvider`（[`toast.tsx`](../../apps/web/src/components/ui/toast.tsx)）轻提示展示。
+- 对话页顶栏的数据源徽标与新对话空态的「查看表结构与指标」入口支持打开 [`DataCatalogDrawer.tsx`](../../apps/web/src/components/chat/DataCatalogDrawer.tsx)，展示当前用户数据权限范围内的表/列结构、业务指标口径及标准表关联，并支持点击表或指标将提问草稿回填 `Composer`；新对话空态优先展示来自 `GET /api/datasources/:id/catalog` 的动态推荐提问（精选 SQL 示例与启用指标），未配置时回退至默认示例。
 - `ChartCard` 支持在前端直接切换图表视图（柱状/折线/面积/单系列非负饼图/散点与可排序明细表）及数值排序（默认/降序/升序），不重跑模型或数据库查询；聊天、流式、报告与公开分享共享同一组件。对话页内空闲状态下，点击图表数据点或明细表行会自动在 `Composer` 中回填并聚焦下钻追问草稿（全屏视图点击时先退出全屏），供用户直接发送或微调后再追问。对话中的持久化图表还支持点击「固定」通过 [`PinToDashboardDialog.tsx`](../../apps/web/src/components/chat/PinToDashboardDialog.tsx) 沉淀到个人数据看板（[`DashboardsPage.tsx`](../../apps/web/src/pages/DashboardsPage.tsx)）；看板支持经 `runGuardedQuery` 手动或按 Cron 定时自动刷新（始终以所有者当前权限与数据范围执行）、查看并经 `guardSql` 校验后编辑卡片 SQL（保存后自动脱离原 artifact 以免自愈覆盖），以及生成只读公开分享链接（`/s/:token`，不暴露 SQL 且受行级数据权限门禁约束）；文件图表作为静态快照展示。
-- 历史用户提问支持行内「编辑并重新提问」（保留原技能标签，经 `handleSend` 发送新一轮）；聊天顶栏支持将当前会话一键导出为 Markdown（清洗行内标记并附 SQL 块）。
+- 历史用户提问支持行内「编辑并重新提问」（保留原技能标签，经 `handleSend` 发送新一轮）；聊天顶栏「导出」弹窗提供两种格式：「导出为离线 HTML」（零脚本自包含 `.html`，内嵌浅色 ECharts PNG、可折叠结果预览表、Mermaid SVG、默认折叠的执行 SQL 与可原位展开的完整分析报告）与「导出为 Markdown」（清洗行内标记并附 SQL 块）。
 - 左侧会话栏的「新建对话」直接进入 `/chat` 空态，支持在「数据库分析」（默认）与「Excel / CSV 文件」之间切换：数据库模式在发送首条消息时携带数据源、模型与思考等级创建会话；文件模式通过 [`FileUploadPanel.tsx`](../../apps/web/src/components/chat/FileUploadPanel.tsx) 上传最多 5 个（单文件 ≤ 20 MB）`.xlsx`/`.csv` 文件并调用 `POST /api/files/preview` 展示推断结构、3 行样例与表头行调整，无需预设数据库数据源即可开始提问。
 - 活跃的文件分析会话在顶栏展示 `Excel / CSV · N 张表` 按钮（打开 [`FileTablesDialog.tsx`](../../apps/web/src/components/chat/FileTablesDialog.tsx) 查看导入文件、列类型、样例，支持空闲时追加文件进行多表 `JOIN`，并支持通过 `POST /api/file-datasets/from-conversation/:conversationId` 保存为个人可复用轻量数据集）；在新对话「Excel / CSV 文件」模式下可直接选用已保存的数据集（`POST /api/conversations/from-dataset`）克隆到新会话独立分析。侧边栏对文件会话直接显示 `Excel / CSV` 标识，不发额外请求。
 - 左侧会话列表支持 `before` 游标分页（「加载更多」）与防抖关键词搜索。

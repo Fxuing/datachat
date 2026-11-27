@@ -1,9 +1,13 @@
 import { useEffect, useState, type RefObject } from "react";
-import type { ChatMessage } from "../../lib/api";
 import { cn } from "../../lib/utils";
 
+export interface MinimapTurn {
+  runId: string;
+  user: { content: string };
+}
+
 export interface ConversationMinimapProps {
-  messages: ChatMessage[];
+  messages: ReadonlyArray<MinimapTurn>;
   containerRef: RefObject<HTMLDivElement | null>;
   maxTicks?: number;
 }
@@ -15,7 +19,7 @@ function snippet(text: string, length: number): string {
 
 function resolveVisibleRunId(
   container: HTMLDivElement,
-  messages: ChatMessage[],
+  messages: ReadonlyArray<MinimapTurn>,
 ): string | null {
   if (messages.length === 0) return null;
   if (
@@ -94,7 +98,7 @@ export function ConversationMinimap({
   const activeTickRunId =
     visibleIndex === -1
       ? null
-      : (ticks.reduce<ChatMessage | null>((best, tick) => {
+      : (ticks.reduce<MinimapTurn | null>((best, tick) => {
           const tickIndex = messages.indexOf(tick);
           return tickIndex <= visibleIndex ? tick : best;
         }, ticks[0] ?? null)?.runId ?? null);

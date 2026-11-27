@@ -16,7 +16,9 @@ import {
 } from "../lib/api";
 import { AppShell } from "../components/AppShell";
 import { ConfirmDialog } from "../components/admin/ConfirmDialog";
+import { ConversationSidebar } from "../components/chat/ConversationSidebar";
 import { Button } from "../components/ui/button";
+import { useToast } from "../components/ui/toast";
 import { useCan } from "../hooks/use-access";
 import { describeApiError } from "../lib/errors";
 import { queryKeys } from "../lib/query";
@@ -60,6 +62,7 @@ function scheduleLabel(task: ScheduledTaskSummary): string {
 
 export default function ScheduledTasksPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const canChat = useCan("chat.use");
   const canReport = useCan("report.create");
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe });
@@ -88,6 +91,7 @@ export default function ScheduledTasksPage() {
       setEditing(null);
       setError(null);
       await invalidate();
+      toast.success(editing ? "定时任务已更新" : "定时任务已创建");
     },
     onError: (err) => setError(describeApiError(err, "操作失败")),
   });
@@ -101,7 +105,9 @@ export default function ScheduledTasksPage() {
     },
     onSuccess: async (_data, task) => {
       setError(null);
-      setNotice(`已触发「${task.name}」执行，结果将通过站内通知发送。`);
+      const msg = `已触发「${task.name}」执行，结果将通过站内通知发送。`;
+      setNotice(msg);
+      toast.info(msg);
       await invalidate();
     },
     onError: (err) => setError(describeApiError(err, "操作失败")),
@@ -115,8 +121,9 @@ export default function ScheduledTasksPage() {
       setTogglingTaskId(task.id);
       setError(null);
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, task) => {
       await invalidate();
+      toast.success(task.enabled === 1 ? `已暂停「${task.name}」` : `已启用「${task.name}」`);
     },
     onError: (err) => setError(describeApiError(err, "状态更新失败")),
     onSettled: () => setTogglingTaskId(null),
@@ -128,6 +135,7 @@ export default function ScheduledTasksPage() {
       setDeletingTask(null);
       setError(null);
       await invalidate();
+      toast.success("定时任务已删除");
     },
     onError: (err) => setError(describeApiError(err, "操作失败")),
   });
@@ -138,17 +146,7 @@ export default function ScheduledTasksPage() {
   return (
     <AppShell
       user={meQuery.data?.user ?? { id: "", username: "", displayName: null, role: "user", status: "active" }}
-      sidebar={
-        <div className="p-2">
-          {/* Router link: a plain anchor would reload the whole app. */}
-          <Link
-            to="/chat"
-            className="block rounded-lg px-2 py-1.5 text-[13px] text-inksoft hover:bg-subtle hover:text-ink"
-          >
-            ← 返回对话
-          </Link>
-        </div>
-      }
+      sidebar={<ConversationSidebar datasources={datasourcesQuery.data?.datasources ?? []} />}
       topbar={
         <div className="flex min-w-0 items-center gap-2">
           <Clock className="h-4 w-4 text-muted" />

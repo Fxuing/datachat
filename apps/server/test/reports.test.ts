@@ -8,9 +8,15 @@ import { createSessionSigner } from "../src/auth/jwt.js";
 import { hashPassword } from "../src/auth/password.js";
 import { createDb, type Db } from "../src/db/client.js";
 import { migrateDb } from "../src/db/migrate.js";
+import { eq } from "drizzle-orm";
 import { createConversation } from "../src/db/repositories/conversations.js";
 import { insertDatasource } from "../src/db/repositories/datasources.js";
 import { insertUser } from "../src/db/repositories/users.js";
+import { createDepartment, setUserDepartments } from "../src/db/repositories/departments.js";
+import { replaceScopePolicies } from "../src/db/repositories/data-scope.js";
+import { createRun, saveRunScopeSnapshot } from "../src/db/repositories/runs.js";
+import { datasources, shares } from "../src/db/schema.js";
+import { createShare } from "../src/services/shares.js";
 import { RunEventBus } from "../src/agent/event-bus.js";
 import type { RuntimeManager } from "../src/agent/runtime.js";
 import { buildAgentTools } from "../src/agent/tools/index.js";
@@ -522,5 +528,209 @@ describe("create_report tool", () => {
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe("VALIDATION");
     expect(response.json().error.message).toContain("Excel");
+  });
+});
+
+describe("reports list and delete share cleanup", () => {
+  it("lists own reports with q/source/datasource filters, pagination, and data-scope filtering", async () => {
+    const art1 = await seedResult({ runId: "run-a" });
+    const art2 = await seedResult({
+      conversationId: otherConversationId,
+      runId: "run-b",
+    });
+    const scheduledConv = createConversation(db, {
+      userId,
+      datasourceId,
+      kind: "scheduled",
+      title: "每日任务",
+    });
+    const artSched = await seedResult({
+      conversationId: scheduledConv.id,
+      runId: "run-s",
+    });
+    const otherUserConv = createConversation(db, {
+      userId: otherUserId,
+      datasourceId,
+      title: "他人会话",
+    });
+    const foreignArt = await seedResult({
+      userId: otherUserId,
+      conversationId: otherUserConv.id,
+      runId: "run-f",
+    });
+
+    createReport({
+      db,
+      artifacts: store,
+      userId,
+      conversationId,
+      artifactIds: [art1],
+      title: "100%_营收分析",
+    });
+    createReport({
+      db,
+      artifacts: store,
+      userId,
+      conversationId: otherConversationId,
+      artifactIds: [art2],
+      title: "用户留存周报",
+    });
+    createReport({
+      db,
+      artifacts: store,
+      userId,
+      conversationId: scheduledConv.id,
+      artifactIds: [artSched],
+      title: "每日自动日报",
+    });
+    createReport({
+      db,
+      artifacts: store,
+      userId: otherUserId,
+      conversationId: otherUserConv.id,
+      artifactIds: [foreignArt],
+      title: "他人报告",
+    });
+
+    const all = await app.inject({
+      method: "GET",
+      url: "/api/reports",
+      cookies: { dc_session: cookie },
+    });
+    expect(all.statusCode).toBe(200);
+    expect(all.json().total).toBe(3);
+    expect(all.json().reports.map((r: { title: string }) => r.title)).not.toContain("他人报告");
+
+    // Literal % and _ in q must not match arbitrary rows.
+    const literalSearch = await app.inject({
+      method: "GET",
+      url: `/api/reports?q=${encodeURIComponent("100%_")}`,
+      cookies: { dc_session: cookie },
+    });
+    expect(literalSearch.statusCode).toBe(200);
+    expect(literalSearch.json().reports.map((r: { title: string }) => r.title)).toEqual([
+      "100%_营收分析",
+    ]);
+
+    const scheduledOnly = await app.inject({
+      method: "GET",
+      url: "/api/reports?source=scheduled",
+      cookies: { dc_session: cookie },
+    });
+    expect(scheduledOnly.statusCode).toBe(200);
+    expect(scheduledOnly.json().reports.map((r: { title: string }) => r.title)).toEqual([
+      "每日自动日报",
+    ]);
+
+    const paged = await app.inject({
+      method: "GET",
+      url: "/api/reports?limit=2&offset=1",
+      cookies: { dc_session: cookie },
+    });
+    expect(paged.statusCode).toBe(200);
+    expect(paged.json().total).toBe(3);
+    expect(paged.json().reports).toHaveLength(2);
+
+    // Enable data scope: reports pointing at runs outside the viewer's current scope are hidden.
+    const deptA = createDepartment(db, { name: "华东区", code: "east" });
+    const deptB = createDepartment(db, { name: "华南区", code: "south" });
+    setUserDepartments(db, userId, [deptA.id]);
+    db.update(datasources)
+      .set({ dataScopeMode: "enabled" })
+      .where(eq(datasources.id, datasourceId))
+      .run();
+    replaceScopePolicies(db, datasourceId, [{ tableName: "orders", mode: "public", rules: [] }]);
+
+    const scopedConv = createConversation(db, { userId, datasourceId, title: "受控会话" });
+    const inScopeRun = createRun(db, {
+      conversationId: scopedConv.id,
+      userId,
+    });
+    saveRunScopeSnapshot(
+      db,
+      inScopeRun.id,
+      JSON.stringify({
+        v: 1,
+        datasourceId,
+        departments: [deptA.id],
+        policyHash: "h1",
+      }),
+    );
+    const outScopeRun = createRun(db, {
+      conversationId: scopedConv.id,
+      userId,
+    });
+    saveRunScopeSnapshot(
+      db,
+      outScopeRun.id,
+      JSON.stringify({
+        v: 1,
+        datasourceId,
+        departments: [deptB.id],
+        policyHash: "h1",
+      }),
+    );
+    const inArt = await seedResult({ conversationId: scopedConv.id, runId: inScopeRun.id });
+    const outArt = await seedResult({ conversationId: scopedConv.id, runId: outScopeRun.id });
+    createReport({
+      db,
+      artifacts: store,
+      userId,
+      conversationId: scopedConv.id,
+      artifactIds: [inArt],
+      title: "范围内报告",
+    });
+    createReport({
+      db,
+      artifacts: store,
+      userId,
+      conversationId: scopedConv.id,
+      artifactIds: [outArt],
+      title: "越权历史报告",
+    });
+
+    const afterScope = await app.inject({
+      method: "GET",
+      url: "/api/reports",
+      cookies: { dc_session: cookie },
+    });
+    expect(afterScope.statusCode).toBe(200);
+    const titles = afterScope.json().reports.map((r: { title: string }) => r.title);
+    expect(titles).toContain("范围内报告");
+    expect(titles).not.toContain("越权历史报告");
+  });
+
+  it("revokes active shares when deleting a report", async () => {
+    const artifactId = await seedResult();
+    const created = createReport({
+      db,
+      artifacts: store,
+      userId,
+      conversationId,
+      artifactIds: [artifactId],
+      title: "待删除报告",
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const share = createShare({ db, userId, reportId: created.report.id });
+    expect(share.ok).toBe(true);
+    if (!share.ok) return;
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/reports/${created.report.id}`,
+      cookies: { dc_session: cookie },
+    });
+    expect(del.statusCode).toBe(204);
+
+    const row = db.select().from(shares).where(eq(shares.id, share.share.id)).get();
+    expect(row?.revokedAt).not.toBeNull();
+
+    const pub = await app.inject({
+      method: "GET",
+      url: `/api/public/shares/${share.share.token}`,
+    });
+    expect(pub.statusCode).toBe(410);
   });
 });

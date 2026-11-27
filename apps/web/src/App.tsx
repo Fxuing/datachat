@@ -12,9 +12,11 @@ import { fetchMe } from "./lib/api";
 import { installUnauthorizedHandler, queryClient, queryKeys } from "./lib/query";
 import LoginPage from "./pages/LoginPage";
 import { PageSpinner } from "./components/ui/spinner";
+import { ToastProvider } from "./components/ui/toast";
 import { BrandingProvider } from "./components/BrandingProvider";
 
 const ChatPage = lazy(() => import("./pages/ChatPage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const ReportPage = lazy(() => import("./pages/ReportPage"));
 const PublicSharePage = lazy(() => import("./pages/PublicSharePage"));
 const OpenDocsPage = lazy(() => import("./pages/OpenDocsPage"));
@@ -85,6 +87,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/s/:token" element={<PublicSharePage />} />
+        <Route path="/s/:token/reports/:reportId" element={<PublicSharePage />} />
         <Route path="/open-docs" element={<OpenDocsPage />} />
         <Route
           path="/chat"
@@ -131,6 +134,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <MemoryPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <RequireAuth>
+              <ReportsPage />
             </RequireAuth>
           }
         />
@@ -249,9 +260,11 @@ export default function App() {
   return (
     <BrandingProvider>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
+        <ToastProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </ToastProvider>
       </QueryClientProvider>
     </BrandingProvider>
   );

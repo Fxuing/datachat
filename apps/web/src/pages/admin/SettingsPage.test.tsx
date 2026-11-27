@@ -68,6 +68,9 @@ function stubApi(override?: Override) {
     if (url === "/api/admin/settings" && method === "GET") {
       return jsonResponse({ settings });
     }
+    if (url.startsWith("/api/shares?") && method === "GET") {
+      return jsonResponse({ shares: [] });
+    }
     if (url === "/api/admin/settings" && method === "PUT") {
       const body = JSON.parse(String(init?.body)) as Partial<AdminSettings>;
       putBodies.push(body);
@@ -225,5 +228,45 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toContain("模型不在白名单中");
     });
+  });
+
+  it("lists and revokes active site-wide shares under the share section", async () => {
+    const shareItem = {
+      id: "s-admin-1",
+      targetType: "report",
+      targetId: "rep-1",
+      targetTitle: "季度经营报告",
+      createdBy: "u-1",
+      creatorUsername: "alice",
+      expiresAt: 1_900_000_000_000,
+      revokedAt: null,
+      status: "active",
+      createdAt: 1_750_000_000_000,
+    };
+    const { fetchMock } = stubApi((url, method) => {
+      if (url === "/api/shares?status=active&scope=all" && method === "GET") {
+        return jsonResponse({ shares: [shareItem] });
+      }
+      if (url === "/api/shares/s-admin-1" && method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      return undefined;
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole("combobox", { name: "默认模型" });
+    await user.click(screen.getByRole("link", { name: "分享" }));
+    expect(await screen.findByText("季度经营报告")).toBeInTheDocument();
+    expect(screen.getByText("@alice")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "撤销" }));
+    await user.click(await screen.findByRole("button", { name: "确认撤销" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/shares/s-admin-1",
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
   });
 });

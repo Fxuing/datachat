@@ -19,13 +19,28 @@ const share = {
   expiresAt: 1_760_000_000_000,
 };
 
-function stubFetch() {
+const activeShareItem = {
+  id: "s-existing",
+  targetType: "conversation",
+  targetId: "c-1",
+  targetTitle: "第一会话",
+  createdBy: "u-1",
+  expiresAt: 1_900_000_000_000,
+  revokedAt: null,
+  status: "active",
+  createdAt: 1_750_000_000_000,
+};
+
+function stubFetch(existingShares: unknown[] = []) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
+    if (url.startsWith("/api/shares?") && (!init?.method || init.method === "GET")) {
+      return jsonResponse({ shares: existingShares });
+    }
     if (url === "/api/shares" && init?.method === "POST") {
       return jsonResponse({ share }, 201);
     }
-    if (url === "/api/shares/s-1" && init?.method === "DELETE") {
+    if ((url === "/api/shares/s-1" || url === "/api/shares/s-existing") && init?.method === "DELETE") {
       return new Response(null, { status: 204 });
     }
     throw new Error(`unexpected request: ${init?.method ?? "GET"} ${url}`);
@@ -105,14 +120,36 @@ describe("ShareDialog", () => {
   it("shows the server error when creation fails", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        jsonResponse({ error: { code: "NOT_FOUND", message: "分享目标不存在" } }, 404),
-      ),
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.startsWith("/api/shares?")) {
+          return jsonResponse({ shares: [] });
+        }
+        if (url === "/api/shares" && init?.method === "POST") {
+          return jsonResponse({ error: { code: "NOT_FOUND", message: "分享目标不存在" } }, 404);
+        }
+        throw new Error(`unexpected request: ${init?.method ?? "GET"} ${url}`);
+      }),
     );
     const browser = userEvent.setup();
     renderDialog();
 
     await browser.click(screen.getByRole("button", { name: "创建分享链接" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("分享目标不存在");
+  });
+
+  it("lists existing active shares and revokes them inline", async () => {
+    const fetchMock = stubFetch([activeShareItem]);
+    const browser = userEvent.setup();
+    renderDialog();
+
+    expect(await screen.findByText(/当前生效的分享链接/)).toBeInTheDocument();
+    await browser.click(screen.getByRole("button", { name: "撤销" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/shares/s-existing",
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
   });
 });

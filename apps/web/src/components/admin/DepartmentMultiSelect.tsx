@@ -5,6 +5,7 @@ import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 export interface DepartmentMultiSelectProps {
   /** Flat department rows; `parentId` is used to build the tree and paths. */
@@ -199,20 +200,26 @@ export function DepartmentMultiSelect({
             </span>
           </label>
           {checked ? (
-            <button
-              type="button"
-              aria-label={`设 ${path} 为主部门`}
-              aria-pressed={isPrimary}
-              title={isPrimary ? "主部门" : "设为主部门"}
-              disabled={disabled}
-              className={cn(
-                "rounded p-1 transition-colors hover:bg-subtle",
-                isPrimary ? "text-warning" : "text-muted hover:text-ink",
-              )}
-              onClick={() => commit(new Set(value), row.id)}
-            >
-              <Star className="h-3.5 w-3.5" fill={isPrimary ? "currentColor" : "none"} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`设 ${path} 为主部门`}
+                  aria-pressed={isPrimary}
+                  disabled={disabled}
+                  className={cn(
+                    "rounded p-1 transition-colors hover:bg-subtle",
+                    isPrimary ? "text-warning" : "text-muted hover:text-ink",
+                  )}
+                  onClick={() => commit(new Set(value), row.id)}
+                >
+                  <Star className="h-3.5 w-3.5" fill={isPrimary ? "currentColor" : "none"} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {isPrimary ? "主部门" : "设为主部门"}
+              </TooltipContent>
+            </Tooltip>
           ) : null}
         </div>,
       );
@@ -327,30 +334,35 @@ export function DepartmentMultiSelect({
           <span className="text-[11px] text-muted">未选择部门</span>
         ) : (
           selected.map((row) => (
-            <span
-              key={row.id}
-              className={cn(
-                "inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]",
-                primaryId === row.id
-                  ? "border-warning/40 bg-warningsoft text-ink"
-                  : "border-line bg-subtle text-inksoft",
-              )}
-              title={paths.get(row.id)}
-            >
-              {primaryId === row.id ? (
-                <Star className="h-3 w-3" fill="currentColor" aria-hidden />
+            <Tooltip key={row.id}>
+              <TooltipTrigger asChild>
+                <span
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]",
+                    primaryId === row.id
+                      ? "border-warning/40 bg-warningsoft text-ink"
+                      : "border-line bg-subtle text-inksoft",
+                  )}
+                >
+                  {primaryId === row.id ? (
+                    <Star className="h-3 w-3" fill="currentColor" aria-hidden />
+                  ) : null}
+                  <span className="truncate">{row.name}</span>
+                  <button
+                    type="button"
+                    aria-label={`移除 ${paths.get(row.id) ?? row.name}`}
+                    disabled={disabled}
+                    className="rounded p-0.5 text-muted hover:bg-surface hover:text-ink"
+                    onClick={() => toggle(row.id)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              </TooltipTrigger>
+              {paths.get(row.id) ? (
+                <TooltipContent side="top">{paths.get(row.id)}</TooltipContent>
               ) : null}
-              <span className="truncate">{row.name}</span>
-              <button
-                type="button"
-                aria-label={`移除 ${paths.get(row.id) ?? row.name}`}
-                disabled={disabled}
-                className="rounded p-0.5 text-muted hover:bg-surface hover:text-ink"
-                onClick={() => toggle(row.id)}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
+            </Tooltip>
           ))
         )}
       </div>

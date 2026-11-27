@@ -1,8 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+const htmlExportMock = vi.hoisted(() => ({
+  exportConversationHtml: vi.fn(async () => undefined),
+}));
+
+vi.mock("../lib/conversation-html-export", () => ({
+  exportConversationHtml: htmlExportMock.exportConversationHtml,
+}));
+
 import ChatPage from "./ChatPage";
 import type {
   ChatMessage,
@@ -105,6 +114,18 @@ function stubFetch(permissions: Permission[]) {
     if (url === "/api/auth/me") return jsonResponse({ user, permissions, roles: [] });
     if (url === "/api/conversations") return jsonResponse({ items: [], nextCursor: null });
     if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
+    if (url === "/api/datasources/ds-1/catalog") {
+      return jsonResponse({
+        datasourceId: "ds-1",
+        refreshedAt: null,
+        stale: false,
+        tableCount: 0,
+        scopeNotice: null,
+        metrics: [],
+        relations: [],
+        starterQuestions: [],
+      });
+    }
     if (url === "/api/models") {
       return jsonResponse({ configured: false, models: [], defaultId: null });
     }
@@ -233,6 +254,30 @@ describe("ChatPage permission gates", () => {
         return jsonResponse({ items: [conversation, conversation2], nextCursor: null });
       }
       if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
+      if (url === "/api/datasources/ds-1/catalog") {
+        return jsonResponse({
+          datasourceId: "ds-1",
+          refreshedAt: null,
+          stale: false,
+          tableCount: 0,
+          scopeNotice: null,
+          metrics: [],
+          relations: [],
+          starterQuestions: [],
+        });
+      }
+    if (url === "/api/datasources/ds-1/catalog") {
+      return jsonResponse({
+        datasourceId: "ds-1",
+        refreshedAt: null,
+        stale: false,
+        tableCount: 0,
+        scopeNotice: null,
+        metrics: [],
+        relations: [],
+        starterQuestions: [],
+      });
+    }
       if (url === "/api/models") {
         return jsonResponse({ configured: false, models: [], defaultId: null });
       }
@@ -543,6 +588,30 @@ describe("ChatPage suggested questions", () => {
       }
       if (url === "/api/conversations") return jsonResponse({ items: [], nextCursor: null });
       if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
+      if (url === "/api/datasources/ds-1/catalog") {
+        return jsonResponse({
+          datasourceId: "ds-1",
+          refreshedAt: null,
+          stale: false,
+          tableCount: 0,
+          scopeNotice: null,
+          metrics: [],
+          relations: [],
+          starterQuestions: [],
+        });
+      }
+    if (url === "/api/datasources/ds-1/catalog") {
+      return jsonResponse({
+        datasourceId: "ds-1",
+        refreshedAt: null,
+        stale: false,
+        tableCount: 0,
+        scopeNotice: null,
+        metrics: [],
+        relations: [],
+        starterQuestions: [],
+      });
+    }
       if (url === "/api/models") {
         return jsonResponse({ configured: false, models: [], defaultId: null });
       }
@@ -588,6 +657,30 @@ describe("ChatPage suggested questions", () => {
       }
       if (url === "/api/conversations") return jsonResponse({ items: [], nextCursor: null });
       if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
+      if (url === "/api/datasources/ds-1/catalog") {
+        return jsonResponse({
+          datasourceId: "ds-1",
+          refreshedAt: null,
+          stale: false,
+          tableCount: 0,
+          scopeNotice: null,
+          metrics: [],
+          relations: [],
+          starterQuestions: [],
+        });
+      }
+    if (url === "/api/datasources/ds-1/catalog") {
+      return jsonResponse({
+        datasourceId: "ds-1",
+        refreshedAt: null,
+        stale: false,
+        tableCount: 0,
+        scopeNotice: null,
+        metrics: [],
+        relations: [],
+        starterQuestions: [],
+      });
+    }
       if (url === "/api/models") {
         return jsonResponse({
           configured: true,
@@ -633,6 +726,30 @@ describe("ChatPage suggested questions", () => {
       }
       if (url === "/api/conversations") return jsonResponse({ items: [], nextCursor: null });
       if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
+      if (url === "/api/datasources/ds-1/catalog") {
+        return jsonResponse({
+          datasourceId: "ds-1",
+          refreshedAt: null,
+          stale: false,
+          tableCount: 0,
+          scopeNotice: null,
+          metrics: [],
+          relations: [],
+          starterQuestions: [],
+        });
+      }
+    if (url === "/api/datasources/ds-1/catalog") {
+      return jsonResponse({
+        datasourceId: "ds-1",
+        refreshedAt: null,
+        stale: false,
+        tableCount: 0,
+        scopeNotice: null,
+        metrics: [],
+        relations: [],
+        starterQuestions: [],
+      });
+    }
       if (url === "/api/models") {
         return jsonResponse({
           configured: true,
@@ -678,5 +795,152 @@ describe("ChatPage suggested questions", () => {
       typeof input === "string" ? input : input.toString(),
     );
     expect(requested).not.toContain("/api/runs/run-1/suggestions");
+  });
+});
+
+describe("ChatPage data catalog and dynamic starters", () => {
+  it("renders dynamic datasource starter questions and opens DataCatalogDrawer from topbar", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/auth/me") {
+        return jsonResponse({ user, permissions: FUNCTIONAL_PERMISSIONS, roles: [] });
+      }
+      if (url === "/api/conversations") return jsonResponse({ items: [], nextCursor: null });
+      if (url === "/api/datasources") return jsonResponse({ datasources: [datasource] });
+      if (url === "/api/datasources/ds-1/catalog") {
+        return jsonResponse({
+          datasourceId: "ds-1",
+          refreshedAt: 1_700_000_000_000,
+          stale: false,
+          tableCount: 1,
+          scopeNotice: null,
+          metrics: [
+            {
+              id: "m-1",
+              name: "GMV",
+              synonyms: ["成交额"],
+              description: "已支付总额",
+              tableName: "orders",
+              timeColumn: "paid_at",
+              unit: "元",
+            },
+          ],
+          relations: [],
+          starterQuestions: [
+            { title: "上月GMV趋势", body: "统计上月GMV变化趋势", source: "example" },
+          ],
+        });
+      }
+      if (url.startsWith("/api/datasources/ds-1/schema")) {
+        return jsonResponse({
+          tables: [
+            {
+              schema: "demo",
+              name: "orders",
+              comment: "订单表",
+              rowEstimate: 100,
+              columns: [{ name: "id", type: "int", nullable: false, comment: null }],
+              primaryKey: ["id"],
+              foreignKeys: [],
+              indexes: [],
+            },
+          ],
+          refreshedAt: 1_700_000_000_000,
+          stale: false,
+          error: null,
+          total: 1,
+        });
+      }
+      if (url === "/api/datasources/ds-1/skills") return jsonResponse({ skills: [] });
+      if (url === "/api/models") {
+        return jsonResponse({
+          configured: true,
+          models: [
+            {
+              id: "m1",
+              modelId: "m1",
+              providerId: "p1",
+              providerName: "P1",
+              name: "Model 1",
+              contextWindow: 64_000,
+              maxTokens: 4096,
+            },
+          ],
+          defaultId: "m1",
+        });
+      }
+      if (url === "/api/conversations/c-1") return jsonResponse(detail);
+      if (url === "/api/conversations/c-1/skills") return jsonResponse({ skills: [] });
+      throw new Error(`unexpected request: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const browser = userEvent.setup();
+
+    // First verify dynamic starter questions on /chat empty state.
+    const emptyRender = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/chat"]}>
+          <Routes>
+            <Route path="/chat" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("上月GMV趋势")).toBeInTheDocument();
+    expect(screen.getByText("精选问法")).toBeInTheDocument();
+    emptyRender.unmount();
+
+    // Then verify clicking topbar datasource button opens DataCatalogDrawer.
+    renderChatPage();
+    const dsButton = await screen.findByRole("button", { name: /demo · MySQL/ });
+    await browser.click(dsButton);
+    expect(await screen.findByText("demo.orders")).toBeInTheDocument();
+  });
+
+  it("opens topbar export menu with Offline HTML and Markdown options", async () => {
+    stubFetch(FUNCTIONAL_PERMISSIONS);
+    htmlExportMock.exportConversationHtml.mockClear();
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const createObjectUrlSpy = vi.fn(() => "blob:mock-md");
+    const revokeObjectUrlSpy = vi.fn();
+    URL.createObjectURL = createObjectUrlSpy;
+    URL.revokeObjectURL = revokeObjectUrlSpy;
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    try {
+      const browser = userEvent.setup();
+      renderChatPage();
+
+      const exportBtn = await screen.findByRole("button", { name: "导出" });
+      await browser.click(exportBtn);
+
+      const htmlOption = await screen.findByRole("button", { name: /导出为离线 HTML/ });
+      expect(screen.getByRole("button", { name: /导出为 Markdown/ })).toBeInTheDocument();
+
+      await browser.click(htmlOption);
+      await waitFor(() => {
+        expect(htmlExportMock.exportConversationHtml).toHaveBeenCalledTimes(1);
+      });
+      expect(htmlExportMock.exportConversationHtml).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "权限测试会话",
+          sourceLabel: "demo · MySQL",
+        }),
+      );
+
+      await browser.click(screen.getByRole("button", { name: "导出" }));
+      await browser.click(await screen.findByRole("button", { name: /导出为 Markdown/ }));
+      expect(createObjectUrlSpy).toHaveBeenCalledTimes(1);
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+      clickSpy.mockRestore();
+    }
   });
 });

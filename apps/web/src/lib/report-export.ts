@@ -4,7 +4,7 @@ import { captureRegisteredChart } from "./chart-export-registry";
 
 export { buildReportExportDocx } from "./report-docx";
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -118,15 +118,14 @@ export async function collectLightMermaidSvgs(
 }
 
 /**
- * Snapshot the rendered report article DOM into a self-contained HTML file.
- * Live ECharts `<canvas>` nodes are rasterized to inline PNG images and
- * interactive toolbar buttons are stripped so the file opens cleanly offline.
+ * Clone a rendered report or section container, rasterizing live `<canvas>`
+ * ECharts nodes into inline PNG images, applying light-theme Mermaid SVGs
+ * when provided, and removing interactive UI buttons.
  */
-export function buildReportExportHtml(
-  title: string,
+export function serializeArticleForHtml(
   articleElement: HTMLElement,
   options?: { mermaidLightSvgs?: ReadonlyMap<string, string> },
-): string {
+): HTMLElement {
   const clone = articleElement.cloneNode(true) as HTMLElement;
 
   const liveCanvases = articleElement.querySelectorAll("canvas");
@@ -171,6 +170,21 @@ export function buildReportExportHtml(
 
   // Remove interactive toolbar controls (chart switchers, fullscreen/download buttons).
   clone.querySelectorAll("button, [role='group']").forEach((el) => el.remove());
+
+  return clone;
+}
+
+/**
+ * Snapshot the rendered report article DOM into a self-contained HTML file.
+ * Live ECharts `<canvas>` nodes are rasterized to inline PNG images and
+ * interactive toolbar buttons are stripped so the file opens cleanly offline.
+ */
+export function buildReportExportHtml(
+  title: string,
+  articleElement: HTMLElement,
+  options?: { mermaidLightSvgs?: ReadonlyMap<string, string> },
+): string {
+  const clone = serializeArticleForHtml(articleElement, options);
 
   const safeTitle = escapeHtml(title.trim() || "分析报告");
   return `<!DOCTYPE html>

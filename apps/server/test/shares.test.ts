@@ -13,7 +13,7 @@ import { createConversation } from "../src/db/repositories/conversations.js";
 import { insertDatasource } from "../src/db/repositories/datasources.js";
 import { appendRunEvent } from "../src/db/repositories/run-events.js";
 import { insertUser } from "../src/db/repositories/users.js";
-import { reports, shares } from "../src/db/schema.js";
+import { datasources, reports, shares } from "../src/db/schema.js";
 import { RunEventBus } from "../src/agent/event-bus.js";
 import type { RuntimeManager } from "../src/agent/runtime.js";
 import { ArtifactStore, type ColumnInfo } from "../src/services/artifacts.js";
@@ -547,6 +547,291 @@ describe("shares routes", () => {
     expect(body.artifacts).toHaveLength(1);
     expect(body.artifacts[0].rows).toHaveLength(SHARE_MAX_ROWS);
     expect(body.artifacts[0].columns).toEqual(columns);
+  });
+
+  it("lists shares safely without leaking token or hash and enforces scope/ownership", async () => {
+    const convShare = createShare({ db, userId, conversationId, expiresInDays: 7 });
+    const expiredShare = createShare({
+      db,
+      userId,
+      conversationId,
+      expiresInDays: 1,
+      now: Date.now() - 2 * DAY_MS,
+    });
+    const dsId = db.select({ id: datasources.id }).from(datasources).get()!.id;
+    const otherConv2 = createConversation(db, {
+      userId: otherUserId,
+      datasourceId: dsId,
+      title: "Bob专属会话",
+    });
+    const bobShare = createShare({ db, userId: otherUserId, conversationId: otherConv2.id });
+    expect(convShare.ok && expiredShare.ok && bobShare.ok).toBe(true);
+    if (!convShare.ok || !expiredShare.ok || !bobShare.ok) return;
+
+    const mineActive = await app.inject({
+      method: "GET",
+      url: "/api/shares?status=active",
+      cookies: { dc_session: cookie },
+    });
+    expect(mineActive.statusCode).toBe(200);
+    const activeItems = mineActive.json().shares as Array<Record<string, unknown>>;
+    expect(activeItems).toHaveLength(1);
+    expect(activeItems[0]).toMatchObject({
+      id: convShare.share.id,
+      targetType: "conversation",
+      targetId: conversationId,
+      targetTitle: "销售分析",
+      status: "active",
+    });
+    const serialized = JSON.stringify(activeItems);
+    expect(serialized).not.toContain(convShare.share.token);
+    expect(serialized).not.toContain(hashShareToken(convShare.share.token));
+    expect(serialized).not.toContain("tokenHash");
+
+    const mineAll = await app.inject({
+      method: "GET",
+      url: "/api/shares?status=all",
+      cookies: { dc_session: cookie },
+    });
+    expect(mineAll.statusCode).toBe(200);
+    expect(mineAll.json().shares).toHaveLength(2);
+
+    // Querying someone else's target returns empty.
+    const foreignTarget = await app.inject({
+      method: "GET",
+      url: `/api/shares?conversationId=${otherConv2.id}`,
+      cookies: { dc_session: cookie },
+    });
+    expect(foreignTarget.statusCode).toBe(200);
+    expect(foreignTarget.json().shares).toEqual([]);
+
+    // Non-admin cannot pass scope=all.
+    const nonAdminAll = await app.inject({
+      method: "GET",
+      url: "/api/shares?scope=all",
+      cookies: { dc_session: cookie },
+    });
+    expect(nonAdminAll.statusCode).toBe(403);
+
+    // Admin can list all active shares with creator username.
+    const adminAll = await app.inject({
+      method: "GET",
+      url: "/api/shares?scope=all&status=active",
+      cookies: { dc_session: adminCookie },
+    });
+    expect(adminAll.statusCode).toBe(200);
+    expect(adminAll.json().shares).toHaveLength(2);
+    expect(
+      (adminAll.json().shares as Array<{ creatorUsername?: string }>).map((s) => s.creatorUsername),
+    ).toEqual(expect.arrayContaining(["alice", "bob"]));
+  });
+
+  it("resolves inline chart, result, and artifact placeholders in reading order and hides report-only charts", async () => {
+    const inlineResultId = randomUUID();
+    const inlineChartId = randomUUID();
+    const reportOnlyChartId = randomUUID();
+
+    appendRunEvent(db, {
+      runId: "run-inline",
+      conversationId,
+      type: "user_message",
+      payload: { content: "分析类目与商品表现" },
+    });
+    appendRunEvent(db, {
+      runId: "run-inline",
+      conversationId,
+      type: "sql",
+      payload: {
+        sql: "SELECT category, COUNT(*) FROM orders GROUP BY category",
+        auditId: randomUUID(),
+        status: "ok",
+      },
+    });
+    appendRunEvent(db, {
+      runId: "run-inline",
+      conversationId,
+      type: "result",
+      payload: {
+        artifactId: inlineResultId,
+        columns: [{ name: "类目", type: "string" }, { name: "订单数", type: "number" }],
+        rows: [["服饰鞋包", 168]],
+        rowCount: 1,
+        truncated: false,
+      },
+    });
+    appendRunEvent(db, {
+      runId: "run-inline",
+      conversationId,
+      type: "chart",
+      payload: {
+        chartArtifactId: inlineChartId,
+        spec: { chart: { type: "bar", title: "商品表现 TOP12" }, option: { series: [] } },
+        points: 12,
+        title: "商品表现 TOP12",
+      },
+    });
+    appendRunEvent(db, {
+      runId: "run-inline",
+      conversationId,
+      type: "chart",
+      payload: {
+        chartArtifactId: reportOnlyChartId,
+        spec: { chart: { type: "line", title: "仅报告图表" }, option: { series: [] } },
+        points: 5,
+        title: "仅报告图表",
+      },
+    });
+    const reportToolCallId = randomUUID();
+    appendRunEvent(db, {
+      runId: "run-inline",
+      conversationId,
+      type: "tool_start",
+      payload: {
+        toolCallId: reportToolCallId,
+        name: "create_report",
+        args: { artifactIds: [reportOnlyChartId] },
+      },
+    });
+    appendRunEvent(db, {
+      runId: "run-inline",
+      conversationId,
+      type: "tool_end",
+      payload: {
+        toolCallId: reportToolCallId,
+        name: "create_report",
+        isError: false,
+        durationMs: 120,
+        summary: "《月报》",
+      },
+    });
+    appendRunEvent(db, {
+      runId: "run-inline",
+      conversationId,
+      type: "assistant_message",
+      payload: {
+        content: [
+          "商品表现：TOP12 贡献 64.9% 金额",
+          "",
+          `[[chart:${inlineChartId}]]`,
+          "",
+          `明细见 [[result:${inlineResultId}|类目汇总]]`,
+        ].join("\n"),
+      },
+    });
+
+    const created = createShare({ db, userId, conversationId });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const resolved = await resolveShare({ db, artifacts: store, token: created.share.token });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok || resolved.share.type !== "conversation") return;
+
+    expect(resolved.share.messages).toEqual([
+      { role: "user", text: "分析类目与商品表现" },
+      { role: "assistant", text: "商品表现：TOP12 贡献 64.9% 金额" },
+      {
+        role: "assistant",
+        text: "",
+        chart: { chart: { type: "bar", title: "商品表现 TOP12" }, option: { series: [] } },
+      },
+      {
+        role: "assistant",
+        text: "明细见 「类目汇总」",
+        sql: "SELECT category, COUNT(*) FROM orders GROUP BY category",
+      },
+      {
+        role: "assistant",
+        text: "",
+        columns: [{ name: "类目", type: "string" }, { name: "订单数", type: "number" }],
+        rows: [["服饰鞋包", 168]],
+      },
+    ]);
+
+    const serialized = JSON.stringify(resolved.share);
+    expect(serialized).not.toContain("[[chart:");
+    expect(serialized).not.toContain("[[result:");
+    expect(serialized).not.toContain("仅报告图表");
+  });
+
+  it("resolves same-conversation reports under GET /api/public/shares/:token/reports/:reportId and rejects cross-conversation/revoked/scoped probes", async () => {
+    const resultId = await seedResult([[1, "alpha"]]);
+    const ownReport = createReport({
+      db,
+      artifacts: store,
+      userId,
+      conversationId,
+      artifactIds: [resultId],
+      title: "会话内报告",
+      markdown: "## 概览\n\n[[artifact:" + resultId + "]]",
+    });
+    expect(ownReport.ok).toBe(true);
+    if (!ownReport.ok) return;
+
+    const secondConv = createConversation(db, {
+      userId,
+      datasourceId: db.select().from(datasources).all()[0]!.id,
+      title: "另一会话",
+    });
+    const otherWriter = store.openResult({ userId, conversationId: secondConv.id, runId: "r-2" });
+    await otherWriter.write([2, "beta"]);
+    const otherMeta = await otherWriter.finish({ columns, rowCount: 1, truncated: false });
+    const otherReport = createReport({
+      db,
+      artifacts: store,
+      userId,
+      conversationId: secondConv.id,
+      artifactIds: [otherMeta.id],
+      title: "跨会话报告",
+      markdown: "跨会话",
+    });
+    expect(otherReport.ok).toBe(true);
+    if (!otherReport.ok) return;
+
+    const convShare = createShare({ db, userId, conversationId });
+    expect(convShare.ok).toBe(true);
+    if (!convShare.ok) return;
+
+    const repShare = createShare({ db, userId, reportId: ownReport.report.id });
+    expect(repShare.ok).toBe(true);
+    if (!repShare.ok) return;
+
+    // 1. Same-conversation report resolves publicly without auth.
+    const okRes = await app.inject({
+      method: "GET",
+      url: `/api/public/shares/${convShare.share.token}/reports/${ownReport.report.id}`,
+    });
+    expect(okRes.statusCode).toBe(200);
+    expect(okRes.json()).toMatchObject({
+      type: "report",
+      title: "会话内报告",
+    });
+    expect(okRes.json().artifacts[0].rows).toEqual([[1, "alpha"]]);
+
+    // 2. Cross-conversation report is rejected with 410 SHARE_GONE.
+    const crossRes = await app.inject({
+      method: "GET",
+      url: `/api/public/shares/${convShare.share.token}/reports/${otherReport.report.id}`,
+    });
+    expect(crossRes.statusCode).toBe(410);
+    expect(crossRes.json()).toMatchObject({ error: { code: "SHARE_GONE" } });
+
+    // 3. Report share token cannot be used as a conversation share namespace.
+    const wrongTypeRes = await app.inject({
+      method: "GET",
+      url: `/api/public/shares/${repShare.share.token}/reports/${ownReport.report.id}`,
+    });
+    expect(wrongTypeRes.statusCode).toBe(410);
+
+    // 4. Data scope disables nested report access too.
+    const dsId = db.select().from(datasources).all()[0]!.id;
+    db.update(datasources).set({ dataScopeMode: "enabled" }).where(eq(datasources.id, dsId)).run();
+    const scopedRes = await app.inject({
+      method: "GET",
+      url: `/api/public/shares/${convShare.share.token}/reports/${ownReport.report.id}`,
+    });
+    expect(scopedRes.statusCode).toBe(410);
+    expect(scopedRes.json()).toMatchObject({ error: { code: "SHARE_DISABLED_BY_SCOPE" } });
   });
 
 });

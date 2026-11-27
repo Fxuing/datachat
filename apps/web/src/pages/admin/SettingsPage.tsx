@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Bot, Gauge, RotateCcw, Save, Settings, Share2 } from "lucide-react";
+import { Bot, Gauge, Link2, RotateCcw, Save, Settings, Share2 } from "lucide-react";
 import { AdminShell } from "../../components/admin/AdminShell";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { LlmProvidersSection } from "../../components/admin/LlmProvidersSection";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { PageSpinner } from "../../components/ui/spinner";
+import { useToast } from "../../components/ui/toast";
 import {
   Select,
   SelectContent,
@@ -21,13 +22,17 @@ import {
   fetchMe,
   getAdminSettings,
   listModels,
+  listShares,
+  revokeShare,
   updateAdminSettings,
   type AdminSettings,
   type AdminSettingsPatch,
   type ChatModelInfo,
+  type ShareListItem,
 } from "../../lib/api";
 import { describeApiError } from "../../lib/errors";
 import { queryKeys } from "../../lib/query";
+import { formatDateTime } from "../../lib/utils";
 
 type NumberKey = "queryMaxRows" | "queryPreviewRows" | "queryTimeoutMs" | "shareMaxDays";
 
@@ -145,6 +150,7 @@ function resetPatchForSection(section: Exclude<Section, "providers">): AdminSett
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [params] = useSearchParams();
   const sectionParam = params.get("section");
   const section: Section = SECTIONS.some((item) => item.id === sectionParam)
@@ -157,12 +163,30 @@ export default function SettingsPage() {
     queryFn: getAdminSettings,
   });
   const modelsQuery = useQuery({ queryKey: queryKeys.models, queryFn: listModels });
+  const activeSharesQuery = useQuery({
+    queryKey: queryKeys.shares({ scope: "all", status: "active" }),
+    queryFn: () => listShares({ scope: "all", status: "active" }),
+    enabled: section === "share",
+  });
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<DraftErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [revokingShare, setRevokingShare] = useState<ShareListItem | null>(null);
+
+  const revokeShareMutation = useMutation({
+    mutationFn: (id: string) => revokeShare(id),
+    onSuccess: () => {
+      setRevokingShare(null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sharesAll });
+      toast.success("已撤销分享链接");
+    },
+    onError: (err) => {
+      toast.error(describeApiError(err, "撤销分享链接失败"));
+    },
+  });
 
   useEffect(() => {
     if (settingsQuery.data && draft === null) {
@@ -453,10 +477,109 @@ export default function SettingsPage() {
                   </form>
                 )}
               </div>
+
+              {section === "share" ? (
+                <div className="mt-5 rounded-xl border border-line bg-surface p-6 shadow-card">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                        <Link2 className="h-4 w-4 text-brand" />
+                        全站活跃分享
+                      </h2>
+                      <p className="mt-0.5 text-xs text-muted">
+                        查看当前所有生效中的公开只读链接，必要时可由管理员立即吊销。
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted">
+                      {(activeSharesQuery.data?.shares ?? []).length} 条生效中
+                    </span>
+                  </div>
+
+                  {activeSharesQuery.isPending ? (
+                    <p className="mt-4 text-xs text-muted">加载分享列表中…</p>
+                  ) : activeSharesQuery.isError ? (
+                    <p role="alert" className="mt-4 text-xs text-danger">
+                      {describeApiError(activeSharesQuery.error, "加载活跃分享失败")}
+                    </p>
+                  ) : (activeSharesQuery.data?.shares ?? []).length === 0 ? (
+                    <p className="mt-4 rounded-lg border border-dashed border-line px-4 py-6 text-center text-xs text-muted">
+                      当前全站没有生效中的公开分享链接。
+                    </p>
+                  ) : (
+                    <div className="mt-4 overflow-x-auto rounded-lg border border-line">
+                      <table className="w-full text-left text-xs">
+                        <thead className="border-b border-line bg-subtle/60 text-[11px] text-muted">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">分享目标</th>
+                            <th className="px-3 py-2 font-medium">创建人</th>
+                            <th className="px-3 py-2 font-medium">过期时间</th>
+                            <th className="px-3 py-2 text-right font-medium">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-line">
+                          {(activeSharesQuery.data?.shares ?? []).map((item) => (
+                            <tr key={item.id}>
+                              <td className="px-3 py-2.5">
+                                <span className="mr-1.5 rounded bg-subtle px-1.5 py-0.5 text-[10px] font-medium text-inksoft">
+                                  {item.targetType === "conversation"
+                                    ? "会话"
+                                    : item.targetType === "report"
+                                      ? "报告"
+                                      : "看板"}
+                                </span>
+                                <span className="font-medium text-ink">{item.targetTitle}</span>
+                              </td>
+                              <td className="px-3 py-2.5 text-muted">
+                                @{item.creatorUsername ?? "未知"}
+                              </td>
+                              <td className="px-3 py-2.5 text-muted">
+                                {formatDateTime(item.expiresAt)}
+                              </td>
+                              <td className="px-3 py-2.5 text-right">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-danger hover:bg-dangersoft hover:text-danger"
+                                  onClick={() => {
+                                    revokeShareMutation.reset();
+                                    setRevokingShare(item);
+                                  }}
+                                >
+                                  撤销
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
       </div>
+      {revokingShare ? (
+        <ConfirmDialog
+          title="撤销分享链接"
+          description={`确定立即撤销「${revokingShare.targetTitle}」的公开分享链接吗？撤销后任何持有该链接的人都将无法继续访问。`}
+          confirmLabel={revokeShareMutation.isPending ? "撤销中…" : "确认撤销"}
+          variant="danger"
+          pending={revokeShareMutation.isPending}
+          error={
+            revokeShareMutation.isError
+              ? describeApiError(revokeShareMutation.error, "撤销分享链接失败")
+              : null
+          }
+          onConfirm={() => revokeShareMutation.mutate(revokingShare.id)}
+          onCancel={() => {
+            revokeShareMutation.reset();
+            setRevokingShare(null);
+          }}
+        />
+      ) : null}
       {confirmReset && section !== "providers" ? (
         <ConfirmDialog
           title={`恢复「${current.label}」默认设置`}

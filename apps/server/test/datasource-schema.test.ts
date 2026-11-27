@@ -8,6 +8,7 @@ const introspectMock = vi.hoisted(() => ({
 
 vi.mock("../src/agent/datasource/introspect.js", () => introspectMock);
 
+import { eq } from "drizzle-orm";
 import { buildApp } from "../src/app.js";
 import { encryptSecret, deriveSecretKey } from "../src/agent/datasource/crypto.js";
 import type { SchemaSnapshot } from "../src/agent/datasource/introspect.js";
@@ -16,6 +17,11 @@ import { migrateDb } from "../src/db/migrate.js";
 import { insertUser } from "../src/db/repositories/users.js";
 import { insertDatasource } from "../src/db/repositories/datasources.js";
 import { replaceGrants } from "../src/db/repositories/grants.js";
+import { createDepartment, setUserDepartments } from "../src/db/repositories/departments.js";
+import { replaceScopePolicies } from "../src/db/repositories/data-scope.js";
+import { insertSemanticMetric, insertSemanticRelation } from "../src/db/repositories/semantic-layer.js";
+import { insertSqlExample } from "../src/db/repositories/sql-examples.js";
+import { datasources } from "../src/db/schema.js";
 import { loadSchemaEntry, saveSchema, SCHEMA_CACHE_TTL_MS } from "../src/db/repositories/schema-cache.js";
 import { hashPassword } from "../src/auth/password.js";
 import { createSessionSigner } from "../src/auth/jwt.js";
@@ -269,6 +275,126 @@ describe("datasource schema routes", () => {
       cookies: { dc_session: adminCookie },
     });
     expect(unknown.statusCode).toBe(404);
+    await a.close();
+  });
+
+  it("enforces row-level data scope on schema and catalog and hides raw SQL", async () => {
+    replaceGrants(db, datasourceId, [userId]);
+    saveSchema(db, datasourceId, snapshot);
+
+    insertSemanticMetric(db, {
+      datasourceId,
+      name: "订单总额",
+      synonyms: ["GMV"],
+      sqlExpression: "SUM(orders.amount)",
+      tableName: "orders",
+      timeColumn: "orders.paid_at",
+      unit: "元",
+      description: "已支付订单金额汇总",
+    });
+    insertSemanticMetric(db, {
+      datasourceId,
+      name: "用户数",
+      sqlExpression: "COUNT(users.id)",
+      tableName: "users",
+    });
+    insertSemanticRelation(db, {
+      datasourceId,
+      leftTable: "orders",
+      leftColumn: "user_id",
+      rightTable: "users",
+      rightColumn: "id",
+      joinType: "left",
+      description: "订单关联下单用户",
+    });
+    insertSqlExample(db, {
+      datasourceId,
+      question: "上月订单总额是多少？",
+      sqlText: "SELECT SUM(amount) FROM orders",
+      tables: ["orders"],
+    });
+    insertSqlExample(db, {
+      datasourceId,
+      question: "用户表有多少人？",
+      sqlText: "SELECT COUNT(*) FROM users",
+      tables: ["users"],
+    });
+
+    db.update(datasources)
+      .set({ dataScopeMode: "enabled" })
+      .where(eq(datasources.id, datasourceId))
+      .run();
+    replaceScopePolicies(db, datasourceId, [
+      { tableName: "orders", mode: "public", rules: [] },
+      { tableName: "users", mode: "denied", rules: [] },
+    ]);
+
+    const a = await app();
+
+    // Non-admin without any department gets 403 on schema and scopeNotice on catalog.
+    const noDeptSchema = await a.inject({
+      method: "GET",
+      url: `/api/datasources/${datasourceId}/schema`,
+      cookies: { dc_session: userCookie },
+    });
+    expect(noDeptSchema.statusCode).toBe(403);
+    expect(noDeptSchema.json().error.code).toBe("DATA_SCOPE_NO_DEPARTMENT");
+
+    const noDeptCatalog = await a.inject({
+      method: "GET",
+      url: `/api/datasources/${datasourceId}/catalog`,
+      cookies: { dc_session: userCookie },
+    });
+    expect(noDeptCatalog.statusCode).toBe(200);
+    expect(noDeptCatalog.json()).toMatchObject({
+      tableCount: 0,
+      metrics: [],
+      relations: [],
+      starterQuestions: [],
+    });
+    expect(noDeptCatalog.json().scopeNotice).toContain("部门");
+
+    // Assign department: only non-denied tables & their semantic items are visible.
+    const dept = createDepartment(db, { name: "运营部", code: "ops" });
+    setUserDepartments(db, userId, [dept.id]);
+
+    const scopedSchema = await a.inject({
+      method: "GET",
+      url: `/api/datasources/${datasourceId}/schema`,
+      cookies: { dc_session: userCookie },
+    });
+    expect(scopedSchema.statusCode).toBe(200);
+    expect(scopedSchema.json().tables.map((t: { name: string }) => t.name)).toEqual(["orders"]);
+
+    const scopedCatalog = await a.inject({
+      method: "GET",
+      url: `/api/datasources/${datasourceId}/catalog`,
+      cookies: { dc_session: userCookie },
+    });
+    expect(scopedCatalog.statusCode).toBe(200);
+    const catalogBody = scopedCatalog.json();
+    expect(catalogBody.tableCount).toBe(1);
+    expect(catalogBody.metrics.map((m: { name: string }) => m.name)).toEqual(["订单总额"]);
+    expect(catalogBody.relations).toEqual([]);
+    expect(catalogBody.starterQuestions.map((q: { body: string }) => q.body)).toEqual([
+      "上月订单总额是多少？",
+      "按月统计最近 6 个月的订单总额变化趋势并拆解主要构成",
+    ]);
+    // Raw SQL expressions / SQL examples must not leak in catalog.
+    expect(JSON.stringify(catalogBody)).not.toContain("SUM(orders.amount)");
+    expect(JSON.stringify(catalogBody)).not.toContain("SELECT SUM(amount)");
+
+    // Admin still sees every table and semantic entry.
+    const adminCatalog = await a.inject({
+      method: "GET",
+      url: `/api/datasources/${datasourceId}/catalog`,
+      cookies: { dc_session: adminCookie },
+    });
+    expect(adminCatalog.statusCode).toBe(200);
+    expect(adminCatalog.json().tableCount).toBe(2);
+    expect(adminCatalog.json().metrics).toHaveLength(2);
+    expect(adminCatalog.json().relations).toHaveLength(1);
+
     await a.close();
   });
 });

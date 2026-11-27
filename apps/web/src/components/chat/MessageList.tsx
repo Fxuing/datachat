@@ -92,6 +92,9 @@ export interface MessageListProps {
   /** Set for an existing conversation: its datasource cannot be changed. */
   datasourceLocked?: boolean;
   boundDatasource?: DatasourceSummary | null;
+  starterExamples?: Array<{ title: string; body: string; source?: "example" | "metric" }>;
+  onOpenCatalog?: () => void;
+  catalogMeta?: { tableCount: number; metrics: unknown[] } | null;
   onExample?: (content: string) => void;
   starting?: boolean;
   isAdmin?: boolean;
@@ -161,6 +164,9 @@ function EmptyChat({
   onOpenFileTables,
   datasourceLocked = false,
   boundDatasource = null,
+  starterExamples,
+  onOpenCatalog,
+  catalogMeta = null,
   onExample,
   starting = false,
   isAdmin = false,
@@ -184,6 +190,9 @@ function EmptyChat({
   onOpenFileTables?: () => void;
   datasourceLocked?: boolean;
   boundDatasource?: DatasourceSummary | null;
+  starterExamples?: Array<{ title: string; body: string; source?: "example" | "metric" }>;
+  onOpenCatalog?: () => void;
+  catalogMeta?: { tableCount: number; metrics: unknown[] } | null;
   onExample?: (content: string) => void;
   starting?: boolean;
   isAdmin?: boolean;
@@ -197,7 +206,12 @@ function EmptyChat({
     modelsStatus === "ready" &&
     modelsCount > 0 &&
     !starting;
-  const visibleExamples = isFileMode ? fileExamples : examples;
+  const visibleExamples: Array<{ title: string; body: string; source?: "example" | "metric" }> =
+    isFileMode
+      ? fileExamples
+      : starterExamples && starterExamples.length > 0
+        ? starterExamples
+        : examples;
 
   return (
     <div className="flex flex-col items-center justify-center gap-5 py-8 text-center">
@@ -267,8 +281,21 @@ function EmptyChat({
 
       {!datasourceLocked && newChatMode === "datasource" ? (
         <div className="w-full max-w-md text-left">
-          <div className="mb-1.5">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
             <label className="text-[11px] font-medium text-inksoft">数据源</label>
+            {onOpenCatalog && datasources.length > 0 ? (
+              <button
+                type="button"
+                onClick={onOpenCatalog}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-brandtext transition-colors hover:bg-brandsoft"
+              >
+                <Database className="h-3 w-3" />
+                查看表结构与指标
+                {catalogMeta
+                  ? `（${catalogMeta.tableCount} 表 · ${catalogMeta.metrics.length} 指标）`
+                  : ""}
+              </button>
+            ) : null}
           </div>
           {datasourcesError ? (
             <div className="rounded-lg border border-danger/20 bg-dangersoft px-4 py-3 text-left">
@@ -394,8 +421,15 @@ function EmptyChat({
             className="group rounded-xl border border-line bg-surface/70 p-3 text-left shadow-card transition-colors hover:border-brand/40 hover:bg-surface disabled:cursor-not-allowed disabled:opacity-55"
           >
             <p className="flex items-center justify-between gap-2 text-[12px] font-medium text-inksoft">
-              {example.title}
-              <ArrowUpRight className="h-3.5 w-3.5 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+              <span className="truncate">{example.title}</span>
+              <span className="flex shrink-0 items-center gap-1">
+                {example.source ? (
+                  <span className="rounded bg-brandsoft px-1.5 py-0.5 text-[10px] font-normal text-brandtext">
+                    {example.source === "example" ? "精选问法" : "指标推荐"}
+                  </span>
+                ) : null}
+                <ArrowUpRight className="h-3.5 w-3.5 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+              </span>
             </p>
             <p className="mt-1 text-[11px] leading-5 text-muted">{example.body}</p>
           </button>
@@ -450,6 +484,9 @@ export function MessageList({
   onOpenFileTables,
   datasourceLocked = false,
   boundDatasource = null,
+  starterExamples,
+  onOpenCatalog,
+  catalogMeta = null,
   onExample,
   starting = false,
   isAdmin = false,
@@ -731,6 +768,9 @@ export function MessageList({
             onOpenFileTables={onOpenFileTables}
             datasourceLocked={datasourceLocked}
             boundDatasource={boundDatasource}
+            starterExamples={starterExamples}
+            onOpenCatalog={onOpenCatalog}
+            catalogMeta={catalogMeta}
             onExample={onExample}
             starting={starting}
             isAdmin={isAdmin}

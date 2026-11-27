@@ -22,8 +22,8 @@ import { formatCount } from "./utils";
 
 export type ReportExportFormat = "md" | "html" | "docx";
 
-const CHART_EXPORT_WIDTH = 720;
-const CHART_EXPORT_HEIGHT = 340;
+export const CHART_EXPORT_WIDTH = 720;
+export const CHART_EXPORT_HEIGHT = 340;
 
 function formatReportTimestamp(timestamp: number): string {
   return new Date(timestamp).toLocaleString("zh-CN", { hour12: false });
@@ -42,7 +42,7 @@ function formatTableCell(value: unknown): string {
   return String(value);
 }
 
-function buildMissingArtifactElement(artifactId: string, message: string): HTMLElement {
+export function buildMissingArtifactElement(artifactId: string, message: string): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.className = "report-artifact";
 
@@ -54,7 +54,7 @@ function buildMissingArtifactElement(artifactId: string, message: string): HTMLE
   return wrapper;
 }
 
-function buildTableArtifactElement(
+export function buildTableArtifactElement(
   columns: Column[],
   rows: unknown[][],
   rowCount: number,
@@ -111,7 +111,7 @@ function buildTableArtifactElement(
   return outer;
 }
 
-async function renderMarkdownSection(content: string): Promise<HTMLElement> {
+export async function renderMarkdownSection(content: string): Promise<HTMLElement> {
   const [{ createElement }, { renderToStaticMarkup }, { default: ReactMarkdown }, { default: remarkGfm }, { default: rehypeHighlight }] =
     await Promise.all([
       import("react"),

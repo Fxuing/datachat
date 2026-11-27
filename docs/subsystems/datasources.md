@@ -14,7 +14,7 @@
 | 凭据 | 用 `APP_SECRET` 做 AES-GCM 加解密（密码与 `secret: true` 扩展参数） | [`crypto.ts`](../../apps/server/src/agent/datasource/crypto.ts) |
 | 连接池 | 复用内置与自定义驱动连接池；配置变化时关闭 | [`pool.ts`](../../apps/server/src/agent/datasource/pool.ts) |
 | Schema 缓存 | 持久化快照/错误、24h TTL、并发去重、过期回退 | [`schema-refresh.ts`](../../apps/server/src/services/schema-refresh.ts)、[`schema-cache.ts`](../../apps/server/src/db/repositories/schema-cache.ts) |
-| 管理路由 | 驱动列表（`GET /api/datasources/drivers`）、CRUD、测试、schema 刷新、权限检查 | [`datasources.ts`](../../apps/server/src/routes/datasources.ts)、[`datasource-schema.ts`](../../apps/server/src/routes/datasource-schema.ts) |
+| 管理路由 | 驱动列表（`GET /api/datasources/drivers`）、CRUD、测试、schema 刷新、数据目录（`GET /api/datasources/:id/catalog`）、权限检查 | [`datasources.ts`](../../apps/server/src/routes/datasources.ts)、[`datasource-schema.ts`](../../apps/server/src/routes/datasource-schema.ts) |
 | 轻量语义层与 Few-Shot 知识库 | 按数据源管理业务指标口径、同义词、标准表关联、Few-Shot SQL 示例库与用户问答反馈沉淀，并在每轮对话按需召回注入 | [`semantic-layer.ts` 服务](../../apps/server/src/services/semantic-layer.ts)、[`semantic-layer.ts` 仓储](../../apps/server/src/db/repositories/semantic-layer.ts)、[`sql-examples.ts` 仓储](../../apps/server/src/db/repositories/sql-examples.ts)、[`admin-semantic.ts`](../../apps/server/src/routes/admin-semantic.ts)、[`DatasourceSemanticPage.tsx`](../../apps/web/src/pages/admin/DatasourceSemanticPage.tsx) |
 | 授权检查 | 用户/角色/直接数据源访问 | [`access.ts`](../../apps/server/src/auth/access.ts) |
 
@@ -39,7 +39,7 @@
 5. 刷新失败且存在快照时，带 `stale=true` 返回旧快照；没有快照时返回 `SCHEMA_UNAVAILABLE` 和用户可读原因。
 6. 工具可以按 `table` 或 `search` 过滤；截断要显式标记，让模型知道 schema 不完整。
 
-schema 端点读取同一份缓存；不暴露凭据或查询数据。
+schema 端点读取同一份缓存；不暴露凭据或查询数据。当数据源启用行级数据权限且请求者为非管理员时，`GET /api/datasources/:id/schema` 同步执行 fail-closed 过滤：未加入任何部门返回 `403 DATA_SCOPE_NO_DEPARTMENT`，其余用户仅返回已启用且非 `denied` 策略覆盖的表（搜索同时匹配表名、表注释及列名/列注释）。`GET /api/datasources/:id/catalog` 通过 `listVisibleSemanticEntries` 为聊天页返回脱敏后的可见表计数、指标名称/同义词/说明、标准表关联及动态开场推荐提问（绝不返回底层 `sqlExpression`、`defaultFilters` 或原始 `sqlText`）。
 
 ## 契约
 

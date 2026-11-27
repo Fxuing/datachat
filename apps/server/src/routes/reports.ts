@@ -5,10 +5,12 @@ import type { Db } from "../db/client.js";
 import {
   deleteReport,
   findReport,
+  listReportsForUser,
   parseReportArtifactIds,
   updateReport,
 } from "../db/repositories/reports.js";
 import { canReadReport, createReport, toReportDetail, type ReportErrorCode } from "../services/reports.js";
+import { revokeSharesForReport } from "../services/shares.js";
 import type { ArtifactStore } from "../services/artifacts.js";
 import { artifactRunVisible } from "../services/scope-access.js";
 
@@ -18,6 +20,13 @@ export interface ReportRouteOptions {
 }
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
+const listQuerySchema = z.object({
+  q: z.string().trim().max(100).optional(),
+  source: z.enum(["all", "chat", "scheduled"]).optional(),
+  datasourceId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
 const createBodySchema = z.object({
   conversationId: z.string().uuid(),
   title: z.string().trim().min(1).max(200).optional(),
@@ -71,6 +80,44 @@ export async function reportRoutes(
   app: FastifyInstance,
   opts: ReportRouteOptions,
 ): Promise<void> {
+  app.get("/api/reports", { preHandler: app.authenticate }, async (request, reply) => {
+    const query = listQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send(error("VALIDATION", "参数不合法"));
+    }
+    const user = request.user!;
+    const isAdmin = user.role === "admin";
+    const limit = query.data.limit ?? 30;
+    const offset = query.data.offset ?? 0;
+
+    const rows = listReportsForUser(opts.db, user.sub, {
+      q: query.data.q,
+      source: query.data.source && query.data.source !== "all" ? query.data.source : undefined,
+      datasourceId: query.data.datasourceId,
+    }).filter((row) => reportScopeVisible(opts, row, isAdmin));
+
+    const total = rows.length;
+    const page = rows.slice(offset, offset + limit).map((row) => {
+      const artifactIds = parseReportArtifactIds(row);
+      return {
+        id: row.id,
+        conversationId: row.conversationId,
+        title: row.title,
+        artifactIds,
+        artifactCount: artifactIds.length,
+        source: (row.conversationKind === "scheduled" ? "scheduled" : "chat") as "chat" | "scheduled",
+        sourceKind: (row.sourceKind === "file" ? "file" : "datasource") as "datasource" | "file",
+        datasourceId: row.datasourceId ?? null,
+        datasourceName: row.datasourceName ?? null,
+        conversationTitle: row.conversationTitle ?? null,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
+    });
+
+    return { reports: page, total };
+  });
+
   app.post(
     "/api/reports",
     { preHandler: app.requirePermission("report.create") },
@@ -155,6 +202,7 @@ export async function reportRoutes(
     if (!report || !canReadReport(report, user.sub, user.role === "admin")) {
       return reply.code(404).send(error("NOT_FOUND", "报告不存在"));
     }
+    revokeSharesForReport(opts.db, report.id);
     deleteReport(opts.db, report.id);
     return reply.code(204).send();
   });

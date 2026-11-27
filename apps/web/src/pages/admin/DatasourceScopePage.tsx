@@ -784,9 +784,16 @@ export default function DatasourceScopePage() {
                         <td className="px-2 py-1.5 text-muted">
                           {row.mode === "scoped" ? (
                             (row.rules ?? []).length > 0 ? (
-                              <span className="block max-w-[22rem] truncate" title={(row.rules ?? []).map(ruleSummary).join(" 且 ")}>
-                                {(row.rules ?? []).map(ruleSummary).join(" 且 ")}
-                              </span>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span tabIndex={0} className="block max-w-[22rem] truncate">
+                                    {(row.rules ?? []).map(ruleSummary).join(" 且 ")}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-md">
+                                  {(row.rules ?? []).map(ruleSummary).join(" 且 ")}
+                                </TooltipContent>
+                              </Tooltip>
                             ) : (
                               <span className="text-warning">未设置条件</span>
                             )

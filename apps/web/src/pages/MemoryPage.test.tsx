@@ -15,6 +15,7 @@ const memory: MemoryItem = {
 const mocks = vi.hoisted(() => ({
   fetchMe: vi.fn(),
   logout: vi.fn(),
+  listConversations: vi.fn(),
   listMemories: vi.fn(),
   createMemory: vi.fn(),
   updateMemory: vi.fn(),
@@ -51,6 +52,7 @@ beforeEach(() => {
     user: { id: "u1", username: "alice", displayName: "Alice", role: "user", status: "active" },
     permissions: ["chat.use"], roles: [],
   });
+  mocks.listConversations.mockResolvedValue({ items: [], nextCursor: null });
   mocks.listMemories.mockResolvedValue({
     memories: [memory], settings: { enabled: true, globalEnabled: true }, globalEnabled: true,
   });
@@ -91,7 +93,7 @@ describe("MemoryPage", () => {
     renderPage();
     await screen.findByText("金额单位");
 
-    await userEvent.click(screen.getByRole("link", { name: /返回对话/ }));
+    await userEvent.click(screen.getByRole("button", { name: /新建对话/ }));
 
     expect(await screen.findByText("会话页")).toBeInTheDocument();
   });

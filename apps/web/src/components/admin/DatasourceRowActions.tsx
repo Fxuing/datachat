@@ -12,6 +12,7 @@ import type { DatasourceSummary } from "../../lib/api";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 const CLOSE_DELAY_MS = 140;
 
@@ -105,15 +106,22 @@ export function DatasourceRowActions({
 
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={testing || driverUnavailable}
-        title={driverUnavailable ? "驱动插件未加载" : undefined}
-        onClick={onTest}
-      >
-        {testing ? "测试中…" : "测试连接"}
-      </Button>
+      {driverUnavailable ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button variant="ghost" size="sm" disabled onClick={onTest}>
+                {testing ? "测试中…" : "测试连接"}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top">驱动插件未加载</TooltipContent>
+        </Tooltip>
+      ) : (
+        <Button variant="ghost" size="sm" disabled={testing} onClick={onTest}>
+          {testing ? "测试中…" : "测试连接"}
+        </Button>
+      )}
       <Button variant="ghost" size="sm" onClick={onEdit}>
         编辑
       </Button>
